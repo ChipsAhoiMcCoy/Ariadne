@@ -1,11 +1,9 @@
 #nullable enable
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.Audio;
@@ -16,6 +14,7 @@ using Terraria.Localization;
 using Terraria.Map;
 using Terraria.ModLoader;
 using Terraria.ModLoader.Default;
+using Terraria.Social.Steam;
 using Terraria.UI;
 using Terrarium.Menus;
 
@@ -26,8 +25,6 @@ internal sealed class AccessibleInventoryController
 	private const int MenuPageSize = 10;
 	private static readonly TimeSpan NavigationRepeatDelay = TimeSpan.FromMilliseconds(450);
 	private static readonly TimeSpan NavigationRepeatInterval = TimeSpan.FromMilliseconds(85);
-	private static readonly FieldInfo? InfoDisplaysField = typeof(InfoDisplayLoader).GetField("InfoDisplays", BindingFlags.Static | BindingFlags.NonPublic);
-	private static readonly FieldInfo? BuilderTogglesField = typeof(BuilderToggleLoader).GetField("_drawOrder", BindingFlags.Static | BindingFlags.NonPublic);
 	private static readonly FieldInfo? ModAccessoryItemsField = typeof(ModAccessorySlotPlayer).GetField("exAccessorySlot", BindingFlags.Instance | BindingFlags.NonPublic);
 	private static readonly FieldInfo? ModAccessoryDyesField = typeof(ModAccessorySlotPlayer).GetField("exDyesAccessory", BindingFlags.Instance | BindingFlags.NonPublic);
 	private static readonly Dictionary<int, int> VanillaShopIndices = new()
@@ -59,17 +56,14 @@ internal sealed class AccessibleInventoryController
 	};
 
 	private readonly AccessibleMenuController _menuController;
-	private readonly List<AccessibleInventoryCategory> _categories = [];
+	private readonly List<AccessibleInventoryNode> _rootNodes = [];
+	private readonly List<int> _selectionPath = [0];
 	private KeyboardState _previousKeyboard;
 	private Keys? _repeatingKey;
 	private TimeSpan _nextRepeat;
 	private bool _active;
-	private bool _categoryOpen;
-	private int _categoryIndex;
-	private int _entryIndex;
 	private string _lastSemanticState = string.Empty;
-	private string? _resumeCategoryId;
-	private string? _resumeEntryId;
+	private List<string>? _resumeFocusPath;
 	private bool _restoreFocusOnNextActivation;
 	private bool _suppressInventoryCloseUntilRelease;
 
@@ -96,7 +90,7 @@ internal sealed class AccessibleInventoryController
 
 		RebuildCategories();
 		ConsumeNavigationTriggers();
-		if (_categories.Count == 0)
+		if (_rootNodes.Count == 0)
 		{
 			_previousKeyboard = keyboard;
 			return;
@@ -108,21 +102,14 @@ internal sealed class AccessibleInventoryController
 		}
 
 		bool handled = false;
-		if (Pressed(keyboard, Keys.Left) && _categoryOpen)
+		if (Pressed(keyboard, Keys.Left) && CurrentLevel > 0)
 		{
-			CloseCategory();
+			CloseSubmenu();
 			handled = true;
 		}
-		else if (Pressed(keyboard, Keys.Right) && (!_categoryOpen || CurrentEntry.OpensSubmenu))
+		else if (Pressed(keyboard, Keys.Right) && CurrentNode.OpensSubmenu)
 		{
-			if (_categoryOpen)
-			{
-				ActivateEntry(secondary: false);
-			}
-			else
-			{
-				OpenCategory();
-			}
+			OpenCurrentNode();
 			handled = true;
 		}
 		else if (NavigationTriggered(keyboard, Keys.Up))
@@ -157,23 +144,23 @@ internal sealed class AccessibleInventoryController
 		}
 		else if (Pressed(keyboard, Keys.Enter))
 		{
-			if (_categoryOpen)
+			if (CurrentNode.HasChildren)
 			{
-				ActivateEntry(secondary: IsShiftDown(keyboard));
+				OpenSubmenu();
 			}
 			else
 			{
-				OpenCategory();
+				ActivateEntry(secondary: IsShiftDown(keyboard));
 			}
 			Main.chatRelease = false;
 			handled = true;
 		}
-		else if (_categoryOpen && Pressed(keyboard, Keys.F))
+		else if (CurrentNode.IsAction && Pressed(keyboard, Keys.F))
 		{
 			ToggleFavorite();
 			handled = true;
 		}
-		else if (_categoryOpen && Pressed(keyboard, Keys.R))
+		else if (CurrentNode.IsAction && Pressed(keyboard, Keys.R))
 		{
 			ReadDetails();
 			handled = true;
@@ -195,9 +182,10 @@ internal sealed class AccessibleInventoryController
 	internal void Deactivate()
 	{
 		_active = false;
-		_categoryOpen = false;
 		_repeatingKey = null;
-		_categories.Clear();
+		_rootNodes.Clear();
+		_selectionPath.Clear();
+		_selectionPath.Add(0);
 		_lastSemanticState = string.Empty;
 		if (Main.gameMenu)
 		{
@@ -223,63 +211,70 @@ internal sealed class AccessibleInventoryController
 		_active = true;
 		_previousKeyboard = keyboard;
 		_repeatingKey = null;
-		_categoryOpen = false;
-		_categoryIndex = 0;
-		_entryIndex = 0;
+		_selectionPath.Clear();
+		_selectionPath.Add(0);
 		RebuildCategories();
 		RestoreResumeFocus();
 		ConsumeResumeInventoryTrigger(keyboard);
 		_lastSemanticState = GetSemanticState();
-		if (_categoryOpen)
+		if (CurrentLevel > 0)
 		{
 			TerrariumMod.ScreenReader.Output(
-				$"Inventory tree resumed. Level 1, {CurrentCategory.Name}. {DescribeSelection()} " +
-				"Use Up and Down Arrow keys to move through entries, Left Arrow to return to level 0, Enter for the primary action, Shift Enter for the secondary action, and F1 for help.");
+				$"Inventory tree resumed. {DescribeCurrentLevel()} {DescribeSelection()} " +
+				"Use Up and Down Arrow keys to move, Left Arrow to return to the parent, Right Arrow or Enter to open the focused group or screen, Enter for the primary action, Shift Enter for the secondary action, and F1 for help.");
 		}
 		else
 		{
 			TerrariumMod.ScreenReader.Output(
-				$"Inventory tree, level 0. {DescribeCategorySelection()} " +
+				$"Inventory tree, level 0. {DescribeSelection()} " +
 				"Use Up and Down Arrow keys to move between categories, Right Arrow or Enter to open a category, Home and End to move to the first and last category, and F1 for help.");
 		}
 	}
 
 	private void RebuildCategories()
 	{
-		string? oldCategoryId = _categories.Count == 0 ? null : CurrentCategory.Id;
-		string? oldEntryId = _categories.Count == 0 || CurrentCategory.Entries.Count == 0 ? null : CurrentEntry.Id;
+		List<string> oldFocusPath = GetFocusPathIds();
+		List<int> oldSelectionPath = [.. _selectionPath];
 
-		_categories.Clear();
+		_rootNodes.Clear();
 		Player player = Main.LocalPlayer;
 		AddPlayerInventoryCategories(player);
+		AddCraftingCategories();
 		AddContextCategories(player);
 		AddEquipmentCategories(player);
-		AddStatusCategories(player);
-		AddCraftingCategories(player);
-		AddActionCategories(player);
+		AddSettingsEntry();
+		AddSaveAndExitEntry();
 
-		if (_categories.Count == 0)
+		if (_rootNodes.Count == 0)
 		{
-			_categoryIndex = 0;
-			_entryIndex = 0;
+			_selectionPath.Clear();
+			_selectionPath.Add(0);
 			return;
 		}
 
-		int preservedCategory = oldCategoryId is null ? -1 : _categories.FindIndex(category => category.Id == oldCategoryId);
-		if (_categoryOpen && oldCategoryId is not null && preservedCategory < 0)
-		{
-			_categoryOpen = false;
-		}
-		_categoryIndex = preservedCategory >= 0 ? preservedCategory : Math.Clamp(_categoryIndex, 0, _categories.Count - 1);
-		AccessibleInventoryCategory category = CurrentCategory;
-		int preservedEntry = oldEntryId is null ? -1 : category.Entries.FindIndex(entry => entry.Id == oldEntryId);
-		_entryIndex = preservedEntry >= 0 ? preservedEntry : Math.Clamp(_entryIndex, 0, category.Entries.Count - 1);
+		RestoreFocusPath(oldFocusPath, oldSelectionPath);
 	}
 
 	private void AddPlayerInventoryCategories(Player player)
 	{
-		AddItemCategory("hotbar", "Hotbar", player.inventory, ItemSlot.Context.InventoryItem, 0, 10, index => $"slot {index + 1}", canFavorite: true);
-		AddItemCategory("inventory", "Inventory", player.inventory, ItemSlot.Context.InventoryItem, 10, 40, index => $"slot {index - 9}", canFavorite: true);
+		List<AccessibleInventoryNode> sections = [];
+		AddItemCategory(sections, "hotbar", "Hotbar", player.inventory, ItemSlot.Context.InventoryItem, 0, 10, index => $"slot {index + 1}", canFavorite: true);
+		List<AccessibleInventoryEntry> mainInventoryEntries = CreateItemEntries(
+			"main-inventory",
+			player.inventory,
+			ItemSlot.Context.InventoryItem,
+			10,
+			40,
+			index => $"slot {index - 9}",
+			canFavorite: true);
+		mainInventoryEntries.Add(new AccessibleInventoryEntry(
+			"trash-slot",
+			() => DescribeItem("trash slot 41", player.trashItem),
+			() => DescribeItemDetails(player.trashItem),
+			() => LeftClickTrash(player),
+			() => RightClickTrash(player),
+			selectionDetails: () => DescribeItemDetails(player.trashItem, includeSummary: false)));
+		AddCategory(sections, "main-inventory", "Main Inventory", mainInventoryEntries);
 
 		List<AccessibleInventoryEntry> currencyEntries = [];
 		for (int index = 50; index < 54; index++)
@@ -292,31 +287,44 @@ internal sealed class AccessibleInventoryController
 			int captured = index;
 			currencyEntries.Add(ItemEntry($"ammo-{captured}", () => $"Ammo slot {captured - 53}", player.inventory, ItemSlot.Context.InventoryAmmo, captured, canFavorite: true));
 		}
-		AddCategory("coins-ammo", "Coins and Ammo", currencyEntries);
+		AddCategory(sections, "coins-ammo", "Coins and Ammo", currencyEntries);
 
-		AddCategory("trash", "Trash",
-		[
-			new AccessibleInventoryEntry(
-				"trash-slot",
-				() => DescribeItem("slot 1", player.trashItem),
-				() => DescribeItemDetails(player.trashItem),
-				() => LeftClickTrash(player),
-				() => RightClickTrash(player),
-				selectionDetails: () => DescribeItemDetails(player.trashItem, includeSummary: false))
-		]);
+		if (player.chest == -1 && Main.npcShop == 0)
+		{
+			sections.Add(AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"quick-stack-nearby",
+				() => Language.GetTextValue("GameUI.QuickStackToNearby"),
+				() => "Quick stack matching inventory items into nearby chests.",
+				() => QuickStackNearby(player))));
+		}
+		sections.Add(AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+			"sort-inventory",
+			() => Language.GetTextValue("GameUI.SortInventory"),
+			() => "Sort the main inventory.",
+			ItemSorting.SortInventory)));
+		sections.Add(AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+			"sort-ammo",
+			() => "Sort ammo",
+			() => "Consolidate and sort the ammo slots.",
+			ItemSorting.SortAmmo)));
+
+		AddBranch(_rootNodes, "inventory", "Inventory", sections);
 	}
 
 	private void AddContextCategories(Player player)
 	{
-		AddNpcConversationCategory(player);
+		List<AccessibleInventoryNode> interactions = [];
+		AddNpcConversationCategory(player, interactions);
 
 		if (player.chest != -1)
 		{
 			ChestUI.GetContainerUsageInfo(out _, out Item[] container);
 			int context = player.chest >= 0 ? ItemSlot.Context.ChestItem : ItemSlot.Context.BankItem;
 			string containerName = GetContainerName(player);
-			AddItemCategory("container", containerName, container, context, 0, container.Length, index => $"row {index / 10 + 1}, column {index % 10 + 1}");
-			AddContainerActions(player, containerName);
+			List<AccessibleInventoryNode> containerSections = [];
+			AddItemCategory(containerSections, "container-items", "Items", container, context, 0, container.Length, index => $"row {index / 10 + 1}, column {index % 10 + 1}");
+			AddContainerActions(player, containerName, containerSections);
+			AddBranch(interactions, "container", containerName, containerSections);
 		}
 
 		if (Main.npcShop > 0)
@@ -334,12 +342,12 @@ internal sealed class AccessibleInventoryController
 					captured,
 					extraDetails: () => DescribeShopPrice(shopItems[captured])));
 			}
-			AddCategory("shop", "Shop", entries);
+			AddCategory(interactions, "shop", "Shop", entries);
 		}
 
 		if (Main.InGuideCraftMenu)
 		{
-			AddCategory("guide", "Guide crafting",
+			AddCategory(interactions, "guide", "Guide crafting",
 			[
 				new AccessibleInventoryEntry(
 					"guide-slot",
@@ -353,7 +361,7 @@ internal sealed class AccessibleInventoryController
 
 		if (Main.InReforgeMenu)
 		{
-			AddCategory("reforge", "Reforge",
+			AddCategory(interactions, "reforge", "Reforge",
 			[
 				new AccessibleInventoryEntry(
 					"reforge-slot",
@@ -370,9 +378,11 @@ internal sealed class AccessibleInventoryController
 					enabled: () => !Main.reforgeItem.IsAir && ItemLoader.CanReforge(Main.reforgeItem))
 			]);
 		}
+
+		AddBranch(_rootNodes, "interactions", "Interactions", interactions);
 	}
 
-	private void AddNpcConversationCategory(Player player)
+	private void AddNpcConversationCategory(Player player, List<AccessibleInventoryNode> destination)
 	{
 		NPC? npc = player.TalkNPC;
 		if (npc is null || !npc.active)
@@ -452,33 +462,41 @@ internal sealed class AccessibleInventoryController
 			() => $"Stop talking to {npc.FullName}.",
 			CloseNpcConversation));
 
-		AddCategory("npc-conversation", "NPC Conversation", entries);
+		AddCategory(destination, "npc-conversation", "NPC Conversation", entries);
 	}
 
 	private void AddEquipmentCategories(Player player)
 	{
-		AddItemCategory("armor", "Armor", player.armor, ItemSlot.Context.EquipArmor, 0, 3, ArmorSlotName, enabled: index => player.IsItemSlotUnlockedAndUsable(index) || Main.mouseItem.IsAir);
-		AddItemCategory("accessories", "Accessories", player.armor, ItemSlot.Context.EquipAccessory, 3, 7, index => $"Accessory slot {index - 2}", enabled: index => player.IsItemSlotUnlockedAndUsable(index) || Main.mouseItem.IsAir);
-		AddItemCategory("vanity-armor", "Vanity Armor", player.armor, ItemSlot.Context.EquipArmorVanity, 10, 3, VanityArmorSlotName, enabled: index => player.IsItemSlotUnlockedAndUsable(index) || Main.mouseItem.IsAir);
-		AddItemCategory("vanity-accessories", "Vanity Accessories", player.armor, ItemSlot.Context.EquipAccessoryVanity, 13, 7, index => $"Vanity accessory slot {index - 12}", enabled: index => player.IsItemSlotUnlockedAndUsable(index) || Main.mouseItem.IsAir);
-		AddItemCategory("equipment-dyes", "Equipment Dyes", player.dye, ItemSlot.Context.EquipDye, 0, player.dye.Length, DyeSlotName, enabled: index => player.IsItemSlotUnlockedAndUsable(index) || Main.mouseItem.IsAir);
+		Func<int, bool> slotEnabled = index => player.IsItemSlotUnlockedAndUsable(index) || Main.mouseItem.IsAir;
+		List<AccessibleInventoryNode> armorSections = [];
+		AddItemCategory(armorSections, "equipped-armor", "Equipped Armor", player.armor, ItemSlot.Context.EquipArmor, 0, 3, ArmorSlotName, enabled: slotEnabled);
+		AddItemCategory(armorSections, "vanity-armor", "Vanity Armor", player.armor, ItemSlot.Context.EquipArmorVanity, 10, 3, VanityArmorSlotName, enabled: slotEnabled);
+		AddItemCategory(armorSections, "armor-dyes", "Armor Dyes", player.dye, ItemSlot.Context.EquipDye, 0, 3, DyeSlotName, enabled: slotEnabled);
+		AddBranch(_rootNodes, "armor", "Armor", armorSections);
+
+		List<AccessibleInventoryNode> accessorySections = [];
+		AddItemCategory(accessorySections, "equipped-accessories", "Equipped Accessories", player.armor, ItemSlot.Context.EquipAccessory, 3, 7, index => $"Accessory slot {index - 2}", enabled: slotEnabled);
+		AddItemCategory(accessorySections, "vanity-accessories", "Vanity Accessories", player.armor, ItemSlot.Context.EquipAccessoryVanity, 13, 7, index => $"Vanity accessory slot {index - 12}", enabled: slotEnabled);
+		AddItemCategory(accessorySections, "accessory-dyes", "Accessory Dyes", player.dye, ItemSlot.Context.EquipDye, 3, Math.Max(0, player.dye.Length - 3), DyeSlotName, enabled: slotEnabled);
+		AddModAccessoryCategories(player, accessorySections);
+		AddBranch(_rootNodes, "accessories", "Accessories", accessorySections);
 
 		string[] miscNames = ["Pet", "Light pet", "Minecart", "Mount", "Grappling hook"];
 		int[] miscContexts = [ItemSlot.Context.EquipPet, ItemSlot.Context.EquipLight, ItemSlot.Context.EquipMinecart, ItemSlot.Context.EquipMount, ItemSlot.Context.EquipGrapple];
+		List<AccessibleInventoryNode> equipmentSections = [];
 		List<AccessibleInventoryEntry> miscEntries = [];
 		for (int index = 0; index < player.miscEquips.Length; index++)
 		{
 			int captured = index;
 			miscEntries.Add(ItemEntry($"misc-{captured}", () => $"{miscNames[captured]} slot", player.miscEquips, miscContexts[captured], captured));
 		}
-		AddCategory("misc-equipment", "Equipment", miscEntries);
-		AddItemCategory("misc-dyes", "Equipment Dyes for Pets, Mounts, and Hooks", player.miscDyes, ItemSlot.Context.EquipMiscDye, 0, player.miscDyes.Length, index => $"Dye for {miscNames[index]}");
-
-		AddModAccessoryCategories(player);
-		AddLoadoutAndVisibilityCategory(player);
+		AddCategory(equipmentSections, "misc-equipment", "Pets, Mounts, and Hooks", miscEntries);
+		AddItemCategory(equipmentSections, "misc-dyes", "Equipment Dyes", player.miscDyes, ItemSlot.Context.EquipMiscDye, 0, player.miscDyes.Length, index => $"Dye for {miscNames[index]}");
+		AddLoadoutAndVisibilityCategories(player, equipmentSections);
+		AddBranch(_rootNodes, "equipment", "Equipment", equipmentSections);
 	}
 
-	private void AddModAccessoryCategories(Player player)
+	private void AddModAccessoryCategories(Player player, List<AccessibleInventoryNode> destination)
 	{
 		ModAccessorySlotPlayer modPlayer = player.GetModPlayer<ModAccessorySlotPlayer>();
 		if (modPlayer.SlotCount <= 0 ||
@@ -512,47 +530,51 @@ internal sealed class AccessibleInventoryController
 			}
 		}
 
-		AddCategory("mod-accessories", "Modded Accessories", functional);
-		AddCategory("mod-vanity-accessories", "Modded Vanity Accessories", vanity);
-		AddCategory("mod-accessory-dyes", "Modded Accessory Dyes", dyeEntries);
+		List<AccessibleInventoryNode> moddedSections = [];
+		AddCategory(moddedSections, "mod-functional-accessories", "Functional", functional);
+		AddCategory(moddedSections, "mod-vanity-accessories", "Vanity", vanity);
+		AddCategory(moddedSections, "mod-accessory-dyes", "Dyes", dyeEntries);
+		AddBranch(destination, "modded-accessories", "Modded Accessories", moddedSections);
 	}
 
-	private void AddLoadoutAndVisibilityCategory(Player player)
+	private void AddLoadoutAndVisibilityCategories(Player player, List<AccessibleInventoryNode> destination)
 	{
-		List<AccessibleInventoryEntry> entries = [];
+		List<AccessibleInventoryEntry> loadoutEntries = [];
 		for (int index = 0; index < player.Loadouts.Length; index++)
 		{
 			int captured = index;
-			entries.Add(new AccessibleInventoryEntry(
+			loadoutEntries.Add(new AccessibleInventoryEntry(
 				$"loadout-{captured}",
 				() => $"Loadout {captured + 1}, {(player.CurrentLoadoutIndex == captured ? "selected" : "not selected")}",
 				() => $"Switch to equipment loadout {captured + 1}.",
 				() => player.TrySwitchingLoadout(captured)));
 		}
+		AddCategory(destination, "loadouts", "Loadouts", loadoutEntries);
 
+		List<AccessibleInventoryEntry> visibilityEntries = [];
 		for (int index = 3; index < player.hideVisibleAccessory.Length; index++)
 		{
 			int captured = index;
-			entries.Add(new AccessibleInventoryEntry(
+			visibilityEntries.Add(new AccessibleInventoryEntry(
 				$"visibility-accessory-{captured}",
 				() => $"Accessory slot {captured - 2} visuals, {(player.hideVisibleAccessory[captured] ? "hidden" : "visible")}",
 				() => "Toggle whether this functional accessory is shown on the character.",
 				() => ToggleAccessoryVisibility(player, captured)));
 		}
 
-		entries.Add(new AccessibleInventoryEntry(
+		visibilityEntries.Add(new AccessibleInventoryEntry(
 			"visibility-pet",
 			() => $"Pet visuals, {(player.hideMisc[0] ? "hidden" : "visible")}",
 			() => "Toggle pet visibility.",
 			player.TogglePet));
-		entries.Add(new AccessibleInventoryEntry(
+		visibilityEntries.Add(new AccessibleInventoryEntry(
 			"visibility-light-pet",
 			() => $"Light pet visuals, {(player.hideMisc[1] ? "hidden" : "visible")}",
 			() => "Toggle light pet visibility.",
 			player.ToggleLight));
 		if (player.unlockedSuperCart)
 		{
-			entries.Add(new AccessibleInventoryEntry(
+			visibilityEntries.Add(new AccessibleInventoryEntry(
 				"super-cart",
 				() => $"Super cart, {(player.enabledSuperCart ? "enabled" : "disabled")}",
 				() => "Toggle the upgraded minecart behavior.",
@@ -569,116 +591,17 @@ internal sealed class AccessibleInventoryController
 			{
 				continue;
 			}
-			entries.Add(new AccessibleInventoryEntry(
+			visibilityEntries.Add(new AccessibleInventoryEntry(
 				$"visibility-mod-{captured}",
 				() => $"{SplitWords(slot.Name)} visuals, {(slot.HideVisuals ? "hidden" : "visible")}",
 				() => "Toggle whether this modded accessory is shown on the character.",
 				() => slot.HideVisuals = !slot.HideVisuals));
 		}
 
-		AddCategory("loadouts-visibility", "Loadouts and Equipment Visibility", entries);
+		AddCategory(destination, "equipment-visibility", "Visibility", visibilityEntries);
 	}
 
-	private void AddStatusCategories(Player player)
-	{
-		List<AccessibleInventoryEntry> buffs = [];
-		for (int index = 0; index < Player.MaxBuffs; index++)
-		{
-			if (player.buffType[index] <= 0)
-			{
-				continue;
-			}
-			int captured = index;
-			buffs.Add(new AccessibleInventoryEntry(
-				$"buff-{captured}",
-				() => DescribeBuff(player, captured),
-				() => DescribeBuffDetails(player, captured),
-				secondary: () => RemoveBuff(player, captured)));
-		}
-		AddCategory("buffs", "Buffs and Debuffs", buffs);
-
-		AddInfoDisplayCategory(player);
-		AddBuilderToggleCategory();
-		AddMultiplayerCategory(player);
-	}
-
-	private void AddInfoDisplayCategory(Player player)
-	{
-		if (InfoDisplaysField?.GetValue(null) is not IEnumerable displayObjects)
-		{
-			return;
-		}
-
-		List<AccessibleInventoryEntry> entries = [];
-		foreach (object? displayObject in displayObjects)
-		{
-			if (displayObject is not InfoDisplay display || !InfoDisplayLoader.Active(display))
-			{
-				continue;
-			}
-			entries.Add(new AccessibleInventoryEntry(
-				$"info-{display.Type}",
-				() => DescribeInfoDisplay(player, display),
-				() => $"Toggle the {display.DisplayName.Value} informational display.",
-				() => player.hideInfo[display.Type] = !player.hideInfo[display.Type]));
-		}
-		AddCategory("info-displays", "Informational Accessories", entries);
-	}
-
-	private void AddBuilderToggleCategory()
-	{
-		if (BuilderTogglesField?.GetValue(null) is not IEnumerable toggleObjects)
-		{
-			return;
-		}
-
-		List<AccessibleInventoryEntry> entries = [];
-		foreach (object? toggleObject in toggleObjects)
-		{
-			if (toggleObject is not BuilderToggle toggle || !BuilderToggleLoader.Active(toggle))
-			{
-				continue;
-			}
-			entries.Add(new AccessibleInventoryEntry(
-				$"builder-{toggle.Type}",
-				toggle.DisplayValue,
-				toggle.DisplayValue,
-				() => CycleBuilderToggle(toggle),
-				toggle.OnRightClick));
-		}
-		AddCategory("builder-toggles", "Builder Accessory Toggles", entries);
-	}
-
-	private void AddMultiplayerCategory(Player player)
-	{
-		if (Main.netMode == NetmodeID.SinglePlayer)
-		{
-			return;
-		}
-
-		string[] teams = ["No team", "Red team", "Green team", "Blue team", "Yellow team", "Pink team"];
-		List<AccessibleInventoryEntry> entries =
-		[
-			new AccessibleInventoryEntry(
-				"pvp",
-				() => $"Player versus player, {(player.hostile ? "enabled" : "disabled")}",
-				() => "Toggle player versus player combat.",
-				() => TogglePvp(player))
-		];
-		for (int index = 0; index < teams.Length; index++)
-		{
-			int captured = index;
-			entries.Add(new AccessibleInventoryEntry(
-				$"team-{captured}",
-				() => $"{teams[captured]}, {(player.team == captured ? "selected" : "not selected")}",
-				() => $"Join {teams[captured]}.",
-				() => SetTeam(player, captured),
-				enabled: player.TeamChangeAllowed));
-		}
-		AddCategory("multiplayer", "Multiplayer", entries);
-	}
-
-	private void AddCraftingCategories(Player player)
+	private void AddCraftingCategories()
 	{
 		if (Main.numAvailableRecipes <= 0)
 		{
@@ -695,31 +618,29 @@ internal sealed class AccessibleInventoryController
 				() => DescribeRecipeDetails(captured),
 				() => SelectOrCraftRecipe(captured)));
 		}
-		AddCategory("crafting", Main.InGuideCraftMenu ? "Guide Recipes" : "Crafting", entries);
+		AddCategory(_rootNodes, "crafting", Main.InGuideCraftMenu ? "Guide Recipes" : "Crafting", entries);
 	}
 
-	private void AddActionCategories(Player player)
+	private void AddSettingsEntry()
 	{
-		List<AccessibleInventoryEntry> actions =
-		[
-			new("sort-inventory", () => Language.GetTextValue("GameUI.SortInventory"), () => "Sort the main inventory.", ItemSorting.SortInventory),
-			new("sort-ammo", () => "Sort ammo", () => "Consolidate and sort the ammo slots.", ItemSorting.SortAmmo),
-			new("settings", () => Lang.menu[14].Value, () => "Open the accessible in-game settings menu.", OpenSettings, opensSubmenu: true),
-			new("close-inventory", () => Lang.menu[118].Value, () => "Close the inventory and return to gameplay.", player.ToggleInv),
-		];
-		if (player.chest == -1 && Main.npcShop == 0)
-		{
-			actions.Insert(0, new AccessibleInventoryEntry(
-				"quick-stack-nearby",
-				() => Language.GetTextValue("GameUI.QuickStackToNearby"),
-				() => "Quick stack matching inventory items into nearby chests.",
-				() => QuickStackNearby(player)));
-		}
-
-		AddCategory("inventory-actions", "Inventory Actions", actions);
+		_rootNodes.Add(AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+			"settings",
+			() => Lang.menu[14].Value,
+			() => "Open the accessible in-game settings menu.",
+			OpenSettings,
+			opensSubmenu: true)));
 	}
 
-	private void AddContainerActions(Player player, string containerName)
+	private void AddSaveAndExitEntry()
+	{
+		_rootNodes.Add(AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+			"save-and-exit",
+			() => Lang.inter[35].Value,
+			() => "Save the current world and return to the main menu.",
+			SaveAndExit)));
+	}
+
+	private void AddContainerActions(Player player, string containerName, List<AccessibleInventoryNode> destination)
 	{
 		ContainerTransferContext context = ContainerTransferContext.FromUnknown(player);
 		List<AccessibleInventoryEntry> actions =
@@ -742,12 +663,26 @@ internal sealed class AccessibleInventoryController
 				() => "Toggle whether overflow item pickups are sent to the Void Vault.",
 				() => player.IsVoidVaultEnabled = !player.IsVoidVaultEnabled));
 		}
-		AddCategory("container-actions", $"{containerName} Actions", actions);
+		AddCategory(destination, "container-actions", "Actions", actions);
 	}
 
 	private void AddItemCategory(
+		List<AccessibleInventoryNode> destination,
 		string id,
 		string name,
+		Item[] items,
+		int context,
+		int start,
+		int count,
+		Func<int, string> slotName,
+		bool canFavorite = false,
+		Func<int, bool>? enabled = null)
+	{
+		AddCategory(destination, id, name, CreateItemEntries(id, items, context, start, count, slotName, canFavorite, enabled));
+	}
+
+	private static List<AccessibleInventoryEntry> CreateItemEntries(
+		string id,
 		Item[] items,
 		int context,
 		int start,
@@ -770,7 +705,7 @@ internal sealed class AccessibleInventoryController
 				canFavorite,
 				enabled is null ? null : () => enabled(captured)));
 		}
-		AddCategory(id, name, entries);
+		return entries;
 	}
 
 	private static AccessibleInventoryEntry ItemEntry(
@@ -794,94 +729,97 @@ internal sealed class AccessibleInventoryController
 			() => CombineDetails(DescribeItemDetails(items[index], includeSummary: false), extraDetails?.Invoke()));
 	}
 
-	private void AddCategory(string id, string name, List<AccessibleInventoryEntry> entries)
+	private static void AddCategory(List<AccessibleInventoryNode> destination, string id, string name, List<AccessibleInventoryEntry> entries)
 	{
-		if (entries.Count > 0)
+		AddBranch(destination, id, name, entries.Select(AccessibleInventoryNode.FromEntry).ToList());
+	}
+
+	private static void AddBranch(List<AccessibleInventoryNode> destination, string id, string name, List<AccessibleInventoryNode> children)
+	{
+		if (children.Count > 0)
 		{
-			_categories.Add(new AccessibleInventoryCategory(id, name, entries));
+			destination.Add(new AccessibleInventoryNode(id, () => name, children));
 		}
 	}
 
-	private AccessibleInventoryCategory CurrentCategory => _categories[_categoryIndex];
-
-	private AccessibleInventoryEntry CurrentEntry => CurrentCategory.Entries[_entryIndex];
-
-	private int CurrentLevelIndex => _categoryOpen ? _entryIndex : _categoryIndex;
-
-	private int CurrentLevelCount => _categoryOpen ? CurrentCategory.Entries.Count : _categories.Count;
-
-	private void MoveCategory(int offset)
+	private IReadOnlyList<AccessibleInventoryNode> CurrentLevelNodes
 	{
-		_categoryIndex = (_categoryIndex + offset + _categories.Count) % _categories.Count;
-		_entryIndex = 0;
-		SoundEngine.PlaySound(SoundID.MenuTick);
-		AnnounceCategory();
+		get
+		{
+			IReadOnlyList<AccessibleInventoryNode> nodes = _rootNodes;
+			for (int depth = 0; depth < CurrentLevel; depth++)
+			{
+				nodes = nodes[_selectionPath[depth]].Children;
+			}
+			return nodes;
+		}
 	}
 
-	private void OpenCategory()
+	private AccessibleInventoryNode CurrentNode => CurrentLevelNodes[CurrentLevelIndex];
+
+	private AccessibleInventoryEntry CurrentEntry => CurrentNode.Entry ?? throw new InvalidOperationException("The current inventory node is not an action.");
+
+	private int CurrentLevel => _selectionPath.Count - 1;
+
+	private int CurrentLevelIndex => _selectionPath[^1];
+
+	private int CurrentLevelCount => CurrentLevelNodes.Count;
+
+	private void OpenCurrentNode()
 	{
-		_categoryOpen = true;
-		_entryIndex = Math.Clamp(_entryIndex, 0, CurrentCategory.Entries.Count - 1);
+		if (CurrentNode.HasChildren)
+		{
+			OpenSubmenu();
+			return;
+		}
+
+		ActivateEntry(secondary: false);
+	}
+
+	private void OpenSubmenu()
+	{
+		if (!CurrentNode.HasChildren)
+		{
+			return;
+		}
+
+		_selectionPath.Add(0);
 		SoundEngine.PlaySound(SoundID.MenuOpen);
 		_lastSemanticState = GetSemanticState();
-		TerrariumMod.ScreenReader.Output($"Level 1, {CurrentCategory.Name}. {DescribeSelection()}");
+		TerrariumMod.ScreenReader.Output($"{DescribeCurrentLevel()} {DescribeSelection()}");
 	}
 
-	private void CloseCategory()
+	private void CloseSubmenu()
 	{
-		_categoryOpen = false;
+		if (CurrentLevel == 0)
+		{
+			return;
+		}
+
+		_selectionPath.RemoveAt(_selectionPath.Count - 1);
 		SoundEngine.PlaySound(SoundID.MenuClose);
-		AnnounceCategory();
+		_lastSemanticState = GetSemanticState();
+		TerrariumMod.ScreenReader.Output($"{DescribeCurrentLevel()} {DescribeSelection()}");
 	}
 
 	private void MoveVertical(int direction)
 	{
-		if (!_categoryOpen)
-		{
-			MoveCategory(direction);
-			return;
-		}
-
-		int count = CurrentCategory.Entries.Count;
+		int count = CurrentLevelCount;
 		if (count <= 1)
 		{
 			return;
 		}
-		SetEntry((_entryIndex + direction + count) % count);
+		SetCurrentLevelSelection((CurrentLevelIndex + direction + count) % count);
 	}
 
 	private void SetCurrentLevelSelection(int index)
 	{
-		if (_categoryOpen)
-		{
-			SetEntry(index);
-			return;
-		}
-
-		SetCategory(index);
-	}
-
-	private void SetCategory(int index)
-	{
-		index = Math.Clamp(index, 0, _categories.Count - 1);
-		if (index == _categoryIndex)
+		index = Math.Clamp(index, 0, CurrentLevelCount - 1);
+		if (index == CurrentLevelIndex)
 		{
 			return;
 		}
-		_categoryIndex = index;
-		_entryIndex = 0;
-		SoundEngine.PlaySound(SoundID.MenuTick);
-		AnnounceCategory();
-	}
-
-	private void SetEntry(int index)
-	{
-		index = Math.Clamp(index, 0, CurrentCategory.Entries.Count - 1);
-		if (index == _entryIndex)
-		{
-			return;
-		}
-		_entryIndex = index;
+		_selectionPath[^1] = index;
 		SoundEngine.PlaySound(SoundID.MenuTick);
 		AnnounceSelection();
 	}
@@ -904,12 +842,13 @@ internal sealed class AccessibleInventoryController
 			return;
 		}
 
+		int previousLevel = CurrentLevel;
 		action();
 		if (CanNavigateInventory())
 		{
 			RebuildCategories();
 			SoundEngine.PlaySound(SoundID.MenuTick);
-			AnnounceSelection();
+			AnnounceSelection(includeLevel: CurrentLevel != previousLevel);
 		}
 	}
 
@@ -933,24 +872,16 @@ internal sealed class AccessibleInventoryController
 
 	private void ReadHelp()
 	{
-		string currentLevel = _categoryOpen
-			? $"Level 1, {CurrentCategory.Name}. {DescribeSelection()}"
-			: $"Level 0. {DescribeCategorySelection()}";
 		TerrariumMod.ScreenReader.Output(
-			$"Inventory tree help. {currentLevel} " +
-			"At level 0, Up and Down move between categories and Right Arrow or Enter opens the focused category. At level 1, Up and Down move through that category's entries and Left Arrow returns to level 0. Right Arrow opens an entry announced as a submenu, such as Settings. Both levels wrap. Home and End move to the first and last option, and Page Up and Page Down move by ten options. At level 1, Enter performs the normal left click action and Shift Enter performs the normal right click action, such as splitting stacks or removing a removable buff. F toggles favorite for inventory items. R reads the full item tooltip or entry details. Escape uses Terraria's normal inventory close control.");
+			$"Inventory tree help. {DescribeCurrentLevel()} {DescribeSelection()} " +
+			"At every level, Up and Down move through the current list and wrap. Right Arrow or Enter opens the focused group or screen, and Left Arrow returns to its parent. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an action or item slot, Enter performs the primary or normal left click action and Shift Enter performs the secondary or normal right click action, such as splitting stacks. F toggles favorite for inventory items. R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
-	private void AnnounceCategory()
+	private void AnnounceSelection(bool includeLevel = false)
 	{
 		_lastSemanticState = GetSemanticState();
-		TerrariumMod.ScreenReader.Output(DescribeCategorySelection());
-	}
-
-	private void AnnounceSelection()
-	{
-		_lastSemanticState = GetSemanticState();
-		TerrariumMod.ScreenReader.Output(DescribeSelection());
+		string level = includeLevel ? $"{DescribeCurrentLevel()} " : string.Empty;
+		TerrariumMod.ScreenReader.Output($"{level}{DescribeSelection()}");
 	}
 
 	private void AnnounceExternalStateChange()
@@ -960,41 +891,101 @@ internal sealed class AccessibleInventoryController
 		{
 			return;
 		}
+		bool levelChanged = !_lastSemanticState.StartsWith($"{CurrentLevel}|", StringComparison.Ordinal);
 		_lastSemanticState = state;
-		TerrariumMod.ScreenReader.Output(_categoryOpen ? DescribeSelection() : DescribeCategorySelection());
-	}
-
-	private string DescribeCategorySelection()
-	{
-		return $"{CurrentCategory.Name}, submenu, {_categoryIndex + 1} of {_categories.Count}.";
+		string level = levelChanged ? $"{DescribeCurrentLevel()} " : string.Empty;
+		TerrariumMod.ScreenReader.Output($"{level}{DescribeSelection()}");
 	}
 
 	private string DescribeSelection()
 	{
-		AccessibleInventoryEntry entry = CurrentEntry;
-		string unavailable = entry.IsEnabled ? string.Empty : ", unavailable";
-		string role = entry.OpensSubmenu ? ", submenu" : string.Empty;
-		string position = entry.SelectionDetails is null ? $", {_entryIndex + 1} of {CurrentCategory.Entries.Count}" : string.Empty;
-		string details = entry.SelectionDetails?.Invoke() ?? string.Empty;
+		AccessibleInventoryNode node = CurrentNode;
+		AccessibleInventoryEntry? entry = node.Entry;
+		string unavailable = entry?.IsEnabled == false ? ", unavailable" : string.Empty;
+		string position = entry?.SelectionDetails is null ? $", {CurrentLevelIndex + 1} of {CurrentLevelCount}" : string.Empty;
+		string details = entry?.SelectionDetails?.Invoke() ?? string.Empty;
 		if (!string.IsNullOrWhiteSpace(details))
 		{
 			details = $" {details}";
 		}
-		string held = Main.mouseItem.IsAir ? string.Empty : $" Holding {DescribeItemBrief(Main.mouseItem)}.";
-		return $"{entry.Label()}{role}{unavailable}{position}.{details}{held}";
+		string held = entry is null || Main.mouseItem.IsAir ? string.Empty : $" Holding {DescribeItemBrief(Main.mouseItem)}.";
+		return $"{node.Label()}{unavailable}{position}.{details}{held}";
 	}
 
 	private string GetSemanticState()
 	{
-		if (_categories.Count == 0 || CurrentCategory.Entries.Count == 0)
+		if (_rootNodes.Count == 0)
 		{
 			return string.Empty;
 		}
-		if (!_categoryOpen)
+
+		AccessibleInventoryNode node = CurrentNode;
+		string enabled = node.Entry?.IsEnabled.ToString() ?? string.Empty;
+		string held = node.IsAction ? DescribeItemBrief(Main.mouseItem) : string.Empty;
+		return $"{CurrentLevel}|{string.Join('/', GetFocusPathIds())}|{node.Label()}|{enabled}|{CurrentLevelIndex}|{CurrentLevelCount}|{held}";
+	}
+
+	private string DescribeCurrentLevel()
+	{
+		return $"Level {CurrentLevel}.";
+	}
+
+	private List<string> GetFocusPathIds()
+	{
+		return GetFocusPathNodes().Select(node => node.Id).ToList();
+	}
+
+	private List<AccessibleInventoryNode> GetFocusPathNodes()
+	{
+		List<AccessibleInventoryNode> focusPath = [];
+		IReadOnlyList<AccessibleInventoryNode> nodes = _rootNodes;
+		foreach (int selection in _selectionPath)
 		{
-			return $"0|{CurrentCategory.Id}|{CurrentCategory.Name}|{_categoryIndex}|{_categories.Count}";
+			if (nodes.Count == 0)
+			{
+				break;
+			}
+
+			AccessibleInventoryNode node = nodes[Math.Clamp(selection, 0, nodes.Count - 1)];
+			focusPath.Add(node);
+			nodes = node.Children;
 		}
-		return $"1|{CurrentCategory.Id}|{CurrentEntry.Id}|{CurrentEntry.Label()}|{CurrentEntry.IsEnabled}|{DescribeItemBrief(Main.mouseItem)}";
+		return focusPath;
+	}
+
+	private void RestoreFocusPath(IReadOnlyList<string> focusPath, IReadOnlyList<int> fallbackSelections)
+	{
+		_selectionPath.Clear();
+		IReadOnlyList<AccessibleInventoryNode> nodes = _rootNodes;
+		int depthCount = Math.Max(1, fallbackSelections.Count);
+		for (int depth = 0; depth < depthCount && nodes.Count > 0; depth++)
+		{
+			int preservedIndex = depth < focusPath.Count
+				? FindNodeIndex(nodes, focusPath[depth])
+				: -1;
+			int fallbackIndex = depth < fallbackSelections.Count ? fallbackSelections[depth] : 0;
+			int selection = preservedIndex >= 0 ? preservedIndex : Math.Clamp(fallbackIndex, 0, nodes.Count - 1);
+			_selectionPath.Add(selection);
+
+			AccessibleInventoryNode selectedNode = nodes[selection];
+			if (depth + 1 >= depthCount || preservedIndex < 0 || !selectedNode.HasChildren)
+			{
+				break;
+			}
+			nodes = selectedNode.Children;
+		}
+	}
+
+	private static int FindNodeIndex(IReadOnlyList<AccessibleInventoryNode> nodes, string id)
+	{
+		for (int index = 0; index < nodes.Count; index++)
+		{
+			if (nodes[index].Id == id)
+			{
+				return index;
+			}
+		}
+		return -1;
 	}
 
 	private bool Pressed(KeyboardState keyboard, Keys key)
@@ -1258,60 +1249,6 @@ internal sealed class AccessibleInventoryController
 		}
 	}
 
-	private static string DescribeBuff(Player player, int index)
-	{
-		int type = player.buffType[index];
-		return type <= 0 ? "Empty buff slot" : Lang.GetBuffName(type);
-	}
-
-	private static string DescribeBuffDetails(Player player, int index)
-	{
-		int type = player.buffType[index];
-		if (type <= 0)
-		{
-			return "The buff is no longer active.";
-		}
-		string name = Lang.GetBuffName(type);
-		string tooltip = Main.GetBuffTooltip(player, type);
-		int rarity = 0;
-		BuffLoader.ModifyBuffText(type, ref name, ref tooltip, ref rarity);
-		string duration = player.buffTime[index] > 2 && !Main.buffNoTimeDisplay[type]
-			? $" {Lang.LocalizedDuration(TimeSpan.FromSeconds(player.buffTime[index] / 60d), abbreviated: false, showAllAvailableUnits: true)} remaining."
-			: string.Empty;
-		return $"{name}. {tooltip}{duration}";
-	}
-
-	private static void RemoveBuff(Player player, int index)
-	{
-		int type = player.buffType[index];
-		if (type > 0 && BuffLoader.RightClick(type, index))
-		{
-			Main.TryRemovingBuff(index, type);
-		}
-	}
-
-	private static string DescribeInfoDisplay(Player player, InfoDisplay display)
-	{
-		string name = display.DisplayName.Value;
-		Color color = Color.White;
-		Color shadow = Color.Black;
-		string value = display.DisplayValue(ref color, ref shadow);
-		return $"{name}, {(player.hideInfo[display.Type] ? "hidden" : "visible")}. {value}";
-	}
-
-	private static void CycleBuilderToggle(BuilderToggle toggle)
-	{
-		SoundStyle? sound = SoundID.MenuTick;
-		if (toggle.OnLeftClick(ref sound))
-		{
-			toggle.CurrentState = (toggle.CurrentState + 1) % toggle.NumberOfStates;
-			if (sound is SoundStyle soundStyle)
-			{
-				SoundEngine.PlaySound(soundStyle);
-			}
-		}
-	}
-
 	private static void ToggleAccessoryVisibility(Player player, int index)
 	{
 		player.hideVisibleAccessory[index] = !player.hideVisibleAccessory[index];
@@ -1319,22 +1256,6 @@ internal sealed class AccessibleInventoryController
 		{
 			NetMessage.SendData(MessageID.PlayerInfo, number: player.whoAmI);
 		}
-	}
-
-	private static void TogglePvp(Player player)
-	{
-		player.hostile = !player.hostile;
-		NetMessage.SendData(MessageID.TogglePVP, number: player.whoAmI);
-	}
-
-	private static void SetTeam(Player player, int team)
-	{
-		if (player.team == team || !player.TeamChangeAllowed())
-		{
-			return;
-		}
-		player.team = team;
-		NetMessage.SendData(MessageID.PlayerTeam, number: player.whoAmI);
 	}
 
 	private static string DescribeReforgeAction()
@@ -1394,10 +1315,18 @@ internal sealed class AccessibleInventoryController
 		_menuController.ShowRoot(new AccessibleSettingsMenuState(_menuController));
 	}
 
+	private void SaveAndExit()
+	{
+		SteamedWraps.StopPlaytimeTracking();
+		SystemLoader.PreSaveAndQuit();
+		Main.menuMode = 10;
+		Main.gameMenu = true;
+		WorldGen.SaveAndQuit();
+	}
+
 	private void RememberFocusForResume()
 	{
-		_resumeCategoryId = CurrentCategory.Id;
-		_resumeEntryId = CurrentEntry.Id;
+		_resumeFocusPath = GetFocusPathIds();
 		_restoreFocusOnNextActivation = true;
 		_suppressInventoryCloseUntilRelease = true;
 	}
@@ -1409,18 +1338,9 @@ internal sealed class AccessibleInventoryController
 			return;
 		}
 
-		int categoryIndex = _resumeCategoryId is null
-			? -1
-			: _categories.FindIndex(category => category.Id == _resumeCategoryId);
-		if (categoryIndex >= 0)
+		if (_resumeFocusPath is { Count: > 0 } focusPath)
 		{
-			_categoryIndex = categoryIndex;
-			_categoryOpen = true;
-			AccessibleInventoryCategory category = CurrentCategory;
-			int entryIndex = _resumeEntryId is null
-				? -1
-				: category.Entries.FindIndex(entry => entry.Id == _resumeEntryId);
-			_entryIndex = entryIndex >= 0 ? entryIndex : 0;
+			RestoreFocusPath(focusPath, Enumerable.Repeat(0, focusPath.Count).ToList());
 		}
 
 		ClearResumeFocus();
@@ -1428,8 +1348,7 @@ internal sealed class AccessibleInventoryController
 
 	private void ClearResumeFocus()
 	{
-		_resumeCategoryId = null;
-		_resumeEntryId = null;
+		_resumeFocusPath = null;
 		_restoreFocusOnNextActivation = false;
 	}
 
@@ -1598,18 +1517,32 @@ internal sealed class AccessibleInventoryController
 	}
 }
 
-internal sealed class AccessibleInventoryCategory
+internal sealed class AccessibleInventoryNode
 {
-	internal AccessibleInventoryCategory(string id, string name, List<AccessibleInventoryEntry> entries)
+	internal AccessibleInventoryNode(string id, Func<string> label, List<AccessibleInventoryNode> children)
 	{
 		Id = id;
-		Name = name;
-		Entries = entries;
+		Label = label;
+		Children = children;
 	}
 
+	private AccessibleInventoryNode(AccessibleInventoryEntry entry)
+	{
+		Id = entry.Id;
+		Label = entry.Label;
+		Entry = entry;
+		Children = [];
+	}
+
+	internal static AccessibleInventoryNode FromEntry(AccessibleInventoryEntry entry) => new(entry);
+
 	internal string Id { get; }
-	internal string Name { get; }
-	internal List<AccessibleInventoryEntry> Entries { get; }
+	internal Func<string> Label { get; }
+	internal AccessibleInventoryEntry? Entry { get; }
+	internal IReadOnlyList<AccessibleInventoryNode> Children { get; }
+	internal bool HasChildren => Children.Count > 0;
+	internal bool IsAction => Entry is not null;
+	internal bool OpensSubmenu => HasChildren || Entry?.OpensSubmenu == true;
 }
 
 internal sealed class AccessibleInventoryEntry

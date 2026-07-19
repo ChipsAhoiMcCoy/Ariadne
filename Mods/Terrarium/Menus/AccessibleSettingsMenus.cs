@@ -14,7 +14,6 @@ using Terraria.Graphics.Light;
 using Terraria.ID;
 using Terraria.Localization;
 using Terraria.ModLoader;
-using Terraria.Social.Steam;
 using Terraria.UI;
 
 namespace Terrarium.Menus;
@@ -49,25 +48,7 @@ internal sealed class AccessibleSettingsMenuState : AccessibleSettingsPageState
 				() => Lang.menu[131].Value,
 				() => Controller.Navigate(new AccessibleAchievementsMenuState(Controller)),
 				role: "submenu"));
-			entries.Add(new(
-				() => Lang.menu[118].Value,
-				Controller.Close,
-				description: () => "Close settings and return to the inventory."));
-			entries.Add(new(
-				() => Lang.inter[35].Value,
-				SaveAndExit,
-				description: () => "Save the current world and return to the main menu."));
 		}
-	}
-
-	private void SaveAndExit()
-	{
-		SteamedWraps.StopPlaytimeTracking();
-		SystemLoader.PreSaveAndQuit();
-		Controller.Close();
-		Main.menuMode = 10;
-		Main.gameMenu = true;
-		WorldGen.SaveAndQuit();
 	}
 }
 
@@ -86,6 +67,8 @@ internal abstract class AccessibleSettingsPageState : AccessibleMenuState
 	}
 
 	protected override bool ActivationAdjustsValue(AccessibleMenuEntry entry) => entry.IsAdjustable;
+
+	protected override bool AnnouncesSubmenuRole => false;
 
 	protected static AccessibleMenuEntry Toggle(
 		Func<string> label,

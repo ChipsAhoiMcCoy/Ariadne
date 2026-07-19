@@ -13,7 +13,7 @@ Current custom screens include:
 - Achievement search, completion filters, details, progress, and reset confirmation.
 - General, interface, video, audio, cursor, language, tModLoader, and keyboard-binding settings, both from the title screen and while playing.
 - Installed mods, Mod Sources, Mod Packs, subscribed-world import, resource packs, and logs.
-- In-game inventory categories covering the hotbar, backpack, coins and ammo, trash, armor, accessories, vanity, dyes, equipment, loadouts, buffs, information displays, builder toggles, multiplayer team and PVP controls, containers, shops, crafting, Guide recipes, reforging, and NPC conversations. Modded accessory slots and modded NPC chat buttons are included when tModLoader exposes them.
+- A multi-level in-game inventory tree covering the hotbar, backpack, coins and ammo, trash, armor, accessories, vanity, dyes, equipment, loadouts, containers, shops, crafting, Guide recipes, reforging, and NPC conversations. Modded accessory slots and modded NPC chat buttons are included when tModLoader exposes them.
 
 Platform-owned actions such as the Steam friends list, Steam Workshop web page, File Explorer folders, and entering gameplay intentionally leave the custom menu stack.
 
@@ -29,11 +29,13 @@ Platform-owned actions such as the Steam friends list, Steam Workshop web page, 
 
 While the inventory is open:
 
-- The inventory opens at level 0, a vertical list of semantic categories beginning with Hotbar. Up and Down move through the categories, and Right or Enter opens the focused category.
-- Each category is a level 1 vertical menu. Up and Down move through its entries, Left returns to level 0, Home and End jump to the first and last option at either level, and Page Up and Page Down move by ten options. Up and Down wrap in both levels.
+- The inventory opens at level 0, a compact vertical list beginning with Inventory and Crafting, followed by contextual Interactions, Armor, Accessories, and Equipment as applicable. Settings and Save and Exit are always the final two options.
+- Groups can contain submenus to any depth. For example, Armor contains Equipped Armor, Vanity Armor, and Armor Dyes at level 1, with their slots at level 2; modded accessory variants can reach level 3. Up and Down move and wrap within the current level, Right or Enter opens a submenu, and Left returns to its parent.
+- Main Inventory contains its forty storage slots followed by Trash as a pseudo forty-first slot. Quick stack, Sort Inventory, and Sort Ammo are level 1 options in the Inventory group.
+- Home and End jump to the first and last option at the current level, and Page Up and Page Down move by ten options.
 - Enter performs the normal primary click. Shift+Enter performs the secondary click used for splitting stacks and other alternate actions.
 - F toggles favorite on supported inventory items, R reads full details and tooltips, and F1 reads the inventory controls.
-- Terraria's normal inventory key closes the inventory. The Inventory Actions category also exposes the hierarchical in-game settings, sorting, and close.
+- Terraria's normal inventory key closes the inventory. Settings and Save and Exit are available at the bottom of the main tree.
 
 Speech and braille output use [Prism](https://github.com/ethindp/prism), with active screen readers such as NVDA preferred over built-in speech fallbacks. Terrarium currently packages Prism for 64-bit Windows clients; servers and unsupported platforms skip speech initialization safely.
 

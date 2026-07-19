@@ -42,6 +42,8 @@ internal abstract class AccessibleMenuState : UIState
 
 	protected virtual bool UsesHierarchicalNavigation => Controller.IsInGame;
 
+	protected virtual bool AnnouncesSubmenuRole => true;
+
 	protected abstract void BuildEntries(List<AccessibleMenuEntry> entries);
 
 	protected virtual bool ActivationAdjustsValue(AccessibleMenuEntry entry) => false;
@@ -118,7 +120,7 @@ internal abstract class AccessibleMenuState : UIState
 			? string.Empty
 			: " Speech output is unavailable; see the tModLoader client log.";
 		string controls = UsesHierarchicalNavigation
-			? "Use Up and Down Arrow keys to move, Right Arrow or Enter to open submenus and activate options, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Escape to go back, and F1 for contextual help."
+			? "Use Up and Down Arrow keys to move, Right Arrow or Enter to open groups and activate options, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Escape to go back, and F1 for contextual help."
 			: "Use Up and Down Arrow keys to move, Left and Right Arrow keys to change values, Enter to select" +
 				(CanGoBack ? ", Escape to go back" : string.Empty) +
 				", and F1 for contextual help.";
@@ -252,7 +254,7 @@ internal abstract class AccessibleMenuState : UIState
 			}
 			if (UsesHierarchicalNavigation)
 			{
-				topics.Add(new("Right Arrow", "Open or activate a focused submenu, button, or other non-adjustable option."));
+				topics.Add(new("Right Arrow", "Open or activate a focused group, button, or other non-adjustable option."));
 				if (CanGoBack)
 				{
 					topics.Add(new("Left Arrow", "Return to the previous menu when the focused option is not adjustable."));
@@ -457,7 +459,8 @@ internal abstract class AccessibleMenuState : UIState
 		}
 
 		AccessibleMenuEntry entry = _entries[_selectedIndex];
-		string role = string.IsNullOrWhiteSpace(entry.Role) ? string.Empty : $", {entry.Role}";
+		bool suppressRole = !AnnouncesSubmenuRole && entry.Role.Equals("submenu", StringComparison.OrdinalIgnoreCase);
+		string role = suppressRole || string.IsNullOrWhiteSpace(entry.Role) ? string.Empty : $", {entry.Role}";
 		string state = entry.IsEnabled ? string.Empty : ", unavailable";
 		string adjustable = entry.IsAdjustable ? ", adjustable" : string.Empty;
 		string description = entry.Description?.Invoke() ?? string.Empty;
