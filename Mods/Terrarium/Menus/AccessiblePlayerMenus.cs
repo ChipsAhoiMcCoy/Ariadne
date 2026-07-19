@@ -339,11 +339,13 @@ internal sealed class AccessibleCharacterAppearanceMenuState : AccessibleMenuSta
 			role: "choice",
 			adjustmentAnnouncement: HairAdjustmentAnnouncement));
 		entries.Add(new(
-			() => $"Clothing style: {_player.skinVariant + 1} of 10",
+			() => $"Clothing style {_player.skinVariant + 1} of 10",
 			NextClothing,
-			PreviousClothing,
-			NextClothing,
-			role: "choice"));
+			previousValue: PreviousClothing,
+			nextValue: NextClothing,
+			description: () => CharacterAppearanceDescriptions.GetClothingStyle(_player.skinVariant),
+			role: "choice",
+			adjustmentAnnouncement: ClothingAdjustmentAnnouncement));
 		entries.Add(ColorEntry("Hair color", () => _player.hairColor, value => _player.hairColor = value));
 		entries.Add(ColorEntry("Eye color", () => _player.eyeColor, value => _player.eyeColor = value));
 		entries.Add(ColorEntry("Skin color", () => _player.skinColor, value => _player.skinColor = value));
@@ -369,6 +371,12 @@ internal sealed class AccessibleCharacterAppearanceMenuState : AccessibleMenuSta
 	private void NextClothing() => _player.skinVariant = (_player.skinVariant + 1) % 10;
 
 	private void PreviousClothing() => _player.skinVariant = (_player.skinVariant + 9) % 10;
+
+	private string ClothingAdjustmentAnnouncement()
+	{
+		return $"Clothing style {_player.skinVariant + 1} of 10. " +
+			CharacterAppearanceDescriptions.GetClothingStyle(_player.skinVariant);
+	}
 
 	private void NextHair() => ChangeHairCandidate(1);
 
@@ -422,9 +430,10 @@ internal sealed class AccessibleCharacterAppearanceMenuState : AccessibleMenuSta
 	private string HairLabel(int hairId)
 	{
 		ModHair? modHair = HairLoader.GetHair(hairId);
+		string position = $"Hairstyle {hairId + 1} of {HairLoader.Count}";
 		string name = modHair is null
-			? $"Hair style {hairId + 1}"
-			: $"Hair style {hairId + 1}: {modHair.PrettyPrintName()} from {modHair.Mod.DisplayName}";
+			? position
+			: $"{position}: {modHair.PrettyPrintName()} from {modHair.Mod.DisplayName}";
 		if (!_availableHairstyles.Contains(hairId))
 		{
 			return $"{name}, unavailable";
@@ -435,16 +444,23 @@ internal sealed class AccessibleCharacterAppearanceMenuState : AccessibleMenuSta
 	private string HairAdjustmentAnnouncement()
 	{
 		ModHair? modHair = HairLoader.GetHair(_hairCandidate);
-		string position = $"{_hairCandidate + 1} of {HairLoader.Count}";
+		string position = $"Hairstyle {_hairCandidate + 1} of {HairLoader.Count}";
 		string value = modHair is null
 			? position
 			: $"{position}, {modHair.PrettyPrintName()} from {modHair.Mod.DisplayName}";
-		return _availableHairstyles.Contains(_hairCandidate)
-			? value
-			: $"{value}, unavailable. {HairDescription(_hairCandidate)}";
+		return $"{value}. {HairDescription(_hairCandidate)}";
 	}
 
 	private string HairDescription(int hairId)
+	{
+		string? appearance = CharacterAppearanceDescriptions.GetHairstyle(hairId);
+		string availability = HairAvailabilityDescription(hairId);
+		return string.IsNullOrWhiteSpace(appearance)
+			? availability
+			: $"{appearance} {availability}";
+	}
+
+	private string HairAvailabilityDescription(int hairId)
 	{
 		if (_availableHairstyles.Contains(hairId))
 		{
