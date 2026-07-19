@@ -1,0 +1,39 @@
+Configs: {
+	TerrariumClientConfig: {
+		DisplayName: Terrarium Test Configuration
+
+		TestToggle: {
+			Label: Test toggle
+			Tooltip: A harmless boolean used to verify accessible Mod Configuration support.
+		}
+
+		TestLevel: {
+			Label: Test level
+			Tooltip: A harmless number from 0 through 10 used to verify accessible sliders.
+		}
+
+		TestMode: {
+			Label: Test mode
+			Tooltip: A harmless choice used to verify accessible value cycling.
+		}
+	}
+
+	TerrariumTestMode: {
+		Tooltip: ""
+
+		Standard: {
+			Label: Standard
+			Tooltip: ""
+		}
+
+		Brief: {
+			Label: Brief
+			Tooltip: ""
+		}
+
+		Detailed: {
+			Label: Detailed
+			Tooltip: ""
+		}
+	}
+}

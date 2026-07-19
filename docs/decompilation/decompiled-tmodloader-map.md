@@ -62,11 +62,37 @@ Search the numeric mode in `Interface.cs` and the concrete state because transit
 
 ## Menu Reading Entry Points
 
-For a general observer, start with `ModSystem.UpdateUI(GameTime)` and `ModSystem.PostUpdateInput()`. Inspect `Main.gameMenu`, `Main.menuMode`, `Main.MenuUI.CurrentState`, and input-mode state, but avoid announcing every update. Track the semantic selection and speak only when it changes or when the selected item's state changes.
+For a general observer, use `ModSystem.PostUpdateInput()` when title-menu coverage is required. `SystemLoader.UpdateUI` deliberately dispatches `ModSystem.UpdateUI(GameTime)` only while `Main.gameMenu` is false, whereas `SystemLoader.PostUpdateInput` has no title-screen exclusion. Inspect `Main.gameMenu`, `Main.menuMode`, `Main.MenuUI.CurrentState`, and input-mode state, but avoid announcing every update. Track the semantic selection and speak only when it changes or when the selected item's state changes.
 
 For tModLoader screens, the concrete `UIState` owns its controls. Many list entries are custom types such as `UIModItem`, `UIModSourceItem`, and Mod Browser item types, so a single hard-coded element shape will not cover every menu. Reusable primitives are in `Terraria/ModLoader/UI/` and `UI/Elements/`, while base event and tree behavior remains under `Terraria/UI/UIElement.cs`.
 
 Gamepad focus is still driven by `Terraria/UI/Gamepad/UILinkPointNavigator.cs`. tModLoader UI states commonly assign `UILinkPointNavigator.Shortcuts.BackButtonCommand` and `BackButtonGoto`; search those assignments to understand controller navigation and back behavior.
+
+### Legacy Main Menu (Mode 0)
+
+`Main.DrawMenu` builds seven mode-0 entries in this order: Single Player, Multiplayer, Achievements, Workshop, Settings, Credits, and Exit. Their activation paths are respectively menu modes `1`, `12`, `888` with `Main.AchievementsMenu`, `888` with a `UIWorkshopHub`, `11`, `3000` plus the credits sky, and `Main.GameAskedToQuit = true`. Single Player also calls public `Main.ClearPendingPlayerSelectCallbacks()` and private tModLoader helper `PrepareLoadedModsAndConfigsForSingleplayer()`, which checks pending mod/config changes before character selection; custom activation must preserve that behavior.
+
+The tModLoader call to `Interface.AddMenuButtons` occurs between Workshop and Settings, but the method is empty in both the copied 2026.04.3 snapshot and installed 2026.05.3 source. Do not assume that remains empty in later loader versions; re-check it when updating the menu model.
+
+### Character, World, And Multiplayer Flows
+
+- `GameContent/UI/States/UICharacterSelect.cs` loads `Main.PlayerList` through public `Main.LoadPlayers()`. `GameContent/UI/Elements/UICharacterListItem.cs` activates a selection through public `Main.SelectPlayer(PlayerFileData)`; file data exposes localized-name inputs, favorite, rename, cloud/local move, and player metadata.
+- Character-creation hair is rebuilt by `Main.Hairstyles.UpdateUnlocks()` before `UICharacterCreation.MakeHairsylesMenu` reads `AvailableHairstyles`. The unlock catalog is in `GameContent/HairstyleUnlocksHelper.cs`; modded hair count, character-creation availability, and Stylist conditions are exposed by `ModLoader/HairLoader.cs` and `ModHair.cs`. `HairID.Count` is the boundary between vanilla and modded styles.
+- `GameContent/UI/States/UIWorldSelect.cs` loads `Main.WorldList` through public `Main.LoadWorlds()`. World compatibility combines Journey-mode parity with `SystemLoader.CanWorldBePlayed`. `UIWorldListItem` sets a `WorldFileData` active and either calls `WorldGen.playWorld()` or advances to host configuration. Its standard row actions are Play, Favorite, Cloud/Local (only when `SocialAPI.Cloud` exists), Copy Seed (only for a valid generator version), Rename, and Delete; tModLoader adds contextual mod-list/mod-pack mismatch and mod-save-error buttons. Cloud moves recalculate and check Steam quota before calling `MoveToCloud`.
+- Character creation saves with public `PlayerFileData.CreateAndSave`, but starter stats/inventory are initialized by private `UICharacterCreation.SetupPlayerStatsAndInventoryBasedOnDifficulty`. World creation uses public `WorldFile.CreateMetadata`, `WorldFileData.SetSeed`, `UIWorldCreation.ProcessSpecialWorldSeeds`, and `WorldGen.CreateNewWorld`.
+- Legacy multiplayer mode `12` branches to Join via IP, a platform friends interface when available, or Host and Play. Direct-IP submission sets `Netplay.ListenPort`, resolves through `Netplay.SetRemoteIPAsync`, and starts with public `Main.StartClientGameplay`. Host launch ultimately crosses private `Main.OnSubmitServerPassword`; server password requests cross private `OnSubmitServerPasswordFromRequest`.
+
+Keep the private boundaries isolated and version-checked. The installed tModLoader build is authoritative for those shims.
+
+### Text Entry Sounds
+
+`Main.DrawPlayerChat` compares the value before and after `Main.GetInputText`, plays legacy sound ID `12` (`SoundID.MenuTick`) for any edit, and plays sound ID `11` (`SoundID.MenuClose`) when Enter submits and closes chat. Menu text inputs use the same edit sound. Custom text fields should preserve those sounds while deriving spoken edits from the semantic old/new value.
+
+### Settings, Achievements, And Workshop Data
+
+- Legacy settings mode `11` branches to modes `112` (general), `1112` (interface), `1111` (video), `26` (audio), `1125` (cursor), `1127`/`Main.ManageControlsMenu` (controls), `1213` (language), and `10017` (tModLoader settings). Most values are public `Main`, `PlayerInput`, `ItemSlot.Options`, resource-set, minimap-frame, lighting, and progress-bar state.
+- `GameContent/UI/States/UIAchievementsMenu.cs` obtains semantic rows from public `Main.Achievements.CreateAchievementsList()`. `Achievement` exposes localized friendly name, description, category, completion, and optional typed tracker values.
+- `GameContent/UI/States/UIWorkshopHub.cs` has six normal hub branches in the patched loader: Installed Mods, Mod Sources, Mod Browser, Mod Packs, subscribed Workshop worlds, and resource packs, plus logs. Installed-mod discovery, deletion, and reload live behind internal `ModOrganizer.FindMods`, `ModOrganizer.DeleteMod`, and `ModLoader.Reload`; keep reflection for these functions localized. Each `UI/UIModItem.cs` row always exposes More Info, adds Configure when the mod is loaded and has registered configs, and adds Delete when the mod is unloaded and its location can be deleted. `Config/UI/UIModConfigList.cs` enumerates the internal `ConfigManager.Configs` registry. `UIModConfig` edits a public `ConfigManager.GeneratePopulatedClone` result and persists it through the active config's public `ModConfig.SaveChanges`; preserve that pending-edit boundary in custom config interfaces. Resource packs use public `AssetInitializer.CreateResourcePackList` and `Main.AssetSourceController.UseResourcePacks`. Subscribed-world import uses `SocialAPI.Workshop.GetListOfSubscribedWorldPaths` and `ImportDownloadedWorldToLocalSaves`.
 
 ## Search Recipes
 

@@ -35,6 +35,8 @@ This tree is the standalone vanilla game reference. For behavior that runs insid
 | Assets and rendering | `Terraria/GameContent/TextureAssets.cs`, `Terraria/Graphics/`, and the relevant draw method |
 | Save data | `Terraria/IO/PlayerFileData.cs`, `WorldFileData.cs`, `PlayerFile.cs`, and `WorldFile.cs` |
 
+The 1.4.5.6 `GameContent/HairstyleUnlocksHelper.cs` is useful for resolving vanilla progression IDs that the older tModLoader decompiler could not materialize: styles `123` through `132` require Martian Madness, style `133` additionally requires Moon Lord, and styles `145`, `162`, `163`, and `164` require Plantera at the Stylist. Re-check `HairID.Count` and the patched helper before using newer 1.4.5-only hairstyle IDs in a tModLoader mod.
+
 ## Menu Reading Entry Points
 
 `Main` has two distinct menu paths. Legacy title screens are selected by `Main.menuMode` and assembled inside `DrawMenu`; activation and transitions are handled by `UpdateMenu` and draw-time selection logic. UI-state screens set `Main.menuMode` to `888` and render through `Main.MenuUI`.
