@@ -16,6 +16,7 @@ using Terraria.ModLoader;
 using Terraria.ModLoader.Default;
 using Terraria.Social.Steam;
 using Terraria.UI;
+using Terrarium.Accessibility;
 using Terrarium.Menus;
 
 namespace Terrarium.Ingame;
@@ -96,6 +97,7 @@ internal sealed class AccessibleInventoryController
 		RebuildCategories();
 		RefreshActionsPane();
 		ConsumeNavigationTriggers();
+		ConsumeBoundLetterTriggers(keyboard);
 		if (_rootNodes.Count == 0)
 		{
 			_previousKeyboard = keyboard;
@@ -176,13 +178,13 @@ internal sealed class AccessibleInventoryController
 		{
 			TerrariumMod.ScreenReader.Output(
 				$"Inventory tree resumed. {DescribeCurrentLevel()} {DescribeSelection()} " +
-				"Use Up and Down Arrow keys to move, Left Arrow to return to the parent, Right Arrow or Enter to open the focused group or screen, Tab for item actions, Enter for the primary action, Shift Enter to take one from a stack, and F1 for help.");
+				"Use Up and Down Arrow keys to move, letter keys to jump through matching entries alphabetically, Left Arrow to return to the parent, Right Arrow or Enter to open the focused group or screen, Tab for item actions, Enter for the primary action, Shift Enter to take one from a stack, and F1 for help.");
 		}
 		else
 		{
 			TerrariumMod.ScreenReader.Output(
 				$"Inventory tree, level 0. {DescribeSelection()} " +
-				"Use Up and Down Arrow keys to move between categories, Right Arrow or Enter to open a category, Home and End to move to the first and last category, Tab for actions on a focused item, and F1 for help.");
+				"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Right Arrow or Enter to open a category, Home and End to move to the first and last category, Tab for actions on a focused item, and F1 for help.");
 		}
 	}
 
@@ -228,7 +230,8 @@ internal sealed class AccessibleInventoryController
 			() => DescribeItemDetails(player.trashItem),
 			() => LeftClickTrash(player),
 			() => RightClickTrash(player),
-			selectionDetails: () => DescribeItemDetails(player.trashItem, includeSummary: false)));
+			selectionDetails: () => DescribeItemDetails(player.trashItem, includeSummary: false),
+			firstLetterName: () => player.trashItem.IsAir ? null : player.trashItem.AffixName()));
 		AddCategory(sections, "main-inventory", "Main Inventory", mainInventoryEntries);
 
 		List<AccessibleInventoryEntry> currencyEntries = [];
@@ -310,7 +313,8 @@ internal sealed class AccessibleInventoryController
 					() => DescribeItemDetails(Main.guideItem),
 					LeftClickGuide,
 					RightClickGuide,
-					selectionDetails: () => DescribeItemDetails(Main.guideItem, includeSummary: false))
+					selectionDetails: () => DescribeItemDetails(Main.guideItem, includeSummary: false),
+					firstLetterName: () => Main.guideItem.IsAir ? null : Main.guideItem.AffixName())
 			]);
 		}
 
@@ -324,7 +328,8 @@ internal sealed class AccessibleInventoryController
 					() => DescribeItemDetails(Main.reforgeItem),
 					LeftClickReforge,
 					RightClickReforge,
-					selectionDetails: () => DescribeItemDetails(Main.reforgeItem, includeSummary: false)),
+					selectionDetails: () => DescribeItemDetails(Main.reforgeItem, includeSummary: false),
+					firstLetterName: () => Main.reforgeItem.IsAir ? null : Main.reforgeItem.AffixName()),
 				new AccessibleInventoryEntry(
 					"reforge-action",
 					DescribeReforgeAction,
@@ -571,7 +576,8 @@ internal sealed class AccessibleInventoryController
 				$"recipe-{Main.availableRecipe[captured]}",
 				() => DescribeRecipe(captured),
 				() => DescribeRecipeDetails(captured),
-				() => SelectOrCraftRecipe(captured)));
+				() => SelectOrCraftRecipe(captured),
+				firstLetterName: () => Main.recipe[Main.availableRecipe[captured]].createItem.AffixName()));
 		}
 		AddCategory(_rootNodes, "crafting", Main.InGuideCraftMenu ? "Guide Recipes" : "Crafting", entries);
 	}
@@ -682,7 +688,8 @@ internal sealed class AccessibleInventoryController
 			canFavorite ? () => ToggleFavorite(items[index]) : null,
 			enabled,
 			() => CombineDetails(DescribeItemDetails(items[index], includeSummary: false), extraDetails?.Invoke()),
-			itemSlot: new AccessibleInventoryItemSlot(items, context, index, canFavorite));
+			itemSlot: new AccessibleInventoryItemSlot(items, context, index, canFavorite),
+			firstLetterName: () => items[index].IsAir ? null : items[index].AffixName());
 	}
 
 	private static void AddCategory(List<AccessibleInventoryNode> destination, string id, string name, List<AccessibleInventoryEntry> entries)
@@ -767,17 +774,21 @@ internal sealed class AccessibleInventoryController
 			}
 			Main.chatRelease = false;
 		}
-		else if (CurrentNode.IsAction && Pressed(keyboard, Keys.F))
+		else if (CurrentNode.IsAction && IsControlDown(keyboard) && Pressed(keyboard, Keys.F))
 		{
 			ToggleFavorite();
 		}
-		else if (CurrentNode.IsAction && Pressed(keyboard, Keys.R))
+		else if (CurrentNode.IsAction && IsControlDown(keyboard) && Pressed(keyboard, Keys.R))
 		{
 			ReadDetails();
 		}
 		else if (Pressed(keyboard, Keys.F1))
 		{
 			ReadHelp();
+		}
+		else if (FirstLetterNavigator.TryGetPressedLetter(keyboard, _previousKeyboard, out _, out char letter))
+		{
+			NavigateCurrentLevelByFirstLetter(letter);
 		}
 		else
 		{
@@ -818,13 +829,17 @@ internal sealed class AccessibleInventoryController
 			ActivateItemAction();
 			Main.chatRelease = false;
 		}
-		else if (Pressed(keyboard, Keys.R))
+		else if (IsControlDown(keyboard) && Pressed(keyboard, Keys.R))
 		{
 			ReadActionDetails();
 		}
 		else if (Pressed(keyboard, Keys.F1))
 		{
 			ReadHelp();
+		}
+		else if (FirstLetterNavigator.TryGetPressedLetter(keyboard, _previousKeyboard, out _, out char letter))
+		{
+			NavigateActionsByFirstLetter(letter);
 		}
 		else
 		{
@@ -891,6 +906,29 @@ internal sealed class AccessibleInventoryController
 		_selectionPath[^1] = index;
 		SoundEngine.PlaySound(SoundID.MenuTick);
 		AnnounceSelection();
+	}
+
+	private void NavigateCurrentLevelByFirstLetter(char letter)
+	{
+		int nextIndex = FirstLetterNavigator.FindNextIndex(
+			CurrentLevelNodes,
+			CurrentLevelIndex,
+			letter,
+			node => node.FirstLetterName());
+		if (nextIndex < 0)
+		{
+			TerrariumMod.ScreenReader.Output($"No entry starting with {char.ToUpperInvariant(letter)} at this level.");
+			return;
+		}
+
+		if (nextIndex == CurrentLevelIndex)
+		{
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			AnnounceSelection();
+			return;
+		}
+
+		SetCurrentLevelSelection(nextIndex);
 	}
 
 	private void ToggleActionsPane()
@@ -1097,6 +1135,29 @@ internal sealed class AccessibleInventoryController
 		AnnounceActionSelection();
 	}
 
+	private void NavigateActionsByFirstLetter(char letter)
+	{
+		int nextIndex = FirstLetterNavigator.FindNextIndex(
+			_itemActions,
+			_actionSelection,
+			letter,
+			action => action.Label);
+		if (nextIndex < 0)
+		{
+			TerrariumMod.ScreenReader.Output($"No action starting with {char.ToUpperInvariant(letter)}.");
+			return;
+		}
+
+		if (nextIndex == _actionSelection)
+		{
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			AnnounceActionSelection();
+			return;
+		}
+
+		SetActionSelection(nextIndex);
+	}
+
 	private void ActivateItemAction()
 	{
 		AccessibleInventoryItemAction action = _itemActions[_actionSelection];
@@ -1224,13 +1285,13 @@ internal sealed class AccessibleInventoryController
 		{
 			TerrariumMod.ScreenReader.Output(
 				$"Item actions help. {DescribeActionSelection()} " +
-				"Up and Down move through the available actions, Home and End move to the first and last action, Enter performs the focused action, R reads its description, and Tab returns to the inventory pane.");
+				"Up and Down move through the available actions, letter keys jump through matching actions in alphabetical order, Home and End move to the first and last action, Enter performs the focused action, Control R reads its description, and Tab returns to the inventory pane.");
 			return;
 		}
 
 		TerrariumMod.ScreenReader.Output(
 			$"Inventory tree help. {DescribeCurrentLevel()} {DescribeSelection()} " +
-			"At every level, Up and Down move through the current list and wrap. Right Arrow or Enter opens the focused group or screen, and Left Arrow returns to its parent. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions and Shift Enter takes one item from a stack. Enter performs the primary or normal left click action. F toggles favorite for inventory items. R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
+			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Right Arrow or Enter opens the focused group or screen, and Left Arrow returns to its parent. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions and Shift Enter takes one item from a stack. Enter performs the primary or normal left click action. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
 	private void AnnounceSelection(bool includeLevel = false)
@@ -1390,6 +1451,48 @@ internal sealed class AccessibleInventoryController
 	private static bool IsShiftDown(KeyboardState keyboard)
 	{
 		return keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+	}
+
+	private static bool IsControlDown(KeyboardState keyboard)
+	{
+		return keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+	}
+
+	private static void ConsumeBoundLetterTriggers(KeyboardState keyboard)
+	{
+		if (!PlayerInput.CurrentProfile.InputModes.TryGetValue(InputMode.Keyboard, out KeyConfiguration? bindings))
+		{
+			return;
+		}
+
+		TriggersSet current = PlayerInput.Triggers.Current;
+		TriggersSet justPressed = PlayerInput.Triggers.JustPressed;
+		for (int value = (int)Keys.A; value <= (int)Keys.Z; value++)
+		{
+			Keys key = (Keys)value;
+			if (keyboard.IsKeyUp(key))
+			{
+				continue;
+			}
+
+			string keyName = key.ToString();
+			foreach ((string triggerName, List<string> keys) in bindings.KeyStatus)
+			{
+				if (!keys.Contains(keyName))
+				{
+					continue;
+				}
+
+				if (current.KeyStatus.ContainsKey(triggerName))
+				{
+					current.KeyStatus[triggerName] = false;
+				}
+				if (justPressed.KeyStatus.ContainsKey(triggerName))
+				{
+					justPressed.KeyStatus[triggerName] = false;
+				}
+			}
+		}
 	}
 
 	private static void ConsumeNavigationTriggers()
@@ -2118,6 +2221,7 @@ internal sealed class AccessibleInventoryNode
 	{
 		Id = id;
 		Label = label;
+		FirstLetterName = () => label();
 		Children = children;
 	}
 
@@ -2125,6 +2229,7 @@ internal sealed class AccessibleInventoryNode
 	{
 		Id = entry.Id;
 		Label = entry.Label;
+		FirstLetterName = entry.FirstLetterName;
 		Entry = entry;
 		Children = [];
 	}
@@ -2133,6 +2238,7 @@ internal sealed class AccessibleInventoryNode
 
 	internal string Id { get; }
 	internal Func<string> Label { get; }
+	internal Func<string?> FirstLetterName { get; }
 	internal AccessibleInventoryEntry? Entry { get; }
 	internal IReadOnlyList<AccessibleInventoryNode> Children { get; }
 	internal bool HasChildren => Children.Count > 0;
@@ -2152,7 +2258,8 @@ internal sealed class AccessibleInventoryEntry
 		Func<bool>? enabled = null,
 		Func<string>? selectionDetails = null,
 		bool opensSubmenu = false,
-		AccessibleInventoryItemSlot? itemSlot = null)
+		AccessibleInventoryItemSlot? itemSlot = null,
+		Func<string?>? firstLetterName = null)
 	{
 		Id = id;
 		Label = label;
@@ -2164,6 +2271,7 @@ internal sealed class AccessibleInventoryEntry
 		SelectionDetails = selectionDetails;
 		OpensSubmenu = opensSubmenu;
 		ItemSlot = itemSlot;
+		FirstLetterName = firstLetterName ?? (() => label());
 	}
 
 	internal string Id { get; }
@@ -2176,6 +2284,7 @@ internal sealed class AccessibleInventoryEntry
 	internal Func<string>? SelectionDetails { get; }
 	internal bool OpensSubmenu { get; }
 	internal AccessibleInventoryItemSlot? ItemSlot { get; }
+	internal Func<string?> FirstLetterName { get; }
 	internal bool IsEnabled => Enabled?.Invoke() ?? true;
 }
 

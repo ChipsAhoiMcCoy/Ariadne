@@ -33,9 +33,10 @@ While the inventory is open:
 - Groups can contain submenus to any depth. For example, Armor contains Equipped Armor, Vanity Armor, and Armor Dyes at level 1, with their slots at level 2; modded accessory variants can reach level 3. Up and Down move and wrap within the current level, Right or Enter opens a submenu, and Left returns to its parent.
 - Main Inventory contains its forty storage slots followed by Trash as a pseudo forty-first slot. Quick stack, Sort Inventory, and Sort Ammo are level 1 options in the Inventory group.
 - Home and End jump to the first and last option at the current level, and Page Up and Page Down move by ten options.
+- Letter keys jump to matching entries in alphabetical order. Repeating a letter cycles through its matches and wraps; empty item slots are skipped. This works in inventories, chests and banks, shops, recipe lists, equipment, and action lists.
 - Enter performs the normal primary click. Shift+Enter performs the secondary click used for splitting stacks and other alternate actions.
-- F toggles favorite on supported inventory items, R reads full details and tooltips, and F1 reads the inventory controls.
-- Terraria's normal inventory key closes the inventory. Settings and Save and Exit are available at the bottom of the main tree.
+- Ctrl+F toggles favorite on supported inventory items, Ctrl+R reads full details and tooltips, and F1 reads the inventory controls.
+- Escape closes the inventory. Settings and Save and Exit are available at the bottom of the main tree.
 
 Speech and braille output use [Prism](https://github.com/ethindp/prism), with active screen readers such as NVDA preferred over built-in speech fallbacks. Terrarium currently packages Prism for 64-bit Windows clients; servers and unsupported platforms skip speech initialization safely.
 
