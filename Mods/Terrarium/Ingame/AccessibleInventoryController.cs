@@ -58,11 +58,15 @@ internal sealed class AccessibleInventoryController
 	private readonly AccessibleMenuController _menuController;
 	private readonly List<AccessibleInventoryNode> _rootNodes = [];
 	private readonly List<int> _selectionPath = [0];
+	private readonly List<AccessibleInventoryItemAction> _itemActions = [];
 	private KeyboardState _previousKeyboard;
 	private Keys? _repeatingKey;
 	private TimeSpan _nextRepeat;
 	private bool _active;
+	private bool _actionsPaneActive;
+	private int _actionSelection;
 	private string _lastSemanticState = string.Empty;
+	private PendingInventoryItemUse? _pendingItemUse;
 	private List<string>? _resumeFocusPath;
 	private bool _restoreFocusOnNextActivation;
 	private bool _suppressInventoryCloseUntilRelease;
@@ -74,6 +78,7 @@ internal sealed class AccessibleInventoryController
 
 	internal void Update()
 	{
+		RestoreUsedItemWhenReady();
 		if (!CanNavigateInventory())
 		{
 			Deactivate();
@@ -89,6 +94,7 @@ internal sealed class AccessibleInventoryController
 		}
 
 		RebuildCategories();
+		RefreshActionsPane();
 		ConsumeNavigationTriggers();
 		if (_rootNodes.Count == 0)
 		{
@@ -101,74 +107,17 @@ internal sealed class AccessibleInventoryController
 			_repeatingKey = null;
 		}
 
-		bool handled = false;
-		if (Pressed(keyboard, Keys.Left) && CurrentLevel > 0)
+		bool handled;
+		if (Pressed(keyboard, Keys.Tab))
 		{
-			CloseSubmenu();
+			ToggleActionsPane();
 			handled = true;
 		}
-		else if (Pressed(keyboard, Keys.Right) && CurrentNode.OpensSubmenu)
+		else
 		{
-			OpenCurrentNode();
-			handled = true;
-		}
-		else if (NavigationTriggered(keyboard, Keys.Up))
-		{
-			MoveVertical(-1);
-			handled = true;
-		}
-		else if (NavigationTriggered(keyboard, Keys.Down))
-		{
-			MoveVertical(1);
-			handled = true;
-		}
-		else if (Pressed(keyboard, Keys.Home))
-		{
-			SetCurrentLevelSelection(0);
-			handled = true;
-		}
-		else if (Pressed(keyboard, Keys.End))
-		{
-			SetCurrentLevelSelection(CurrentLevelCount - 1);
-			handled = true;
-		}
-		else if (Pressed(keyboard, Keys.PageUp))
-		{
-			SetCurrentLevelSelection(Math.Max(0, CurrentLevelIndex - MenuPageSize));
-			handled = true;
-		}
-		else if (Pressed(keyboard, Keys.PageDown))
-		{
-			SetCurrentLevelSelection(Math.Min(CurrentLevelCount - 1, CurrentLevelIndex + MenuPageSize));
-			handled = true;
-		}
-		else if (Pressed(keyboard, Keys.Enter))
-		{
-			if (CurrentNode.HasChildren)
-			{
-				OpenSubmenu();
-			}
-			else
-			{
-				ActivateEntry(secondary: IsShiftDown(keyboard));
-			}
-			Main.chatRelease = false;
-			handled = true;
-		}
-		else if (CurrentNode.IsAction && Pressed(keyboard, Keys.F))
-		{
-			ToggleFavorite();
-			handled = true;
-		}
-		else if (CurrentNode.IsAction && Pressed(keyboard, Keys.R))
-		{
-			ReadDetails();
-			handled = true;
-		}
-		else if (Pressed(keyboard, Keys.F1))
-		{
-			ReadHelp();
-			handled = true;
+			handled = _actionsPaneActive
+				? HandleActionsPaneInput(keyboard)
+				: HandleInventoryTreeInput(keyboard);
 		}
 
 		if (!handled)
@@ -182,6 +131,9 @@ internal sealed class AccessibleInventoryController
 	internal void Deactivate()
 	{
 		_active = false;
+		_actionsPaneActive = false;
+		_actionSelection = 0;
+		_itemActions.Clear();
 		_repeatingKey = null;
 		_rootNodes.Clear();
 		_selectionPath.Clear();
@@ -211,6 +163,9 @@ internal sealed class AccessibleInventoryController
 		_active = true;
 		_previousKeyboard = keyboard;
 		_repeatingKey = null;
+		_actionsPaneActive = false;
+		_actionSelection = 0;
+		_itemActions.Clear();
 		_selectionPath.Clear();
 		_selectionPath.Add(0);
 		RebuildCategories();
@@ -221,13 +176,13 @@ internal sealed class AccessibleInventoryController
 		{
 			TerrariumMod.ScreenReader.Output(
 				$"Inventory tree resumed. {DescribeCurrentLevel()} {DescribeSelection()} " +
-				"Use Up and Down Arrow keys to move, Left Arrow to return to the parent, Right Arrow or Enter to open the focused group or screen, Enter for the primary action, Shift Enter for the secondary action, and F1 for help.");
+				"Use Up and Down Arrow keys to move, Left Arrow to return to the parent, Right Arrow or Enter to open the focused group or screen, Tab for item actions, Enter for the primary action, Shift Enter to take one from a stack, and F1 for help.");
 		}
 		else
 		{
 			TerrariumMod.ScreenReader.Output(
 				$"Inventory tree, level 0. {DescribeSelection()} " +
-				"Use Up and Down Arrow keys to move between categories, Right Arrow or Enter to open a category, Home and End to move to the first and last category, and F1 for help.");
+				"Use Up and Down Arrow keys to move between categories, Right Arrow or Enter to open a category, Home and End to move to the first and last category, Tab for actions on a focused item, and F1 for help.");
 		}
 	}
 
@@ -726,7 +681,8 @@ internal sealed class AccessibleInventoryController
 			() => RightClick(items, context, index),
 			canFavorite ? () => ToggleFavorite(items[index]) : null,
 			enabled,
-			() => CombineDetails(DescribeItemDetails(items[index], includeSummary: false), extraDetails?.Invoke()));
+			() => CombineDetails(DescribeItemDetails(items[index], includeSummary: false), extraDetails?.Invoke()),
+			itemSlot: new AccessibleInventoryItemSlot(items, context, index, canFavorite));
 	}
 
 	private static void AddCategory(List<AccessibleInventoryNode> destination, string id, string name, List<AccessibleInventoryEntry> entries)
@@ -764,6 +720,119 @@ internal sealed class AccessibleInventoryController
 	private int CurrentLevelIndex => _selectionPath[^1];
 
 	private int CurrentLevelCount => CurrentLevelNodes.Count;
+
+	private bool HandleInventoryTreeInput(KeyboardState keyboard)
+	{
+		if (Pressed(keyboard, Keys.Left) && CurrentLevel > 0)
+		{
+			CloseSubmenu();
+		}
+		else if (Pressed(keyboard, Keys.Right) && CurrentNode.OpensSubmenu)
+		{
+			OpenCurrentNode();
+		}
+		else if (NavigationTriggered(keyboard, Keys.Up))
+		{
+			MoveVertical(-1);
+		}
+		else if (NavigationTriggered(keyboard, Keys.Down))
+		{
+			MoveVertical(1);
+		}
+		else if (Pressed(keyboard, Keys.Home))
+		{
+			SetCurrentLevelSelection(0);
+		}
+		else if (Pressed(keyboard, Keys.End))
+		{
+			SetCurrentLevelSelection(CurrentLevelCount - 1);
+		}
+		else if (Pressed(keyboard, Keys.PageUp))
+		{
+			SetCurrentLevelSelection(Math.Max(0, CurrentLevelIndex - MenuPageSize));
+		}
+		else if (Pressed(keyboard, Keys.PageDown))
+		{
+			SetCurrentLevelSelection(Math.Min(CurrentLevelCount - 1, CurrentLevelIndex + MenuPageSize));
+		}
+		else if (Pressed(keyboard, Keys.Enter))
+		{
+			if (CurrentNode.HasChildren)
+			{
+				OpenSubmenu();
+			}
+			else
+			{
+				ActivateEntry(secondary: IsShiftDown(keyboard));
+			}
+			Main.chatRelease = false;
+		}
+		else if (CurrentNode.IsAction && Pressed(keyboard, Keys.F))
+		{
+			ToggleFavorite();
+		}
+		else if (CurrentNode.IsAction && Pressed(keyboard, Keys.R))
+		{
+			ReadDetails();
+		}
+		else if (Pressed(keyboard, Keys.F1))
+		{
+			ReadHelp();
+		}
+		else
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	private bool HandleActionsPaneInput(KeyboardState keyboard)
+	{
+		if (NavigationTriggered(keyboard, Keys.Up))
+		{
+			MoveActionSelection(-1);
+		}
+		else if (NavigationTriggered(keyboard, Keys.Down))
+		{
+			MoveActionSelection(1);
+		}
+		else if (Pressed(keyboard, Keys.Home))
+		{
+			SetActionSelection(0);
+		}
+		else if (Pressed(keyboard, Keys.End))
+		{
+			SetActionSelection(_itemActions.Count - 1);
+		}
+		else if (Pressed(keyboard, Keys.PageUp))
+		{
+			SetActionSelection(Math.Max(0, _actionSelection - MenuPageSize));
+		}
+		else if (Pressed(keyboard, Keys.PageDown))
+		{
+			SetActionSelection(Math.Min(_itemActions.Count - 1, _actionSelection + MenuPageSize));
+		}
+		else if (Pressed(keyboard, Keys.Enter))
+		{
+			ActivateItemAction();
+			Main.chatRelease = false;
+		}
+		else if (Pressed(keyboard, Keys.R))
+		{
+			ReadActionDetails();
+		}
+		else if (Pressed(keyboard, Keys.F1))
+		{
+			ReadHelp();
+		}
+		else
+		{
+			return false;
+		}
+
+		return true;
+	}
 
 	private void OpenCurrentNode()
 	{
@@ -824,6 +893,268 @@ internal sealed class AccessibleInventoryController
 		AnnounceSelection();
 	}
 
+	private void ToggleActionsPane()
+	{
+		if (_actionsPaneActive)
+		{
+			CloseActionsPane(announce: true);
+			return;
+		}
+
+		AccessibleInventoryItemSlot? slot = CurrentNode.Entry?.ItemSlot;
+		if (slot is null || slot.Item.IsAir)
+		{
+			TerrariumMod.ScreenReader.Output("The focused entry has no item actions.");
+			return;
+		}
+
+		_itemActions.Clear();
+		_itemActions.AddRange(BuildItemActions(slot));
+		if (_itemActions.Count == 0)
+		{
+			TerrariumMod.ScreenReader.Output($"{slot.Item.AffixName()} has no available item actions.");
+			return;
+		}
+
+		_actionsPaneActive = true;
+		_actionSelection = 0;
+		SoundEngine.PlaySound(SoundID.MenuOpen);
+		_lastSemanticState = GetSemanticState();
+		TerrariumMod.ScreenReader.Output($"Actions pane for {DescribeItemBrief(slot.Item)}. {DescribeActionSelection()} Tab returns to the inventory pane.");
+	}
+
+	private void CloseActionsPane(bool announce)
+	{
+		_actionsPaneActive = false;
+		_actionSelection = 0;
+		_itemActions.Clear();
+		SoundEngine.PlaySound(SoundID.MenuClose);
+		_lastSemanticState = GetSemanticState();
+		if (announce)
+		{
+			TerrariumMod.ScreenReader.Output($"Inventory pane. {DescribeSelection()}");
+		}
+	}
+
+	private void RefreshActionsPane()
+	{
+		if (!_actionsPaneActive)
+		{
+			return;
+		}
+
+		string? previousActionId = _itemActions.Count > 0
+			? _itemActions[Math.Clamp(_actionSelection, 0, _itemActions.Count - 1)].Id
+			: null;
+		AccessibleInventoryItemSlot? slot = CurrentNode.Entry?.ItemSlot;
+		List<AccessibleInventoryItemAction> refreshed = slot is null || slot.Item.IsAir
+			? []
+			: BuildItemActions(slot);
+		_itemActions.Clear();
+		_itemActions.AddRange(refreshed);
+		if (_itemActions.Count == 0)
+		{
+			_actionsPaneActive = false;
+			_actionSelection = 0;
+			return;
+		}
+
+		int preservedIndex = previousActionId is null
+			? -1
+			: _itemActions.FindIndex(action => action.Id == previousActionId);
+		_actionSelection = preservedIndex >= 0
+			? preservedIndex
+			: Math.Clamp(_actionSelection, 0, _itemActions.Count - 1);
+	}
+
+	private List<AccessibleInventoryItemAction> BuildItemActions(AccessibleInventoryItemSlot slot)
+	{
+		List<AccessibleInventoryItemAction> actions = [];
+		Item item = slot.Item;
+		if (item.IsAir)
+		{
+			return actions;
+		}
+
+		if (slot.Context == ItemSlot.Context.InventoryItem && ItemLoader.CanRightClick(item))
+		{
+			actions.Add(new(
+				"open",
+				"Open",
+				"Open this item or perform its mod-defined right-click action.",
+				() =>
+				{
+					RightClick(slot.Items, slot.Context, slot.Index);
+					return null;
+				},
+				returnsToInventory: true));
+		}
+
+		if (CanUse(slot))
+		{
+			string verb = item.consumable ? "Consume" : "Use";
+			actions.Add(new(
+				verb.ToLowerInvariant(),
+				verb,
+				$"{verb} one {item.AffixName()} using its normal item behavior.",
+				() => BeginUsingItem(slot),
+				returnsToInventory: true));
+		}
+
+		if (CanEquip(slot))
+		{
+			actions.Add(new(
+				"equip",
+				"Equip",
+				$"Equip {item.AffixName()} in its appropriate equipment slot. If that slot is occupied, its previous item replaces this item in the source slot.",
+				() => EquipItem(slot),
+				returnsToInventory: true));
+		}
+		else if (IsEquipmentContext(slot.Context))
+		{
+			actions.Add(new(
+				"unequip",
+				"Unequip",
+				$"Remove {item.AffixName()} from this equipment slot and send it to the player inventory.",
+				() => UnequipItem(slot),
+				returnsToInventory: true));
+		}
+
+		if (slot.CanFavorite)
+		{
+			string verb = item.favorited ? "Unfavorite" : "Favorite";
+			actions.Add(new(
+				"favorite",
+				verb,
+				$"{verb} {item.AffixName()}.",
+				() =>
+				{
+					ToggleFavorite(slot.Item);
+					return null;
+				}));
+		}
+
+		if (CanTakeOne(slot))
+		{
+			actions.Add(new(
+				"take-one",
+				"Take one",
+				$"Take one {item.AffixName()} from this stack and hold it.",
+				() =>
+				{
+					TakeOneFromStack(slot);
+					return null;
+				}));
+		}
+
+		if (IsPlayerInventorySlot(slot) && !item.favorited)
+		{
+			actions.Add(new(
+				"drop",
+				"Drop",
+				$"Drop the full stack of {item.AffixName()} into the world.",
+				() =>
+				{
+					DropItem(slot);
+					return null;
+				},
+				returnsToInventory: true));
+
+			string verb = Main.npcShop > 0 ? "Sell" : "Trash";
+			actions.Add(new(
+				"trash-or-sell",
+				verb,
+				$"{verb} the full stack of {item.AffixName()}.",
+				() =>
+				{
+					ItemSlot.SellOrTrash(slot.Items, slot.Context, slot.Index);
+					return null;
+				},
+				returnsToInventory: true));
+		}
+
+		return actions;
+	}
+
+	private void MoveActionSelection(int direction)
+	{
+		if (_itemActions.Count <= 1)
+		{
+			return;
+		}
+		SetActionSelection((_actionSelection + direction + _itemActions.Count) % _itemActions.Count);
+	}
+
+	private void SetActionSelection(int index)
+	{
+		index = Math.Clamp(index, 0, _itemActions.Count - 1);
+		if (index == _actionSelection)
+		{
+			return;
+		}
+		_actionSelection = index;
+		SoundEngine.PlaySound(SoundID.MenuTick);
+		AnnounceActionSelection();
+	}
+
+	private void ActivateItemAction()
+	{
+		AccessibleInventoryItemAction action = _itemActions[_actionSelection];
+		string? announcement = action.Activate();
+		if (!CanNavigateInventory())
+		{
+			return;
+		}
+
+		RebuildCategories();
+		if (action.ReturnsToInventory)
+		{
+			CloseActionsPane(announce: false);
+			TerrariumMod.ScreenReader.Output(announcement is null
+				? $"Inventory pane. {DescribeSelection()}"
+				: $"{announcement} Inventory pane.");
+			return;
+		}
+
+		RefreshActionsPane();
+		SoundEngine.PlaySound(SoundID.MenuTick);
+		if (_actionsPaneActive)
+		{
+			if (string.IsNullOrWhiteSpace(announcement))
+			{
+				AnnounceActionSelection();
+			}
+			else
+			{
+				_lastSemanticState = GetSemanticState();
+				TerrariumMod.ScreenReader.Output($"{announcement} {DescribeActionSelection()}");
+			}
+		}
+		else
+		{
+			_lastSemanticState = GetSemanticState();
+			TerrariumMod.ScreenReader.Output($"Inventory pane. {DescribeSelection()}");
+		}
+	}
+
+	private void ReadActionDetails()
+	{
+		TerrariumMod.ScreenReader.Output(_itemActions[_actionSelection].Details);
+	}
+
+	private void AnnounceActionSelection()
+	{
+		_lastSemanticState = GetSemanticState();
+		TerrariumMod.ScreenReader.Output(DescribeActionSelection());
+	}
+
+	private string DescribeActionSelection()
+	{
+		AccessibleInventoryItemAction action = _itemActions[_actionSelection];
+		string held = Main.mouseItem.IsAir ? string.Empty : $" Holding {DescribeItemBrief(Main.mouseItem)}.";
+		return $"{action.Label}, {_actionSelection + 1} of {_itemActions.Count}.{held}";
+	}
+
 	private void ActivateEntry(bool secondary)
 	{
 		AccessibleInventoryEntry entry = CurrentEntry;
@@ -831,6 +1162,23 @@ internal sealed class AccessibleInventoryController
 		{
 			SoundEngine.PlaySound(SoundID.MenuClose);
 			TerrariumMod.ScreenReader.Output($"{entry.Label()}, unavailable.");
+			return;
+		}
+		if (secondary &&
+			entry.ItemSlot is AccessibleInventoryItemSlot slot &&
+			slot.Item.stack > 1 &&
+			SupportsTakeOne(slot.Context))
+		{
+			if (!CanTakeOne(slot))
+			{
+				TerrariumMod.ScreenReader.Output($"Cannot take one {slot.Item.AffixName()} while holding {DescribeItemBrief(Main.mouseItem)}.");
+				return;
+			}
+
+			TakeOneFromStack(slot);
+			RebuildCategories();
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			AnnounceSelection();
 			return;
 		}
 
@@ -872,9 +1220,17 @@ internal sealed class AccessibleInventoryController
 
 	private void ReadHelp()
 	{
+		if (_actionsPaneActive)
+		{
+			TerrariumMod.ScreenReader.Output(
+				$"Item actions help. {DescribeActionSelection()} " +
+				"Up and Down move through the available actions, Home and End move to the first and last action, Enter performs the focused action, R reads its description, and Tab returns to the inventory pane.");
+			return;
+		}
+
 		TerrariumMod.ScreenReader.Output(
 			$"Inventory tree help. {DescribeCurrentLevel()} {DescribeSelection()} " +
-			"At every level, Up and Down move through the current list and wrap. Right Arrow or Enter opens the focused group or screen, and Left Arrow returns to its parent. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an action or item slot, Enter performs the primary or normal left click action and Shift Enter performs the secondary or normal right click action, such as splitting stacks. F toggles favorite for inventory items. R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
+			"At every level, Up and Down move through the current list and wrap. Right Arrow or Enter opens the focused group or screen, and Left Arrow returns to its parent. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions and Shift Enter takes one item from a stack. Enter performs the primary or normal left click action. F toggles favorite for inventory items. R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
 	private void AnnounceSelection(bool includeLevel = false)
@@ -891,7 +1247,14 @@ internal sealed class AccessibleInventoryController
 		{
 			return;
 		}
-		bool levelChanged = !_lastSemanticState.StartsWith($"{CurrentLevel}|", StringComparison.Ordinal);
+		if (_actionsPaneActive)
+		{
+			_lastSemanticState = state;
+			TerrariumMod.ScreenReader.Output(DescribeActionSelection());
+			return;
+		}
+
+		bool levelChanged = !_lastSemanticState.StartsWith($"tree|{CurrentLevel}|", StringComparison.Ordinal);
 		_lastSemanticState = state;
 		string level = levelChanged ? $"{DescribeCurrentLevel()} " : string.Empty;
 		TerrariumMod.ScreenReader.Output($"{level}{DescribeSelection()}");
@@ -919,10 +1282,19 @@ internal sealed class AccessibleInventoryController
 			return string.Empty;
 		}
 
+		if (_actionsPaneActive)
+		{
+			AccessibleInventoryItemAction action = _itemActions[_actionSelection];
+			string item = CurrentNode.Entry?.ItemSlot is AccessibleInventoryItemSlot slot
+				? DescribeItemBrief(slot.Item)
+				: string.Empty;
+			return $"actions|{string.Join('/', GetFocusPathIds())}|{item}|{action.Id}|{action.Label}|{_actionSelection}|{_itemActions.Count}|{DescribeItemBrief(Main.mouseItem)}";
+		}
+
 		AccessibleInventoryNode node = CurrentNode;
 		string enabled = node.Entry?.IsEnabled.ToString() ?? string.Empty;
 		string held = node.IsAction ? DescribeItemBrief(Main.mouseItem) : string.Empty;
-		return $"{CurrentLevel}|{string.Join('/', GetFocusPathIds())}|{node.Label()}|{enabled}|{CurrentLevelIndex}|{CurrentLevelCount}|{held}";
+		return $"tree|{CurrentLevel}|{string.Join('/', GetFocusPathIds())}|{node.Label()}|{enabled}|{CurrentLevelIndex}|{CurrentLevelCount}|{held}";
 	}
 
 	private string DescribeCurrentLevel()
@@ -1028,6 +1400,229 @@ internal sealed class AccessibleInventoryController
 		justPressed.MapStyle = false;
 		current.MenuUp = current.MenuDown = current.MenuLeft = current.MenuRight = false;
 		justPressed.MenuUp = justPressed.MenuDown = justPressed.MenuLeft = justPressed.MenuRight = false;
+	}
+
+	private static bool CanUse(AccessibleInventoryItemSlot slot)
+	{
+		return ReferenceEquals(slot.Items, Main.LocalPlayer.inventory) &&
+			slot.Context == ItemSlot.Context.InventoryItem &&
+			slot.Index is >= 0 and < 50 &&
+			slot.Item.CanBeQuickUsed &&
+			Main.mouseItem.IsAir &&
+			Main.LocalPlayer.itemAnimation == 0 &&
+			Main.LocalPlayer.ItemTimeIsZero;
+	}
+
+	private static bool CanEquip(AccessibleInventoryItemSlot slot)
+	{
+		return slot.Context is ItemSlot.Context.InventoryItem or ItemSlot.Context.ChestItem or ItemSlot.Context.BankItem or ItemSlot.Context.VoidItem &&
+			slot.Item.maxStack == 1 &&
+			ItemSlot.Equippable(slot.Items, slot.Context, slot.Index);
+	}
+
+	private static bool IsEquipmentContext(int context)
+	{
+		return context is
+			ItemSlot.Context.ModdedAccessorySlot or
+			ItemSlot.Context.ModdedVanityAccessorySlot or
+			ItemSlot.Context.ModdedDyeSlot or
+			ItemSlot.Context.EquipArmor or
+			ItemSlot.Context.EquipArmorVanity or
+			ItemSlot.Context.EquipAccessory or
+			ItemSlot.Context.EquipAccessoryVanity or
+			ItemSlot.Context.EquipDye or
+			ItemSlot.Context.EquipGrapple or
+			ItemSlot.Context.EquipMount or
+			ItemSlot.Context.EquipMinecart or
+			ItemSlot.Context.EquipPet or
+			ItemSlot.Context.EquipLight or
+			ItemSlot.Context.EquipMiscDye;
+	}
+
+	private static bool CanTakeOne(AccessibleInventoryItemSlot slot)
+	{
+		if (!SupportsTakeOne(slot.Context) || slot.Item.stack <= 1)
+		{
+			return false;
+		}
+
+		return Main.mouseItem.IsAir ||
+			(Main.mouseItem.type == slot.Item.type &&
+				Main.mouseItem.netID == slot.Item.netID &&
+				ItemLoader.CanStack(Main.mouseItem, slot.Item) &&
+				Main.mouseItem.stack < Main.mouseItem.maxStack);
+	}
+
+	private static bool SupportsTakeOne(int context)
+	{
+		return context is
+			ItemSlot.Context.InventoryItem or
+			ItemSlot.Context.InventoryCoin or
+			ItemSlot.Context.InventoryAmmo or
+			ItemSlot.Context.ChestItem or
+			ItemSlot.Context.BankItem or
+			ItemSlot.Context.VoidItem;
+	}
+
+	private static bool IsPlayerInventorySlot(AccessibleInventoryItemSlot slot)
+	{
+		return ReferenceEquals(slot.Items, Main.LocalPlayer.inventory) && slot.Index is >= 0 and < 58;
+	}
+
+	private static void TakeOneFromStack(AccessibleInventoryItemSlot slot)
+	{
+		ItemSlot.PickupItemIntoMouse(slot.Items, slot.Context, slot.Index, Main.LocalPlayer);
+		ItemSlot.RefreshStackSplitCooldown();
+		SoundEngine.PlaySound(SoundID.Grab);
+	}
+
+	private string BeginUsingItem(AccessibleInventoryItemSlot slot)
+	{
+		if (!CanUse(slot))
+		{
+			return "This item cannot be used right now.";
+		}
+		if (Main.netMode == NetmodeID.SinglePlayer && Main.autoPause)
+		{
+			return "This item cannot be used while Auto Pause is enabled.";
+		}
+
+		string itemName = slot.Item.AffixName();
+		_pendingItemUse = new PendingInventoryItemUse(slot.Items, slot.Index, slot.Item.type, itemName);
+		ItemSlot.PickupItemIntoMouse(slot.Items, slot.Context, slot.Index, Main.LocalPlayer);
+		if (Main.mouseItem.type != _pendingItemUse.ItemType)
+		{
+			_pendingItemUse = null;
+			return $"{itemName} could not be prepared for use.";
+		}
+
+		PlayerInput.TryEnteringFastUseModeForMouseItem();
+		return $"Using {itemName}.";
+	}
+
+	private void RestoreUsedItemWhenReady()
+	{
+		if (_pendingItemUse is not PendingInventoryItemUse pending)
+		{
+			return;
+		}
+		if (Main.LocalPlayer.itemAnimation > 0 || !Main.LocalPlayer.ItemTimeIsZero)
+		{
+			pending.UseStarted = true;
+			return;
+		}
+		if (PlayerInput.ShouldFastUseItem)
+		{
+			return;
+		}
+
+		_pendingItemUse = null;
+		if (Main.mouseItem.IsAir || Main.mouseItem.type != pending.ItemType)
+		{
+			return;
+		}
+
+		bool returned = TryReturnUsedItemToInventory(pending);
+		if (!pending.UseStarted)
+		{
+			TerrariumMod.ScreenReader.Output(returned
+				? $"{pending.ItemName} could not be used and was returned to the inventory."
+				: $"{pending.ItemName} could not be used and could not be returned because the inventory is full.");
+		}
+		else if (!returned)
+		{
+			TerrariumMod.ScreenReader.Output($"{pending.ItemName} was used but could not be returned because the inventory is full.");
+		}
+	}
+
+	private static bool TryReturnUsedItemToInventory(PendingInventoryItemUse pending)
+	{
+		if (pending.Index >= 0 && pending.Index < pending.Items.Length)
+		{
+			Item destination = pending.Items[pending.Index];
+			if (destination.IsAir)
+			{
+				Utils.Swap(ref pending.Items[pending.Index], ref Main.mouseItem);
+			}
+			else if (destination.type == Main.mouseItem.type &&
+				destination.netID == Main.mouseItem.netID &&
+				ItemLoader.CanStack(destination, Main.mouseItem) &&
+				destination.stack < destination.maxStack)
+			{
+				ItemLoader.StackItems(destination, Main.mouseItem, out _);
+				if (Main.mouseItem.stack <= 0)
+				{
+					Main.mouseItem = new Item();
+				}
+			}
+		}
+
+		if (!Main.mouseItem.IsAir)
+		{
+			Main.mouseItem = Main.LocalPlayer.GetItem(
+				Main.LocalPlayer.whoAmI,
+				Main.mouseItem,
+				GetItemSettings.InventoryUIToInventorySettings);
+		}
+		Recipe.FindRecipes();
+		return Main.mouseItem.IsAir;
+	}
+
+	private static string EquipItem(AccessibleInventoryItemSlot slot)
+	{
+		if (!CanEquip(slot))
+		{
+			return "This item cannot be equipped right now.";
+		}
+
+		Item itemBeforeEquip = slot.Item;
+		string itemName = itemBeforeEquip.AffixName();
+		ItemSlot.SwapEquip(slot.Items, slot.Context, slot.Index);
+		if (ReferenceEquals(slot.Item, itemBeforeEquip))
+		{
+			return $"{itemName} could not be equipped.";
+		}
+
+		return slot.Item.IsAir
+			? $"Equipped {itemName}."
+			: $"Equipped {itemName}. {slot.Item.AffixName()} moved to the source slot.";
+	}
+
+	private static string UnequipItem(AccessibleInventoryItemSlot slot)
+	{
+		if (!IsEquipmentContext(slot.Context) || slot.Item.IsAir)
+		{
+			return "This equipment slot is already empty.";
+		}
+
+		Item item = slot.Item;
+		string itemName = item.AffixName();
+		if (!Main.LocalPlayer.ItemSpace(item).CanTakeItemToPersonalInventory)
+		{
+			return $"Cannot unequip {itemName} because the player inventory is full.";
+		}
+
+		int oldCursorOverride = Main.cursorOverride;
+		try
+		{
+			Main.cursorOverride = 7;
+			LeftClick(slot.Items, slot.Context, slot.Index);
+		}
+		finally
+		{
+			Main.cursorOverride = oldCursorOverride;
+		}
+
+		return ReferenceEquals(slot.Item, item)
+			? $"{itemName} could not be unequipped."
+			: $"Unequipped {itemName} to the player inventory.";
+	}
+
+	private static void DropItem(AccessibleInventoryItemSlot slot)
+	{
+		Player player = Main.LocalPlayer;
+		player.DropSelectedItem(slot.Index, ref slot.Items[slot.Index]);
+		Recipe.FindRecipes();
 	}
 
 	private static void LeftClick(Item[] items, int context, int index)
@@ -1556,7 +2151,8 @@ internal sealed class AccessibleInventoryEntry
 		Action? favorite = null,
 		Func<bool>? enabled = null,
 		Func<string>? selectionDetails = null,
-		bool opensSubmenu = false)
+		bool opensSubmenu = false,
+		AccessibleInventoryItemSlot? itemSlot = null)
 	{
 		Id = id;
 		Label = label;
@@ -1567,6 +2163,7 @@ internal sealed class AccessibleInventoryEntry
 		Enabled = enabled;
 		SelectionDetails = selectionDetails;
 		OpensSubmenu = opensSubmenu;
+		ItemSlot = itemSlot;
 	}
 
 	internal string Id { get; }
@@ -1578,5 +2175,58 @@ internal sealed class AccessibleInventoryEntry
 	internal Func<bool>? Enabled { get; }
 	internal Func<string>? SelectionDetails { get; }
 	internal bool OpensSubmenu { get; }
+	internal AccessibleInventoryItemSlot? ItemSlot { get; }
 	internal bool IsEnabled => Enabled?.Invoke() ?? true;
+}
+
+internal sealed class AccessibleInventoryItemSlot
+{
+	internal AccessibleInventoryItemSlot(Item[] items, int context, int index, bool canFavorite)
+	{
+		Items = items;
+		Context = context;
+		Index = index;
+		CanFavorite = canFavorite;
+	}
+
+	internal Item[] Items { get; }
+	internal int Context { get; }
+	internal int Index { get; }
+	internal bool CanFavorite { get; }
+	internal Item Item => Items[Index];
+}
+
+internal sealed class AccessibleInventoryItemAction
+{
+	internal AccessibleInventoryItemAction(string id, string label, string details, Func<string?> activate, bool returnsToInventory = false)
+	{
+		Id = id;
+		Label = label;
+		Details = details;
+		Activate = activate;
+		ReturnsToInventory = returnsToInventory;
+	}
+
+	internal string Id { get; }
+	internal string Label { get; }
+	internal string Details { get; }
+	internal Func<string?> Activate { get; }
+	internal bool ReturnsToInventory { get; }
+}
+
+internal sealed class PendingInventoryItemUse
+{
+	internal PendingInventoryItemUse(Item[] items, int index, int itemType, string itemName)
+	{
+		Items = items;
+		Index = index;
+		ItemType = itemType;
+		ItemName = itemName;
+	}
+
+	internal Item[] Items { get; }
+	internal int Index { get; }
+	internal int ItemType { get; }
+	internal string ItemName { get; }
+	internal bool UseStarted { get; set; }
 }
