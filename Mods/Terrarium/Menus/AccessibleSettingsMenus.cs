@@ -13,6 +13,8 @@ using Terraria.GameInput;
 using Terraria.Graphics.Light;
 using Terraria.ID;
 using Terraria.Localization;
+using Terraria.ModLoader;
+using Terraria.Social.Steam;
 using Terraria.UI;
 
 namespace Terrarium.Menus;
@@ -36,6 +38,34 @@ internal sealed class AccessibleSettingsMenuState : AccessibleSettingsPageState
 		entries.Add(new(() => Lang.menu[219].Value, () => Controller.Navigate(new AccessibleControlsMenuState(Controller))));
 		entries.Add(new(() => Lang.menu[103].Value, () => Controller.Navigate(new AccessibleLanguageMenuState(Controller))));
 		entries.Add(new(() => Language.GetTextValue("tModLoader.tModLoaderSettings"), () => Controller.Navigate(new AccessibleTmlSettingsMenuState(Controller))));
+
+		if (Controller.IsInGame)
+		{
+			entries.Add(new(
+				() => Language.GetTextValue("tModLoader.ModConfiguration"),
+				() => Controller.Navigate(new AccessibleModConfigListMenuState(Controller))));
+			entries.Add(new(
+				() => Lang.menu[131].Value,
+				() => Controller.Navigate(new AccessibleAchievementsMenuState(Controller))));
+			entries.Add(new(
+				() => Lang.menu[118].Value,
+				Controller.Close,
+				description: () => "Close settings and return to the inventory."));
+			entries.Add(new(
+				() => Lang.inter[35].Value,
+				SaveAndExit,
+				description: () => "Save the current world and return to the main menu."));
+		}
+	}
+
+	private void SaveAndExit()
+	{
+		SteamedWraps.StopPlaytimeTracking();
+		SystemLoader.PreSaveAndQuit();
+		Controller.Close();
+		Main.menuMode = 10;
+		Main.gameMenu = true;
+		WorldGen.SaveAndQuit();
 	}
 }
 
@@ -52,6 +82,8 @@ internal abstract class AccessibleSettingsPageState : AccessibleMenuState
 		PlayerInput.Save();
 		base.GoBack();
 	}
+
+	protected override bool ActivationAdjustsValue(AccessibleMenuEntry entry) => entry.IsAdjustable;
 
 	protected static AccessibleMenuEntry Toggle(
 		Func<string> label,
@@ -71,7 +103,7 @@ internal abstract class AccessibleSettingsPageState : AccessibleMenuState
 
 	protected static string OnOff(bool value)
 	{
-		return Language.GetTextValue(value ? "GameUI.Enabled" : "GameUI.Disabled");
+		return value ? "On" : "Off";
 	}
 }
 
@@ -83,13 +115,74 @@ internal sealed class AccessibleGeneralSettingsMenuState : AccessibleSettingsPag
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
+		entries.Add(Slider(
+			() => Language.GetTextValue("GameUI.GameZoom", Math.Round(Main.GameZoomTarget * 100f), Math.Round(Main.GameViewMatrix.Zoom.X * 100f)),
+			() => Main.GameZoomTarget,
+			value => Main.GameZoomTarget = value,
+			1f,
+			2f,
+			0.05f));
+		entries.Add(Slider(
+			() => Language.GetTextValue("GameUI.UIScale", Math.Round(Main.UIScale * 100f), Math.Round(Main.UIScale * 100f)),
+			() => Main.UIScale,
+			SetUiScale,
+			0.5f,
+			2f,
+			0.05f));
 		entries.Add(Toggle(() => Main.autoSave ? Lang.menu[67].Value : Lang.menu[68].Value, () => Main.autoSave = !Main.autoSave, adjustmentAnnouncement: () => OnOff(Main.autoSave)));
 		entries.Add(Toggle(() => Main.autoPause ? Lang.menu[69].Value : Lang.menu[70].Value, () => Main.autoPause = !Main.autoPause, adjustmentAnnouncement: () => OnOff(Main.autoPause)));
-		entries.Add(Toggle(() => Main.mapEnabled ? Lang.menu[112].Value : Lang.menu[113].Value, () => Main.mapEnabled = !Main.mapEnabled, adjustmentAnnouncement: () => OnOff(Main.mapEnabled)));
+		entries.Add(Toggle(
+			() => Main.ReversedUpDownArmorSetBonuses ? Lang.menu[220].Value : Lang.menu[221].Value,
+			() => Main.ReversedUpDownArmorSetBonuses = !Main.ReversedUpDownArmorSetBonuses,
+			adjustmentAnnouncement: () => OnOff(Main.ReversedUpDownArmorSetBonuses)));
+		entries.Add(new(
+			SmartDoorLabel,
+			DoorOpeningHelper.CyclePreferences,
+			previousValue: DoorOpeningHelper.CyclePreferences,
+			nextValue: DoorOpeningHelper.CyclePreferences,
+			role: "choice"));
+		entries.Add(new(
+			() => Player.Settings.HoverControl == Player.Settings.HoverControlMode.Hold
+				? Language.GetTextValue("UI.HoverControlSettingIsHold")
+				: Language.GetTextValue("UI.HoverControlSettingIsClick"),
+			Player.Settings.CycleHoverControl,
+			previousValue: Player.Settings.CycleHoverControl,
+			nextValue: Player.Settings.CycleHoverControl,
+			role: "choice"));
+		entries.Add(Toggle(
+			() => Language.GetTextValue(Main.SettingsEnabled_AutoReuseAllItems ? "UI.AutoReuseAllOn" : "UI.AutoReuseAllOff"),
+			() => Main.SettingsEnabled_AutoReuseAllItems = !Main.SettingsEnabled_AutoReuseAllItems,
+			adjustmentAnnouncement: () => OnOff(Main.SettingsEnabled_AutoReuseAllItems)));
 		entries.Add(Toggle(
 			() => Main.HidePassword ? Lang.menu[212].Value : Lang.menu[211].Value,
 			() => Main.HidePassword = !Main.HidePassword,
 			adjustmentAnnouncement: () => Main.HidePassword ? "Hidden" : "Visible"));
+	}
+
+	private static string SmartDoorLabel() => DoorOpeningHelper.PreferenceSettings switch
+	{
+		DoorOpeningHelper.DoorAutoOpeningPreference.EnabledForEverything => Language.GetTextValue("UI.SmartDoorsEnabled"),
+		DoorOpeningHelper.DoorAutoOpeningPreference.EnabledForGamepadOnly => Language.GetTextValue("UI.SmartDoorsGamepad"),
+		_ => Language.GetTextValue("UI.SmartDoorsDisabled"),
+	};
+
+	private static void SetUiScale(float value)
+	{
+		Main.UIScale = value;
+		Main.temporaryGUIScaleSlider = value;
+	}
+
+	private static AccessibleMenuEntry Slider(
+		Func<string> label,
+		Func<float> get,
+		Action<float> set,
+		float minimum,
+		float maximum,
+		float increment)
+	{
+		void Down() => set(Math.Clamp(get() - increment, minimum, maximum));
+		void Up() => set(Math.Clamp(get() + increment, minimum, maximum));
+		return new AccessibleMenuEntry(label, Up, Down, Up, role: "slider");
 	}
 }
 
@@ -114,19 +207,18 @@ internal sealed class AccessibleInterfaceSettingsMenuState : AccessibleSettingsP
 		entries.Add(Toggle(() => Main.MouseShowBuildingGrid ? Lang.menu[229].Value : Lang.menu[230].Value, () => Main.MouseShowBuildingGrid = !Main.MouseShowBuildingGrid, adjustmentAnnouncement: () => OnOff(Main.MouseShowBuildingGrid)));
 		entries.Add(Toggle(() => Main.GamepadDisableInstructionsDisplay ? Lang.menu[241].Value : Lang.menu[242].Value, () => Main.GamepadDisableInstructionsDisplay = !Main.GamepadDisableInstructionsDisplay, adjustmentAnnouncement: () => OnOff(!Main.GamepadDisableInstructionsDisplay)));
 		entries.Add(new(
-			() => Language.GetTextValue("UI.SelectMapBorder", Language.GetTextValue("UI.MinimapFrame_" + Main.MinimapFrameManagerInstance.ActiveSelectionKeyName)),
-			Main.MinimapFrameManagerInstance.CycleSelection,
-			previousValue: Main.MinimapFrameManagerInstance.CycleSelection,
-			nextValue: Main.MinimapFrameManagerInstance.CycleSelection,
-			role: "choice",
-			adjustmentAnnouncement: () => Language.GetTextValue("UI.MinimapFrame_" + Main.MinimapFrameManagerInstance.ActiveSelectionKeyName)));
-		entries.Add(new(
 			() => Language.GetTextValue("UI.SelectHealthStyle", Main.ResourceSetsManager.ActiveSet.DisplayedName),
 			Main.ResourceSetsManager.CycleResourceSet,
 			previousValue: Main.ResourceSetsManager.CycleResourceSet,
 			nextValue: Main.ResourceSetsManager.CycleResourceSet,
 			role: "choice",
 			adjustmentAnnouncement: () => Main.ResourceSetsManager.ActiveSet.DisplayedName));
+		entries.Add(new(
+			BossBarLabel,
+			ActivateBossBarChoice,
+			previousValue: ActivateBossBarChoice,
+			nextValue: ActivateBossBarChoice,
+			role: "choice"));
 		entries.Add(Toggle(
 			() => Language.GetTextValue(BigProgressBarSystem.ShowText ? "UI.ShowBossLifeTextOn" : "UI.ShowBossLifeTextOff"),
 			BigProgressBarSystem.ToggleShowText,
@@ -140,6 +232,37 @@ internal sealed class AccessibleInterfaceSettingsMenuState : AccessibleSettingsP
 	private static void CycleInvasionProgress() => Main.invasionProgressMode = (Main.invasionProgressMode + 1) % 3;
 
 	private static void CycleInvasionProgressBack() => Main.invasionProgressMode = (Main.invasionProgressMode + 2) % 3;
+
+	private static string BossBarLabel()
+	{
+		return TryGetBossBarMenu(out _, out string label) ? label : "Boss bar style";
+	}
+
+	private static void ActivateBossBarChoice()
+	{
+		if (TryGetBossBarMenu(out Action? onClick, out _))
+		{
+			onClick?.Invoke();
+		}
+	}
+
+	private static bool TryGetBossBarMenu(out Action? onClick, out string label)
+	{
+		System.Reflection.MethodInfo? method = typeof(BossBarLoader).GetMethod(
+			"InsertMenu",
+			System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+		if (method is null)
+		{
+			onClick = null;
+			label = string.Empty;
+			return false;
+		}
+		object?[] arguments = [null];
+		label = method.Invoke(null, arguments) as string ?? "Boss bar style";
+		onClick = arguments[0] as Action;
+		return true;
+	}
+
 }
 
 internal sealed class AccessibleVideoSettingsMenuState : AccessibleSettingsPageState
@@ -154,6 +277,20 @@ internal sealed class AccessibleVideoSettingsMenuState : AccessibleSettingsPageS
 			() => Main.graphics.IsFullScreen ? Lang.menu[49].Value : Lang.menu[50].Value,
 			Main.ToggleFullScreen,
 			adjustmentAnnouncement: () => OnOff(Main.graphics.IsFullScreen)));
+		entries.Add(new(
+			() => $"{Lang.menu[51].Value}: {Main.PendingResolutionWidth}x{Main.PendingResolutionHeight}",
+			() => CycleResolution(1),
+			previousValue: () => CycleResolution(-1),
+			nextValue: () => CycleResolution(1),
+			role: "choice",
+			adjustmentAnnouncement: () => $"{Main.PendingResolutionWidth} by {Main.PendingResolutionHeight}"));
+		entries.Add(new(
+			() => $"{Lang.menu[52].Value}: {Main.bgScroll} percent",
+			() => AdjustBackgroundScroll(5),
+			previousValue: () => AdjustBackgroundScroll(-5),
+			nextValue: () => AdjustBackgroundScroll(5),
+			role: "slider",
+			adjustmentAnnouncement: () => $"{Main.bgScroll} percent"));
 		entries.Add(new(
 			() => Lang.menu[247 + (int)Main.FrameSkipMode].Value,
 			Main.CycleFrameSkipMode,
@@ -212,6 +349,33 @@ internal sealed class AccessibleVideoSettingsMenuState : AccessibleSettingsPageS
 
 	private static void PreviousWaveQuality() => Main.WaveQuality = (Main.WaveQuality + 3) % 4;
 
+	private static void CycleResolution(int direction)
+	{
+		if (Main.numDisplayModes <= 0)
+		{
+			return;
+		}
+		int current = 0;
+		for (int index = 0; index < Main.numDisplayModes; index++)
+		{
+			if (Main.displayWidth[index] == Main.PendingResolutionWidth && Main.displayHeight[index] == Main.PendingResolutionHeight)
+			{
+				current = index;
+				break;
+			}
+		}
+		current = (current + direction + Main.numDisplayModes) % Main.numDisplayModes;
+		Main.PendingResolutionWidth = Main.displayWidth[current];
+		Main.PendingResolutionHeight = Main.displayHeight[current];
+		Main.SetResolution(Main.PendingResolutionWidth, Main.PendingResolutionHeight);
+	}
+
+	private static void AdjustBackgroundScroll(int amount)
+	{
+		Main.bgScroll = Math.Clamp(Main.bgScroll + amount, 0, 100);
+		Main.caveParallax = 1f - Main.bgScroll / 500f;
+	}
+
 	private static string WaveQualityName() => Main.WaveQuality switch
 	{
 		1 => Language.GetTextValue("GameUI.QualityLow"),
@@ -255,6 +419,19 @@ internal sealed class AccessibleCursorSettingsMenuState : AccessibleSettingsPage
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
+		entries.Add(ColorComponent("Cursor hue", () => Main.mouseColorSlider.GetHSLVector().X, value => SetCursorHsl(0, value), wrap: true));
+		entries.Add(ColorComponent("Cursor saturation", () => Main.mouseColorSlider.GetHSLVector().Y, value => SetCursorHsl(1, value)));
+		entries.Add(ColorComponent("Cursor lightness", () => Main.mouseColorSlider.GetHSLVector().Z, value => SetCursorHsl(2, value), minimum: 0.15f));
+		entries.Add(ColorComponent("Cursor border hue", () => Main.mouseBorderColorSlider.GetHSLVector().X, value => SetBorderHsl(0, value), wrap: true));
+		entries.Add(ColorComponent("Cursor border saturation", () => Main.mouseBorderColorSlider.GetHSLVector().Y, value => SetBorderHsl(1, value)));
+		entries.Add(ColorComponent("Cursor border lightness", () => Main.mouseBorderColorSlider.GetHSLVector().Z, value => SetBorderHsl(2, value)));
+		entries.Add(ColorComponent("Cursor border opacity", () => Main.mouseBorderColorSlider.Alpha, SetBorderAlpha));
+		entries.Add(new(
+			LockOnModeLabel,
+			LockOnHelper.CycleUseModes,
+			previousValue: LockOnHelper.CycleUseModes,
+			nextValue: LockOnHelper.CycleUseModes,
+			role: "choice"));
 		entries.Add(Toggle(
 			() => Main.cSmartCursorModeIsToggleAndNotHold ? Lang.menu[121].Value : Lang.menu[122].Value,
 			() => Main.cSmartCursorModeIsToggleAndNotHold = !Main.cSmartCursorModeIsToggleAndNotHold));
@@ -263,8 +440,73 @@ internal sealed class AccessibleCursorSettingsMenuState : AccessibleSettingsPage
 			() => Player.SmartCursorSettings.SmartAxeAfterPickaxe = !Player.SmartCursorSettings.SmartAxeAfterPickaxe));
 		entries.Add(Toggle(
 			() => Player.SmartCursorSettings.SmartBlocksEnabled ? Lang.menu[215].Value : Lang.menu[216].Value,
-			() => Player.SmartCursorSettings.SmartBlocksEnabled = !Player.SmartCursorSettings.SmartBlocksEnabled));
+			() => Player.SmartCursorSettings.SmartBlocksEnabled = !Player.SmartCursorSettings.SmartBlocksEnabled,
+			adjustmentAnnouncement: () => OnOff(Player.SmartCursorSettings.SmartBlocksEnabled)));
 	}
+
+	private static AccessibleMenuEntry ColorComponent(
+		string name,
+		Func<float> get,
+		Action<float> set,
+		bool wrap = false,
+		float minimum = 0f)
+	{
+		void Adjust(float amount)
+		{
+			float value = get() + amount;
+			if (wrap)
+			{
+				value = value < minimum ? 1f : value > 1f ? minimum : value;
+			}
+			else
+			{
+				value = Math.Clamp(value, minimum, 1f);
+			}
+			set(value);
+		}
+		return new AccessibleMenuEntry(
+			() => $"{name}: {Math.Round(get() * 100f)} percent",
+			() => Adjust(0.05f),
+			() => Adjust(-0.05f),
+			() => Adjust(0.05f),
+			role: "slider");
+	}
+
+	private static void SetCursorHsl(int component, float value)
+	{
+		Vector3 hsl = Main.mouseColorSlider.GetHSLVector();
+		SetComponent(ref hsl, component, value);
+		Main.mouseColorSlider.SetHSL(hsl);
+		Main.mouseColor = Main.mouseColorSlider.GetColor();
+	}
+
+	private static void SetBorderHsl(int component, float value)
+	{
+		Vector3 hsl = Main.mouseBorderColorSlider.GetHSLVector();
+		SetComponent(ref hsl, component, value);
+		Main.mouseBorderColorSlider.SetHSL(hsl);
+		Main.MouseBorderColor = Main.mouseBorderColorSlider.GetColor();
+	}
+
+	private static void SetBorderAlpha(float value)
+	{
+		Main.mouseBorderColorSlider.Alpha = value;
+		Main.MouseBorderColor = Main.mouseBorderColorSlider.GetColor();
+	}
+
+	private static void SetComponent(ref Vector3 vector, int component, float value)
+	{
+		if (component == 0) vector.X = value;
+		else if (component == 1) vector.Y = value;
+		else vector.Z = value;
+	}
+
+	private static string LockOnModeLabel() => LockOnHelper.UseMode switch
+	{
+		LockOnHelper.LockOnMode.FocusTarget => Lang.menu[232].Value,
+		LockOnHelper.LockOnMode.TargetClosest => Lang.menu[233].Value,
+		_ => Lang.menu[234].Value,
+	};
 }
 
 internal sealed class AccessibleControlsMenuState : AccessibleSettingsPageState
@@ -282,6 +524,16 @@ internal sealed class AccessibleControlsMenuState : AccessibleSettingsPageState
 
 internal sealed class AccessibleKeyBindingsMenuState : AccessibleSettingsPageState
 {
+	private static readonly HashSet<string> DisabledMapTriggers =
+	[
+		"MapZoomIn",
+		"MapZoomOut",
+		"MapAlphaUp",
+		"MapAlphaDown",
+		"MapFull",
+		"MapStyle",
+	];
+
 	private readonly InputMode _inputMode;
 
 	internal AccessibleKeyBindingsMenuState(AccessibleMenuController controller, InputMode inputMode) : base(controller)
@@ -294,7 +546,9 @@ internal sealed class AccessibleKeyBindingsMenuState : AccessibleSettingsPageSta
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
 		KeyConfiguration configuration = PlayerInput.CurrentProfile.InputModes[_inputMode];
-		foreach (string trigger in configuration.KeyStatus.Keys.OrderBy(key => key, StringComparer.CurrentCultureIgnoreCase))
+		foreach (string trigger in configuration.KeyStatus.Keys
+			.Where(key => !DisabledMapTriggers.Contains(key))
+			.OrderBy(key => key, StringComparer.CurrentCultureIgnoreCase))
 		{
 			string capturedTrigger = trigger;
 			entries.Add(new(

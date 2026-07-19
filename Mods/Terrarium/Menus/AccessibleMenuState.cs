@@ -42,6 +42,8 @@ internal abstract class AccessibleMenuState : UIState
 
 	protected abstract void BuildEntries(List<AccessibleMenuEntry> entries);
 
+	protected virtual bool ActivationAdjustsValue(AccessibleMenuEntry entry) => false;
+
 	public override void OnInitialize()
 	{
 		UIPanel panel = new()
@@ -315,12 +317,27 @@ internal abstract class AccessibleMenuState : UIState
 			return;
 		}
 
-		SoundEngine.PlaySound(SoundID.MenuOpen);
-		entry.Activate();
-		if (Main.MenuUI.CurrentState == this)
+		if (ActivationAdjustsValue(entry))
 		{
-			RebuildEntries(announceSelection: true);
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			entry.Activate();
+			string announcement = DescribeAdjustment(entry);
+			RebuildEntries();
+			if (!string.IsNullOrWhiteSpace(announcement))
+			{
+				TerrariumMod.ScreenReader.Output(announcement);
+			}
+			return;
 		}
+
+		entry.Activate();
+		if (Controller.IsShowing(this))
+		{
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			RebuildEntries(announceSelection: true);
+			return;
+		}
+		SoundEngine.PlaySound(SoundID.MenuOpen);
 	}
 
 	private void AdjustSelection(bool forward)

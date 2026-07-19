@@ -9,7 +9,22 @@ namespace Terrarium.Menus;
 internal sealed class AccessibleMenuController
 {
 	private readonly Stack<UIState> _history = [];
+	private readonly bool _inGame;
 	private AccessibleMainMenuState? _root;
+	private UIState? _currentState;
+
+	internal AccessibleMenuController(bool inGame = false)
+	{
+		_inGame = inGame;
+	}
+
+	internal bool IsInGame => _inGame;
+	internal bool IsActive => _currentState is not null && IsShowing(_currentState);
+
+	internal bool IsShowing(UIState state)
+	{
+		return (_inGame ? Main.InGameUI.CurrentState : Main.MenuUI.CurrentState) == state;
+	}
 
 	internal AccessibleMainMenuState Root => _root ??= new AccessibleMainMenuState(this);
 
@@ -19,9 +34,16 @@ internal sealed class AccessibleMenuController
 		ShowState(Root);
 	}
 
+	internal void ShowRoot(UIState state)
+	{
+		_history.Clear();
+		ShowState(state);
+	}
+
 	internal void Navigate(UIState state)
 	{
-		if (Main.MenuUI.CurrentState is UIState current && current != state)
+		UIState? current = _inGame ? Main.InGameUI.CurrentState : Main.MenuUI.CurrentState;
+		if (current is not null && current != state)
 		{
 			_history.Push(current);
 		}
@@ -38,6 +60,22 @@ internal sealed class AccessibleMenuController
 		if (_history.TryPop(out UIState? previous))
 		{
 			ShowState(previous);
+			return;
+		}
+
+		if (_inGame)
+		{
+			Close();
+		}
+	}
+
+	internal void Close()
+	{
+		_history.Clear();
+		_currentState = null;
+		if (_inGame)
+		{
+			IngameFancyUI.Close();
 		}
 	}
 
@@ -62,8 +100,15 @@ internal sealed class AccessibleMenuController
 		}
 	}
 
-	private static void ShowState(UIState state)
+	private void ShowState(UIState state)
 	{
+		_currentState = state;
+		if (_inGame)
+		{
+			IngameFancyUI.OpenUIState(state);
+			return;
+		}
+
 		Main.menuMode = 888;
 		Main.MenuUI.SetState(state);
 	}

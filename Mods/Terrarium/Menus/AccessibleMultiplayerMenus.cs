@@ -239,7 +239,7 @@ internal sealed class AccessibleHostConfigurationMenuState : AccessibleMenuState
 
 	private static string ToggleState(bool enabled)
 	{
-		return Language.GetTextValue(enabled ? "GameUI.Enabled" : "GameUI.Disabled");
+		return enabled ? "On" : "Off";
 	}
 
 	private void EditPassword()

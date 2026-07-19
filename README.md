@@ -11,8 +11,9 @@ Current custom screens include:
 - Character and world selection, creation, appearance, inline file actions, and deletion confirmation.
 - Join via IP, recent servers, host options, password entry, and live connection status.
 - Achievement search, completion filters, details, progress, and reset confirmation.
-- General, interface, video, audio, cursor, language, tModLoader, and keyboard-binding settings.
+- General, interface, video, audio, cursor, language, tModLoader, and keyboard-binding settings, both from the title screen and while playing.
 - Installed mods, Mod Sources, Mod Packs, subscribed-world import, resource packs, and logs.
+- In-game inventory categories covering the hotbar, backpack, coins and ammo, trash, armor, accessories, vanity, dyes, equipment, loadouts, buffs, information displays, builder toggles, multiplayer team and PVP controls, containers, shops, crafting, Guide recipes, reforging, and NPC conversations. Modded accessory slots and modded NPC chat buttons are included when tModLoader exposes them.
 
 Platform-owned actions such as the Steam friends list, Steam Workshop web page, File Explorer folders, and entering gameplay intentionally leave the custom menu stack.
 
@@ -24,6 +25,14 @@ Platform-owned actions such as the Steam friends list, Steam Workshop web page, 
 - F1 opens an arrow-navigable contextual help screen describing the focused option and the controls available in the current menu. F1 or Escape closes help.
 - Text fields speak edits and accept Enter or cancel with Escape.
 - Focus is spoken as a semantic label, role, state, description, and position in the menu.
+
+While the inventory is open:
+
+- Tab and Shift+Tab move forward and backward through semantic categories.
+- Arrow keys move within the category; Home and End jump to its first and last entry, and Page Up and Page Down move by a page.
+- Enter performs the normal primary click. Shift+Enter performs the secondary click used for splitting stacks and other alternate actions.
+- F toggles favorite on supported inventory items, R reads full details and tooltips, and F1 reads the inventory controls.
+- Terraria's normal inventory key closes the inventory. The Inventory Actions category also exposes settings, sorting, and close.
 
 Speech and braille output use [Prism](https://github.com/ethindp/prism), with active screen readers such as NVDA preferred over built-in speech fallbacks. Terrarium currently packages Prism for 64-bit Windows clients; servers and unsupported platforms skip speech initialization safely.
 

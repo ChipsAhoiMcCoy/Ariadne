@@ -310,7 +310,7 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 
 	private static string OnOff(bool value)
 	{
-		return Language.GetTextValue(value ? "GameUI.Enabled" : "GameUI.Disabled");
+		return value ? "On" : "Off";
 	}
 
 	private static string TestModeName(TerrariumTestMode mode)
