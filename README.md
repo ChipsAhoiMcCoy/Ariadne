@@ -20,6 +20,7 @@ Platform-owned actions such as the Steam friends list, Steam Workshop web page, 
 - Up and Down Arrow move through the options and wrap at either end.
 - Home, End, Page Up, and Page Down move through long lists.
 - Left and Right Arrow adjust choices, toggles, and sliders. On a character or world row they rotate through that file's Play, Favorite, Cloud, Seed, Rename, Delete, and contextual warning actions.
+- In in-game hierarchical menus, Right or Enter opens submenus and activates buttons, while Left or Escape returns to the parent. When an adjustable setting is focused, Left and Right continue to change its value.
 - Enter activates the focused option.
 - Escape goes back in submenus. It has no effect at the root main menu because there is no previous screen.
 - F1 opens an arrow-navigable contextual help screen describing the focused option and the controls available in the current menu. F1 or Escape closes help.
@@ -28,11 +29,11 @@ Platform-owned actions such as the Steam friends list, Steam Workshop web page, 
 
 While the inventory is open:
 
-- Tab and Shift+Tab move forward and backward through semantic categories.
-- Arrow keys move within the category; Home and End jump to its first and last entry, and Page Up and Page Down move by a page.
+- The inventory opens at level 0, a vertical list of semantic categories beginning with Hotbar. Up and Down move through the categories, and Right or Enter opens the focused category.
+- Each category is a level 1 vertical menu. Up and Down move through its entries, Left returns to level 0, Home and End jump to the first and last option at either level, and Page Up and Page Down move by ten options. Up and Down wrap in both levels.
 - Enter performs the normal primary click. Shift+Enter performs the secondary click used for splitting stacks and other alternate actions.
 - F toggles favorite on supported inventory items, R reads full details and tooltips, and F1 reads the inventory controls.
-- Terraria's normal inventory key closes the inventory. The Inventory Actions category also exposes settings, sorting, and close.
+- Terraria's normal inventory key closes the inventory. The Inventory Actions category also exposes the hierarchical in-game settings, sorting, and close.
 
 Speech and braille output use [Prism](https://github.com/ethindp/prism), with active screen readers such as NVDA preferred over built-in speech fallbacks. Terrarium currently packages Prism for 64-bit Windows clients; servers and unsupported platforms skip speech initialization safely.
 

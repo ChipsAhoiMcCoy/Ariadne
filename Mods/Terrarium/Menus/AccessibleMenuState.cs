@@ -40,6 +40,8 @@ internal abstract class AccessibleMenuState : UIState
 
 	protected virtual bool CanGoBack => true;
 
+	protected virtual bool UsesHierarchicalNavigation => Controller.IsInGame;
+
 	protected abstract void BuildEntries(List<AccessibleMenuEntry> entries);
 
 	protected virtual bool ActivationAdjustsValue(AccessibleMenuEntry entry) => false;
@@ -93,7 +95,9 @@ internal abstract class AccessibleMenuState : UIState
 
 		UIText help = new(
 			CanGoBack
-				? "Up/Down: move    Left/Right: change    Enter: select    Escape: back    F1: help"
+				? UsesHierarchicalNavigation
+					? "Up/Down: move    Right/Enter: open or change    Left/Escape: back    F1: help"
+					: "Up/Down: move    Left/Right: change    Enter: select    Escape: back    F1: help"
 				: "Up/Down: move    Left/Right: change    Enter: select    F1: help",
 			0.68f)
 		{
@@ -113,12 +117,12 @@ internal abstract class AccessibleMenuState : UIState
 		string availability = TerrariumMod.ScreenReader.IsAvailable
 			? string.Empty
 			: " Speech output is unavailable; see the tModLoader client log.";
-		TerrariumMod.ScreenReader.Output(
-			$"{Title}. {DescribeSelection()} " +
-			"Use Up and Down Arrow keys to move, Left and Right Arrow keys to change values, Enter to select" +
-			(CanGoBack ? ", Escape to go back" : string.Empty) +
-			", and F1 for contextual help." +
-			availability);
+		string controls = UsesHierarchicalNavigation
+			? "Use Up and Down Arrow keys to move, Right Arrow or Enter to open submenus and activate options, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Escape to go back, and F1 for contextual help."
+			: "Use Up and Down Arrow keys to move, Left and Right Arrow keys to change values, Enter to select" +
+				(CanGoBack ? ", Escape to go back" : string.Empty) +
+				", and F1 for contextual help.";
+		TerrariumMod.ScreenReader.Output($"{Title}. {DescribeSelection()} {controls}{availability}");
 	}
 
 	public override void Update(GameTime gameTime)
@@ -172,11 +176,25 @@ internal abstract class AccessibleMenuState : UIState
 		}
 		else if (NavigationTriggered(keyboard, Keys.Left, gameTime))
 		{
-			AdjustSelection(forward: false);
+			if (UsesHierarchicalNavigation && !_entries[_selectedIndex].IsAdjustable && CanGoBack)
+			{
+				GoBack();
+			}
+			else
+			{
+				AdjustSelection(forward: false);
+			}
 		}
 		else if (NavigationTriggered(keyboard, Keys.Right, gameTime))
 		{
-			AdjustSelection(forward: true);
+			if (UsesHierarchicalNavigation && !_entries[_selectedIndex].IsAdjustable)
+			{
+				ActivateSelection();
+			}
+			else
+			{
+				AdjustSelection(forward: true);
+			}
 		}
 		else if (Pressed(keyboard, Keys.Enter))
 		{
@@ -231,6 +249,14 @@ internal abstract class AccessibleMenuState : UIState
 			if (_entries.Exists(entry => entry.IsAdjustable))
 			{
 				topics.Add(new("Left and Right Arrow keys", "Change the value or current action of an adjustable option. Values and actions wrap when appropriate. Hold an arrow key past the initial pause to change repeatedly."));
+			}
+			if (UsesHierarchicalNavigation)
+			{
+				topics.Add(new("Right Arrow", "Open or activate a focused submenu, button, or other non-adjustable option."));
+				if (CanGoBack)
+				{
+					topics.Add(new("Left Arrow", "Return to the previous menu when the focused option is not adjustable."));
+				}
 			}
 			topics.Add(new("Enter", "Activate the focused option or its currently selected action."));
 		}

@@ -30,23 +30,25 @@ internal sealed class AccessibleSettingsMenuState : AccessibleSettingsPageState
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
-		entries.Add(new(() => Lang.menu[114].Value, () => Controller.Navigate(new AccessibleGeneralSettingsMenuState(Controller))));
-		entries.Add(new(() => Lang.menu[210].Value, () => Controller.Navigate(new AccessibleInterfaceSettingsMenuState(Controller))));
-		entries.Add(new(() => Lang.menu[63].Value, () => Controller.Navigate(new AccessibleVideoSettingsMenuState(Controller))));
-		entries.Add(new(() => Lang.menu[65].Value, () => Controller.Navigate(new AccessibleAudioSettingsMenuState(Controller))));
-		entries.Add(new(() => Lang.menu[218].Value, () => Controller.Navigate(new AccessibleCursorSettingsMenuState(Controller))));
-		entries.Add(new(() => Lang.menu[219].Value, () => Controller.Navigate(new AccessibleControlsMenuState(Controller))));
-		entries.Add(new(() => Lang.menu[103].Value, () => Controller.Navigate(new AccessibleLanguageMenuState(Controller))));
-		entries.Add(new(() => Language.GetTextValue("tModLoader.tModLoaderSettings"), () => Controller.Navigate(new AccessibleTmlSettingsMenuState(Controller))));
+		entries.Add(new(() => Lang.menu[114].Value, () => Controller.Navigate(new AccessibleGeneralSettingsMenuState(Controller)), role: "submenu"));
+		entries.Add(new(() => Lang.menu[210].Value, () => Controller.Navigate(new AccessibleInterfaceSettingsMenuState(Controller)), role: "submenu"));
+		entries.Add(new(() => Lang.menu[63].Value, () => Controller.Navigate(new AccessibleVideoSettingsMenuState(Controller)), role: "submenu"));
+		entries.Add(new(() => Lang.menu[65].Value, () => Controller.Navigate(new AccessibleAudioSettingsMenuState(Controller)), role: "submenu"));
+		entries.Add(new(() => Lang.menu[218].Value, () => Controller.Navigate(new AccessibleCursorSettingsMenuState(Controller)), role: "submenu"));
+		entries.Add(new(() => Lang.menu[219].Value, () => Controller.Navigate(new AccessibleControlsMenuState(Controller)), role: "submenu"));
+		entries.Add(new(() => Lang.menu[103].Value, () => Controller.Navigate(new AccessibleLanguageMenuState(Controller)), role: "submenu"));
+		entries.Add(new(() => Language.GetTextValue("tModLoader.tModLoaderSettings"), () => Controller.Navigate(new AccessibleTmlSettingsMenuState(Controller)), role: "submenu"));
 
 		if (Controller.IsInGame)
 		{
 			entries.Add(new(
 				() => Language.GetTextValue("tModLoader.ModConfiguration"),
-				() => Controller.Navigate(new AccessibleModConfigListMenuState(Controller))));
+				() => Controller.Navigate(new AccessibleModConfigListMenuState(Controller)),
+				role: "submenu"));
 			entries.Add(new(
 				() => Lang.menu[131].Value,
-				() => Controller.Navigate(new AccessibleAchievementsMenuState(Controller))));
+				() => Controller.Navigate(new AccessibleAchievementsMenuState(Controller)),
+				role: "submenu"));
 			entries.Add(new(
 				() => Lang.menu[118].Value,
 				Controller.Close,
@@ -517,8 +519,8 @@ internal sealed class AccessibleControlsMenuState : AccessibleSettingsPageState
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
-		entries.Add(new(() => "Gameplay keyboard bindings", () => Controller.Navigate(new AccessibleKeyBindingsMenuState(Controller, InputMode.Keyboard))));
-		entries.Add(new(() => "Menu keyboard bindings", () => Controller.Navigate(new AccessibleKeyBindingsMenuState(Controller, InputMode.KeyboardUI))));
+		entries.Add(new(() => "Gameplay keyboard bindings", () => Controller.Navigate(new AccessibleKeyBindingsMenuState(Controller, InputMode.Keyboard)), role: "submenu"));
+		entries.Add(new(() => "Menu keyboard bindings", () => Controller.Navigate(new AccessibleKeyBindingsMenuState(Controller, InputMode.KeyboardUI)), role: "submenu"));
 	}
 }
 
