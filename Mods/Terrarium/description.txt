@@ -1,0 +1,1 @@
+Accessibility support for blind and low-vision Terraria players.

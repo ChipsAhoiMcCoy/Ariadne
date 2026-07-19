@@ -1,0 +1,22 @@
+# Local decompiled game references. Never commit or publish these trees.
+/Terraria Decompiled/
+/TModLoader Decompiled/
+
+# tModLoader and .NET build output
+**/bin/
+**/obj/
+*.tmod
+/tModLoader_dist/
+
+# IDE and user-specific files
+/.vs/
+/.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Logs and local scratch material
+*.log
+*.tmp
+/.codex-local/
