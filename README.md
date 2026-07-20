@@ -12,13 +12,18 @@ Current custom screens include:
 - Join via IP, recent servers, host options, password entry, and live connection status.
 - Achievement search, completion filters, details, progress, and reset confirmation.
 - General, interface, video, audio, cursor, language, tModLoader, and keyboard-binding settings, both from the title screen and while playing.
-- Installed mods, Mod Sources, Mod Packs, subscribed-world import, resource packs, and logs.
-- A multi-level in-game inventory tree covering the hotbar, backpack, coins and ammo, trash, armor, accessories, vanity, dyes, equipment, loadouts, containers, shops, crafting, Guide recipes, reforging, and NPC conversations. Modded accessory slots and modded NPC chat buttons are included when tModLoader exposes them.
+- Installed mods, Mod Sources, Mod Packs, the Mod Browser, Workshop publishing and import tools, resource packs, and logs.
+- A multi-level in-game inventory tree covering the hotbar, backpack, coins and ammo, trash, armor, accessories, vanity, dyes, equipment, loadouts, containers, shops, crafting, Guide recipes, reforging, and NPC conversations. It exposes all vanilla NPC services, tModLoader chat-button hooks, modded shops, modded accessory slots, signs, chest naming, Stylist and Dresser customization, NPC housing selection, Journey research and duplication, the Bestiary, emotes, and Journey powers.
+- A semantic world map listing the current biome and coordinates, world spawn, the last death marker, active players, bosses, town NPCs, and discovered pylons. Pylon entries request normal Terraria travel without requiring mouse targeting.
+- Spoken legacy chat editing and death/respawn status, including edit feedback, dropped coins, and the visible respawn countdown.
+
+Any Terraria, tModLoader, or third-party `UIState` without a purpose-built Terrarium screen receives a universal semantic keyboard adapter. It discovers live buttons, list entries, item slots, text fields, toggles, and sliders; derives their labels from localized UI content; keeps the selected row in view; and announces changing progress or error text. This supplies baseline access to newly added screens without waiting for a dedicated implementation. See [the screen coverage matrix](docs/accessibility-screen-coverage.md) for the routing model and known spatial boundaries.
 
 Platform-owned actions such as the Steam friends list, Steam Workshop web page, File Explorer folders, and entering gameplay intentionally leave the custom menu stack.
 
 - Up and Down Arrow move through the options and wrap at either end.
 - Home, End, Page Up, and Page Down move through long lists.
+- Letter keys jump to the next matching option by name in custom and fallback screens.
 - Left and Right Arrow adjust choices, toggles, and sliders. On a character or world row they rotate through that file's Play, Favorite, Cloud, Seed, Rename, Delete, and contextual warning actions.
 - In in-game hierarchical menus, Right or Enter opens submenus and activates buttons, while Left or Escape returns to the parent. When an adjustable setting is focused, Left and Right continue to change its value.
 - Enter activates the focused option.
@@ -26,6 +31,7 @@ Platform-owned actions such as the Steam friends list, Steam Workshop web page, 
 - F1 opens an arrow-navigable contextual help screen describing the focused option and the controls available in the current menu. F1 or Escape closes help.
 - Text fields speak edits and accept Enter or cancel with Escape.
 - Focus is spoken as a semantic label, role, state, description, and position in the menu.
+- Stock fallback screens use Enter for a normal click, Shift+Enter for a right click or alternate action, and Ctrl+R to read all discovered text for the focused control.
 
 While the inventory is open:
 

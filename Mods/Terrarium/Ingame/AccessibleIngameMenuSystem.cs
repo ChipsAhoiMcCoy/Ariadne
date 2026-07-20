@@ -16,18 +16,42 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 
 	public override void Load()
 	{
-		DisableMap();
 		_menuController = new AccessibleMenuController(inGame: true);
 		_inventoryController = new AccessibleInventoryController(_menuController);
 	}
 
 	public override void PostUpdateInput()
 	{
-		DisableMap();
 		if (Main.gameMenu || _menuController is null || _inventoryController is null)
 		{
 			_inventoryController?.Deactivate();
 			_openingSettings = false;
+			return;
+		}
+
+		if (!_menuController.IsActive && ShouldOpenAccessibleMap())
+		{
+			PlayerInput.Triggers.Current.MapFull = false;
+			PlayerInput.Triggers.JustPressed.MapFull = false;
+			Main.mapFullscreen = false;
+			_inventoryController.Deactivate();
+			_menuController.ShowRoot(new AccessibleMapMenuState(_menuController));
+			return;
+		}
+
+		if (Main.hairWindow)
+		{
+			Main.CancelHairWindow();
+			_inventoryController.Deactivate();
+			_menuController.ShowRoot(new AccessibleStylistMenuState(_menuController, Main.LocalPlayer));
+			return;
+		}
+
+		if (Main.clothesWindow)
+		{
+			Main.CancelClothesWindow(quiet: true);
+			_inventoryController.Deactivate();
+			_menuController.ShowRoot(new AccessibleDresserMenuState(_menuController, Main.LocalPlayer));
 			return;
 		}
 
@@ -60,9 +84,22 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 		_openingSettings = false;
 	}
 
-	private static void DisableMap()
+	private static bool ShouldOpenAccessibleMap()
 	{
-		Main.mapEnabled = false;
-		Main.mapFullscreen = false;
+		if (Main.mapFullscreen)
+		{
+			return true;
+		}
+
+		return PlayerInput.Triggers.JustPressed.MapFull &&
+			!Main.LocalPlayer.dead &&
+			!Main.drawingPlayerChat &&
+			!Main.editSign &&
+			!Main.editChest &&
+			!Main.ingameOptionsWindow &&
+			!Main.inFancyUI &&
+			Main.InGameUI.CurrentState is null &&
+			!(Main.CreativeMenu.Enabled && !Main.CreativeMenu.Blocked) &&
+			!PlayerInput.WritingText;
 	}
 }

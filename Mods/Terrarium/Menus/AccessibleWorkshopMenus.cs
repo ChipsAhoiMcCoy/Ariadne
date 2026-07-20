@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Text.Json;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameContent.UI.States;
 using Terraria.Initializers;
 using Terraria.IO;
 using Terraria.Localization;
@@ -38,6 +39,10 @@ internal sealed class AccessibleWorkshopMenuState : AccessibleMenuState
 			description: () => Language.GetTextValue("tModLoader.MenuDevelopModsDescription")));
 		entries.Add(new(
 			() => Language.GetTextValue("tModLoader.MenuDownloadMods"),
+			OpenModBrowser,
+			description: () => "Opens tModLoader's in-game Mod Browser through Terrarium's universal semantic interface."));
+		entries.Add(new(
+			() => "Steam Workshop website",
 			OpenModWorkshop,
 			description: () => "Opens the tModLoader Steam Workshop in the platform web browser."));
 		entries.Add(new(
@@ -57,6 +62,10 @@ internal sealed class AccessibleWorkshopMenuState : AccessibleMenuState
 			() => Language.GetTextValue("Workshop.ReportLogsButton"),
 			OpenLogsFolder,
 			description: () => "Opens the tModLoader log directory."));
+		entries.Add(new(
+			() => "All Workshop and publishing tools",
+			OpenFullWorkshopHub,
+			description: () => "Opens Terraria's complete Workshop hub through Terrarium's universal semantic interface, including world and resource-pack publishing screens."));
 	}
 
 	private static void OpenModWorkshop()
@@ -64,9 +73,20 @@ internal sealed class AccessibleWorkshopMenuState : AccessibleMenuState
 		Utils.OpenToURL("https://steamcommunity.com/app/1281930/workshop/");
 	}
 
+	private static void OpenModBrowser()
+	{
+		Main.menuMode = 10007;
+	}
+
 	private static void OpenLogsFolder()
 	{
 		Utils.OpenFolder(Logging.LogDir);
+	}
+
+	private void OpenFullWorkshopHub()
+	{
+		Main.menuMode = 888;
+		Main.MenuUI.SetState(new UIWorkshopHub(this));
 	}
 }
 

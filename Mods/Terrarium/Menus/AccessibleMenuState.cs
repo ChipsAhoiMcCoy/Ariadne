@@ -9,6 +9,7 @@ using Terraria.Audio;
 using Terraria.GameContent.UI.Elements;
 using Terraria.ID;
 using Terraria.UI;
+using Terrarium.Accessibility;
 
 namespace Terrarium.Menus;
 
@@ -42,11 +43,25 @@ internal abstract class AccessibleMenuState : UIState
 
 	protected virtual bool UsesHierarchicalNavigation => Controller.IsInGame;
 
+	protected virtual bool RightArrowActivatesSelection => UsesHierarchicalNavigation;
+
 	protected virtual bool AnnouncesSubmenuRole => true;
+
+	protected virtual bool KeepsInventoryOpen => false;
+
+	protected virtual int? HierarchyLevel => null;
+
+	protected virtual string AdditionalControlHint => string.Empty;
+
+	protected virtual string AdditionalNavigationInstructions => string.Empty;
+
+	protected int SelectedIndex => _selectedIndex;
 
 	protected abstract void BuildEntries(List<AccessibleMenuEntry> entries);
 
 	protected virtual bool ActivationAdjustsValue(AccessibleMenuEntry entry) => false;
+
+	protected virtual bool PlaysActivationTick(AccessibleMenuEntry entry) => true;
 
 	public override void OnInitialize()
 	{
@@ -95,12 +110,16 @@ internal abstract class AccessibleMenuState : UIState
 		_descriptionLabel.Height.Set(46f, 0f);
 		panel.Append(_descriptionLabel);
 
-		UIText help = new(
+		string controlHint =
 			CanGoBack
 				? UsesHierarchicalNavigation
-					? "Up/Down: move    Right/Enter: open or change    Left/Escape: back    F1: help"
-					: "Up/Down: move    Left/Right: change    Enter: select    Escape: back    F1: help"
-				: "Up/Down: move    Left/Right: change    Enter: select    F1: help",
+					? RightArrowActivatesSelection
+						? "Up/Down: move    Letters: jump    Right/Enter: open or change    Left/Escape: back    F1: help"
+						: "Up/Down: move    Letters: jump    Enter: activate    Left/Escape: back    F1: help"
+					: "Up/Down: move    Letters: jump    Left/Right: change    Enter: select    Escape: back    F1: help"
+				: "Up/Down: move    Letters: jump    Left/Right: change    Enter: select    F1: help";
+		UIText help = new(
+			controlHint + AdditionalControlHint,
 			0.68f)
 		{
 			HAlign = 0.5f,
@@ -112,6 +131,12 @@ internal abstract class AccessibleMenuState : UIState
 
 	public override void OnActivate()
 	{
+		if (KeepsInventoryOpen)
+		{
+			// Full-screen inventory-backed menus must restore this after
+			// IngameFancyUI.OpenUIState closes the vanilla inventory.
+			Main.playerInventory = true;
+		}
 		_previousKeyboard = Keyboard.GetState();
 		_repeatingNavigationKey = null;
 		RebuildEntries();
@@ -120,11 +145,14 @@ internal abstract class AccessibleMenuState : UIState
 			? string.Empty
 			: " Speech output is unavailable; see the tModLoader client log.";
 		string controls = UsesHierarchicalNavigation
-			? "Use Up and Down Arrow keys to move, Right Arrow or Enter to open groups and activate options, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Escape to go back, and F1 for contextual help."
-			: "Use Up and Down Arrow keys to move, Left and Right Arrow keys to change values, Enter to select" +
+			? RightArrowActivatesSelection
+				? "Use Up and Down Arrow keys to move, letter keys to jump by name, Right Arrow or Enter to open groups and activate options, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Escape to go back, and F1 for contextual help."
+				: "Use Up and Down Arrow keys to move, letter keys to jump by name, Enter to activate options, Left Arrow or Escape to go back, and F1 for contextual help."
+			: "Use Up and Down Arrow keys to move, letter keys to jump by name, Left and Right Arrow keys to change values, Enter to select" +
 				(CanGoBack ? ", Escape to go back" : string.Empty) +
 				", and F1 for contextual help.";
-		TerrariumMod.ScreenReader.Output($"{Title}. {DescribeSelection()} {controls}{availability}");
+		string hierarchy = HierarchyLevel is int level ? $"Level {level}. " : string.Empty;
+		TerrariumMod.ScreenReader.Output($"{hierarchy}{Title}. {DescribeSelection()} {controls}{AdditionalNavigationInstructions}{availability}");
 	}
 
 	public override void Update(GameTime gameTime)
@@ -142,9 +170,16 @@ internal abstract class AccessibleMenuState : UIState
 			_previousKeyboard = keyboard;
 			return;
 		}
+		if (HandleAdditionalInput(keyboard, gameTime))
+		{
+			_previousKeyboard = keyboard;
+			return;
+		}
 		if (_entries.Count == 0)
 		{
-			if (CanGoBack && Pressed(keyboard, Keys.Escape))
+			if (CanGoBack &&
+				(Pressed(keyboard, Keys.Escape) ||
+					UsesHierarchicalNavigation && Pressed(keyboard, Keys.Left)))
 			{
 				GoBack();
 			}
@@ -189,7 +224,7 @@ internal abstract class AccessibleMenuState : UIState
 		}
 		else if (NavigationTriggered(keyboard, Keys.Right, gameTime))
 		{
-			if (UsesHierarchicalNavigation && !_entries[_selectedIndex].IsAdjustable)
+			if (RightArrowActivatesSelection && !_entries[_selectedIndex].IsAdjustable)
 			{
 				ActivateSelection();
 			}
@@ -201,6 +236,11 @@ internal abstract class AccessibleMenuState : UIState
 		else if (Pressed(keyboard, Keys.Enter))
 		{
 			ActivateSelection();
+			Main.chatRelease = false;
+		}
+		else if (FirstLetterNavigator.TryGetPressedLetter(keyboard, _previousKeyboard, out _, out char letter))
+		{
+			NavigateByFirstLetter(letter);
 		}
 		else if (CanGoBack && Pressed(keyboard, Keys.Escape))
 		{
@@ -227,6 +267,14 @@ internal abstract class AccessibleMenuState : UIState
 		TerrariumMod.ScreenReader.Output(text);
 	}
 
+	protected virtual bool HandleAdditionalInput(KeyboardState keyboard, GameTime gameTime) => false;
+
+	protected void SetSelectionWithoutAnnouncement(int index)
+	{
+		_selectedIndex = Math.Clamp(index, 0, Math.Max(0, _entries.Count - 1));
+		RefreshLabels();
+	}
+
 	protected virtual void GoBack()
 	{
 		SoundEngine.PlaySound(SoundID.MenuClose);
@@ -244,6 +292,7 @@ internal abstract class AccessibleMenuState : UIState
 			topics.Add(new("Focused option", DescribeSelection()));
 			topics.Add(new("Up and Down Arrow keys", "Move between options. Movement wraps from the first option to the last and from the last option to the first. Hold an arrow key past the initial pause to move repeatedly."));
 			topics.Add(new("Home and End", "Move directly to the first or last option."));
+			topics.Add(new("Letter keys", "Jump to options by name. Press the same letter repeatedly to cycle through matching options."));
 			if (_entries.Count > VisibleEntryCount)
 			{
 				topics.Add(new("Page Up and Page Down", $"Move through up to {VisibleEntryCount} options at a time."));
@@ -254,7 +303,10 @@ internal abstract class AccessibleMenuState : UIState
 			}
 			if (UsesHierarchicalNavigation)
 			{
-				topics.Add(new("Right Arrow", "Open or activate a focused group, button, or other non-adjustable option."));
+				if (RightArrowActivatesSelection)
+				{
+					topics.Add(new("Right Arrow", "Open or activate a focused group, button, or other non-adjustable option."));
+				}
 				if (CanGoBack)
 				{
 					topics.Add(new("Left Arrow", "Return to the previous menu when the focused option is not adjustable."));
@@ -266,13 +318,18 @@ internal abstract class AccessibleMenuState : UIState
 		{
 			topics.Add(new("Escape", "Return to the previous menu without activating an option."));
 		}
+		AddContextHelpTopics(topics);
 		topics.Add(new("F1", "Open this contextual help screen. Press F1 or Escape while reading help to return."));
 
 		SoundEngine.PlaySound(SoundID.MenuOpen);
-		Controller.Navigate(new AccessibleContextHelpMenuState(Controller, Title, topics));
+		Controller.Navigate(new AccessibleContextHelpMenuState(Controller, Title, topics, KeepsInventoryOpen));
 	}
 
-	private bool Pressed(KeyboardState keyboard, Keys key)
+	protected virtual void AddContextHelpTopics(List<AccessibleHelpTopic> topics)
+	{
+	}
+
+	protected bool Pressed(KeyboardState keyboard, Keys key)
 	{
 		return keyboard.IsKeyDown(key) && _previousKeyboard.IsKeyUp(key);
 	}
@@ -316,6 +373,23 @@ internal abstract class AccessibleMenuState : UIState
 		SelectionChanged();
 	}
 
+	private void NavigateByFirstLetter(char letter)
+	{
+		int index = FirstLetterNavigator.FindNextIndex(_entries, _selectedIndex, letter, entry => entry.Label());
+		if (index < 0)
+		{
+			TerrariumMod.ScreenReader.Output($"No option starting with {char.ToUpperInvariant(letter)}.");
+			return;
+		}
+		if (index == _selectedIndex)
+		{
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			TerrariumMod.ScreenReader.Output(DescribeSelection());
+			return;
+		}
+		SetSelection(index);
+	}
+
 	private void SelectionChanged()
 	{
 		RefreshLabels();
@@ -347,7 +421,10 @@ internal abstract class AccessibleMenuState : UIState
 
 		if (ActivationAdjustsValue(entry))
 		{
-			SoundEngine.PlaySound(SoundID.MenuTick);
+			if (PlaysActivationTick(entry))
+			{
+				SoundEngine.PlaySound(SoundID.MenuTick);
+			}
 			entry.Activate();
 			string announcement = DescribeAdjustment(entry);
 			RebuildEntries();
@@ -451,7 +528,7 @@ internal abstract class AccessibleMenuState : UIState
 		return Math.Clamp(centered, 0, _entries.Count - VisibleEntryCount);
 	}
 
-	private string DescribeSelection()
+	protected string DescribeSelection()
 	{
 		if (_entries.Count == 0)
 		{
@@ -476,18 +553,23 @@ internal sealed class AccessibleContextHelpMenuState : AccessibleMenuState
 {
 	private readonly string _sourceTitle;
 	private readonly List<AccessibleHelpTopic> _topics;
+	private readonly bool _keepsInventoryOpen;
 
 	internal AccessibleContextHelpMenuState(
 		AccessibleMenuController controller,
 		string sourceTitle,
-		IEnumerable<AccessibleHelpTopic> topics)
+		IEnumerable<AccessibleHelpTopic> topics,
+		bool keepsInventoryOpen = false)
 		: base(controller)
 	{
 		_sourceTitle = sourceTitle;
 		_topics = [.. topics];
+		_keepsInventoryOpen = keepsInventoryOpen;
 	}
 
 	protected override string Title => $"Help: {_sourceTitle}";
+
+	protected override bool KeepsInventoryOpen => _keepsInventoryOpen;
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{

@@ -8,6 +8,9 @@ using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.Audio;
 using Terraria.DataStructures;
+using Terraria.GameContent.Achievements;
+using Terraria.GameContent.Creative;
+using Terraria.GameContent.UI.States;
 using Terraria.GameInput;
 using Terraria.ID;
 using Terraria.Localization;
@@ -28,6 +31,8 @@ internal sealed class AccessibleInventoryController
 	private static readonly TimeSpan NavigationRepeatInterval = TimeSpan.FromMilliseconds(85);
 	private static readonly FieldInfo? ModAccessoryItemsField = typeof(ModAccessorySlotPlayer).GetField("exAccessorySlot", BindingFlags.Instance | BindingFlags.NonPublic);
 	private static readonly FieldInfo? ModAccessoryDyesField = typeof(ModAccessorySlotPlayer).GetField("exDyesAccessory", BindingFlags.Instance | BindingFlags.NonPublic);
+	private static readonly MethodInfo? GuideHelpMethod = typeof(Main).GetMethod("HelpText", BindingFlags.Static | BindingFlags.NonPublic);
+	private static readonly FieldInfo? TowMusicUnlockedField = typeof(Main).GetField("TOWMusicUnlocked", BindingFlags.Static | BindingFlags.NonPublic);
 	private static readonly Dictionary<int, int> VanillaShopIndices = new()
 	{
 		[17] = 1,
@@ -152,6 +157,7 @@ internal sealed class AccessibleInventoryController
 	{
 		return !Main.gameMenu &&
 			Main.playerInventory &&
+			!(Main.CreativeMenu.Enabled && !Main.CreativeMenu.Blocked) &&
 			!Main.inFancyUI &&
 			!Main.ingameOptionsWindow &&
 			!Main.drawingPlayerChat &&
@@ -162,6 +168,7 @@ internal sealed class AccessibleInventoryController
 
 	private void Activate(KeyboardState keyboard)
 	{
+		bool resumingPreviousFocus = _restoreFocusOnNextActivation;
 		_active = true;
 		_previousKeyboard = keyboard;
 		_repeatingKey = null;
@@ -174,11 +181,9 @@ internal sealed class AccessibleInventoryController
 		RestoreResumeFocus();
 		ConsumeResumeInventoryTrigger(keyboard);
 		_lastSemanticState = GetSemanticState();
-		if (CurrentLevel > 0)
+		if (resumingPreviousFocus)
 		{
-			TerrariumMod.ScreenReader.Output(
-				$"Inventory tree resumed. {DescribeCurrentLevel()} {DescribeSelection()} " +
-				"Use Up and Down Arrow keys to move, letter keys to jump through matching entries alphabetically, Left Arrow to return to the parent, Right Arrow or Enter to open the focused group or screen, Tab for item actions, Enter for the primary action, Shift Enter to take one from a stack, and F1 for help.");
+			TerrariumMod.ScreenReader.Output($"{DescribeCurrentLevel()} {DescribeSelection()}");
 		}
 		else
 		{
@@ -197,7 +202,9 @@ internal sealed class AccessibleInventoryController
 		Player player = Main.LocalPlayer;
 		AddPlayerInventoryCategories(player);
 		AddCraftingCategories();
+		AddJourneyEntry(player);
 		AddContextCategories(player);
+		AddInterfaceCategories();
 		AddEquipmentCategories(player);
 		AddSettingsEntry();
 		AddSaveAndExitEntry();
@@ -269,9 +276,35 @@ internal sealed class AccessibleInventoryController
 		AddBranch(_rootNodes, "inventory", "Inventory", sections);
 	}
 
+	private void AddJourneyEntry(Player player)
+	{
+		if (player.difficulty != PlayerDifficultyID.Creative)
+		{
+			return;
+		}
+
+		List<AccessibleInventoryNode> journey =
+		[
+			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"journey-duplication",
+				() => "Duplication",
+				() => "Browse and duplicate every fully researched item.",
+				OpenJourneyDuplication,
+				opensSubmenu: true)),
+			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"journey-powers",
+				() => "Powers",
+				() => "Open Journey difficulty time, weather, difficulty, infection, and spawn controls.",
+				OpenJourneyPowers,
+				opensSubmenu: true)),
+		];
+		AddBranch(_rootNodes, "journey", "Journey", journey);
+	}
+
 	private void AddContextCategories(Player player)
 	{
 		List<AccessibleInventoryNode> interactions = [];
+		AddSignCategory(player, interactions);
 		AddNpcConversationCategory(player, interactions);
 
 		if (player.chest != -1)
@@ -342,6 +375,33 @@ internal sealed class AccessibleInventoryController
 		AddBranch(_rootNodes, "interactions", "Interactions", interactions);
 	}
 
+	private void AddSignCategory(Player player, List<AccessibleInventoryNode> destination)
+	{
+		if (player.sign < 0 || player.sign >= Main.sign.Length || Main.sign[player.sign] is not Sign sign)
+		{
+			return;
+		}
+
+		List<AccessibleInventoryEntry> entries =
+		[
+			new AccessibleInventoryEntry(
+				"sign-text",
+				() => string.IsNullOrWhiteSpace(sign.text) ? "Sign: blank" : $"Sign: {sign.text}",
+				() => string.IsNullOrWhiteSpace(sign.text) ? "This sign is blank." : sign.text),
+			new AccessibleInventoryEntry(
+				"sign-edit",
+				() => "Edit sign",
+				() => "Edit this sign's text.",
+				() => OpenSignEditor(player, sign)),
+			new AccessibleInventoryEntry(
+				"sign-close",
+				() => "Close sign",
+				() => "Stop reading this sign.",
+				Main.CloseNPCChatOrSign),
+		];
+		AddCategory(destination, "sign", "Sign", entries);
+	}
+
 	private void AddNpcConversationCategory(Player player, List<AccessibleInventoryNode> destination)
 	{
 		NPC? npc = player.TalkNPC;
@@ -358,50 +418,10 @@ internal sealed class AccessibleInventoryController
 				() => string.IsNullOrWhiteSpace(Main.npcChatText) ? $"Talking to {npc.FullName}." : Main.npcChatText)
 		];
 
-		if (npc.ModNPC is not null)
-		{
-			string firstButton = string.Empty;
-			string secondButton = string.Empty;
-			NPCLoader.SetChatButtons(ref firstButton, ref secondButton);
-			AddModNpcChatButton(entries, firstButton, firstButton: true);
-			AddModNpcChatButton(entries, secondButton, firstButton: false);
-		}
-		else
-		{
-			if (VanillaShopIndices.TryGetValue(npc.type, out int shopIndex))
-			{
-				entries.Add(new AccessibleInventoryEntry(
-					"npc-shop",
-					() => $"Open {npc.FullName}'s shop",
-					() => "Open this character's shop inventory.",
-					() => ActivateVanillaChatButton(firstButton: true, () => OpenVanillaShop(shopIndex))));
-			}
-
-			if (npc.type == NPCID.Guide)
-			{
-				entries.Add(new AccessibleInventoryEntry(
-					"npc-guide-crafting",
-					() => "Crafting help",
-					() => "Open the Guide material slot and recipe list.",
-					() => ActivateVanillaChatButton(firstButton: false, OpenGuideCrafting)));
-			}
-			else if (npc.type == NPCID.GoblinTinkerer)
-			{
-				entries.Add(new AccessibleInventoryEntry(
-					"npc-reforge",
-					() => "Reforge",
-					() => "Open the Goblin Tinkerer's reforge item slot.",
-					() => ActivateVanillaChatButton(firstButton: false, OpenReforge)));
-			}
-			else if (npc.type == NPCID.Painter)
-			{
-				entries.Add(new AccessibleInventoryEntry(
-					"npc-decor-shop",
-					() => "Open décor shop",
-					() => "Open the Painter's alternate décor shop.",
-					() => ActivateVanillaChatButton(firstButton: false, () => OpenVanillaShop(25))));
-			}
-		}
+		BuildNpcChatButtons(player, npc, out string firstButton, out Action? firstAction, out string secondButton, out Action? secondAction);
+		NPCLoader.SetChatButtons(ref firstButton, ref secondButton);
+		AddNpcChatButton(entries, firstButton, firstButton: true, firstAction, invokeLoaderHooks: !NPCID.Sets.IsTownPet[npc.type]);
+		AddNpcChatButton(entries, secondButton, firstButton: false, secondAction);
 
 		if (!string.IsNullOrWhiteSpace(player.currentShoppingSettings.HappinessReport))
 		{
@@ -423,6 +443,154 @@ internal sealed class AccessibleInventoryController
 			CloseNpcConversation));
 
 		AddCategory(destination, "npc-conversation", "NPC Conversation", entries);
+	}
+
+	private void AddInterfaceCategories()
+	{
+		List<AccessibleInventoryNode> interfaces =
+		[
+			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"open-bestiary",
+				() => "Bestiary",
+				() => "Open the Bestiary. Terrarium's universal semantic adapter provides keyboard access to its live controls.",
+				OpenBestiary,
+				opensSubmenu: true)),
+			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"open-emotes",
+				() => "Emotes",
+				() => "Open the emote picker with spoken emote names.",
+				OpenEmotes,
+				opensSubmenu: true)),
+		];
+
+		List<AccessibleInventoryEntry> housing =
+		[
+			new AccessibleInventoryEntry(
+				"housing-query",
+				() => "Housing query tool",
+				() => "Select Terraria's housing query cursor. Using the cursor on a room still requires world targeting.",
+				() => Main.instance.SetMouseNPC_ToHousingQuery()),
+		];
+		HashSet<int> includedNpcTypes = [];
+		foreach (NPC npc in Main.npc)
+		{
+			if (!npc.active || !npc.townNPC || !includedNpcTypes.Add(npc.type) || npc.ModNPC?.TownNPCStayingHomeless == true)
+			{
+				continue;
+			}
+			NPC captured = npc;
+			housing.Add(new AccessibleInventoryEntry(
+				$"housing-npc-{captured.type}",
+				() => DescribeNpcHousing(captured),
+				() => $"Select {captured.FullName}'s housing banner. Placing the banner still requires world targeting.",
+				() => Main.instance.SetMouseNPC(captured.whoAmI, captured.type)));
+		}
+		AddCategory(interfaces, "housing", "NPC Housing", housing);
+		AddBranch(_rootNodes, "interfaces", "Interfaces", interfaces);
+	}
+
+	private static string DescribeNpcHousing(NPC npc)
+	{
+		return npc.homeless
+			? $"{npc.FullName}, homeless"
+			: $"{npc.FullName}, housed near tile {npc.homeTileX}, {npc.homeTileY}";
+	}
+
+	private void BuildNpcChatButtons(
+		Player player,
+		NPC npc,
+		out string firstButton,
+		out Action? firstAction,
+		out string secondButton,
+		out Action? secondAction)
+	{
+		firstButton = string.Empty;
+		firstAction = null;
+		secondButton = string.Empty;
+		secondAction = null;
+
+		if (npc.ModNPC is not null)
+		{
+			return;
+		}
+
+		if (NPCID.Sets.IsTownPet[npc.type])
+		{
+			firstButton = Language.GetTextValue("UI.PetTheAnimal");
+			firstAction = () => PetTownAnimal(player, npc);
+			return;
+		}
+
+		if (VanillaShopIndices.TryGetValue(npc.type, out int shopIndex))
+		{
+			firstButton = $"Open {npc.FullName}'s shop";
+			firstAction = () => OpenVanillaShop(shopIndex);
+		}
+
+		switch (npc.type)
+		{
+			case NPCID.Guide:
+				firstButton = "Ask for help";
+				firstAction = ShowGuideHelp;
+				secondButton = "Crafting help";
+				secondAction = OpenGuideCrafting;
+				break;
+			case NPCID.Nurse:
+				firstButton = DescribeNurseButton(player, npc);
+				firstAction = () => UseNurseService(player, npc);
+				break;
+			case NPCID.Dryad:
+				secondButton = Main.CanDryadPlayStardewAnimation(player, npc)
+					? Language.GetTextValue("StardewTalk.GiveColaButtonText")
+					: "World status";
+				secondAction = () => ShowDryadStatus(player, npc);
+				break;
+			case NPCID.OldMan:
+				if (!Main.IsItDay())
+				{
+					firstButton = "Curse";
+					firstAction = SummonSkeletron;
+				}
+				break;
+			case NPCID.GoblinTinkerer:
+				secondButton = "Reforge";
+				secondAction = OpenReforge;
+				break;
+			case NPCID.DyeTrader:
+				if (Main.hardMode)
+				{
+					secondButton = "Exchange strange plant";
+					secondAction = () => ExchangeStrangePlant(player, npc);
+				}
+				break;
+			case NPCID.PartyGirl:
+				if (TowMusicUnlockedField?.GetValue(null) is true)
+				{
+					secondButton = Language.GetTextValue("GameUI.Music");
+					secondAction = ToggleOtherworldMusic;
+				}
+				break;
+			case NPCID.Painter:
+				secondButton = "Open décor shop";
+				secondAction = () => OpenVanillaShop(25);
+				break;
+			case NPCID.Stylist:
+				secondButton = Language.GetTextValue("GameUI.HairStyle");
+				secondAction = OpenStylist;
+				break;
+			case NPCID.Angler:
+				firstButton = "Quest";
+				firstAction = () => SubmitAnglerQuest(player, npc);
+				break;
+			case NPCID.TaxCollector:
+				firstButton = DescribeTaxCollectorButton(player);
+				firstAction = () => CollectTaxes(player, npc);
+				break;
+			case NPCID.DD2Bartender:
+				secondButton = Language.GetTextValue("UI.BartenderHelp");
+				secondAction = () => ShowTavernkeepHelp(npc);
+				break;
+		}
 	}
 
 	private void AddEquipmentCategories(Player player)
@@ -1072,6 +1240,17 @@ internal sealed class AccessibleInventoryController
 				}));
 		}
 
+		if (CanResearch(slot))
+		{
+			int remaining = CreativeUI.GetSacrificesRemaining(item.type) ?? 0;
+			actions.Add(new(
+				"research",
+				"Research",
+				$"Sacrifice up to {remaining} {item.AffixName()} to Journey research.",
+				() => ResearchItem(slot),
+				returnsToInventory: true));
+		}
+
 		if (CanTakeOne(slot))
 		{
 			actions.Add(new(
@@ -1252,12 +1431,22 @@ internal sealed class AccessibleInventoryController
 		}
 
 		int previousLevel = CurrentLevel;
+		string previousNpcDialog = Main.npcChatText;
 		action();
 		if (CanNavigateInventory())
 		{
 			RebuildCategories();
 			SoundEngine.PlaySound(SoundID.MenuTick);
-			AnnounceSelection(includeLevel: CurrentLevel != previousLevel);
+			if (!string.IsNullOrWhiteSpace(Main.npcChatText) && Main.npcChatText != previousNpcDialog)
+			{
+				_lastSemanticState = GetSemanticState();
+				string speaker = Main.LocalPlayer.TalkNPC is NPC npc ? $"{npc.FullName}: " : string.Empty;
+				TerrariumMod.ScreenReader.Output($"{speaker}{Main.npcChatText} {DescribeSelection()}");
+			}
+			else
+			{
+				AnnounceSelection(includeLevel: CurrentLevel != previousLevel);
+			}
 		}
 	}
 
@@ -1514,6 +1703,29 @@ internal sealed class AccessibleInventoryController
 			Main.mouseItem.IsAir &&
 			Main.LocalPlayer.itemAnimation == 0 &&
 			Main.LocalPlayer.ItemTimeIsZero;
+	}
+
+	private static bool CanResearch(AccessibleInventoryItemSlot slot)
+	{
+		return Main.LocalPlayer.difficulty == PlayerDifficultyID.Creative &&
+			IsPlayerInventorySlot(slot) &&
+			ItemLoader.CanResearch(slot.Item) &&
+			CreativeUI.GetSacrificesRemaining(slot.Item.type) is > 0;
+	}
+
+	private static string ResearchItem(AccessibleInventoryItemSlot slot)
+	{
+		string itemName = slot.Item.AffixName();
+		int itemType = slot.Item.type;
+		CreativeUI.ItemSacrificeResult result = CreativeUI.SacrificeItem(ref slot.Items[slot.Index], out int amountSacrificed);
+		Recipe.FindRecipes();
+		int remaining = CreativeUI.GetSacrificesRemaining(itemType) ?? 0;
+		return result switch
+		{
+			CreativeUI.ItemSacrificeResult.SacrificedAndDone => $"Researched {amountSacrificed} {itemName}. Infinite duplication is now unlocked.",
+			CreativeUI.ItemSacrificeResult.SacrificedButNotDone => $"Researched {amountSacrificed} {itemName}. {remaining} more required.",
+			_ => $"{itemName} could not be researched.",
+		};
 	}
 
 	private static bool CanEquip(AccessibleInventoryItemSlot slot)
@@ -1834,7 +2046,7 @@ internal sealed class AccessibleInventoryController
 		return $"{item.AffixName()}{stack}{favorite}";
 	}
 
-	private static string DescribeItemDetails(Item item, bool includeSummary = true)
+	internal static string DescribeItemDetails(Item item, bool includeSummary = true)
 	{
 		if (item.IsAir)
 		{
@@ -2013,6 +2225,43 @@ internal sealed class AccessibleInventoryController
 		_menuController.ShowRoot(new AccessibleSettingsMenuState(_menuController));
 	}
 
+	private void OpenJourneyDuplication()
+	{
+		int hierarchyLevel = GetOpenedScreenHierarchyLevel();
+		RememberFocusForResume();
+		SoundEngine.PlaySound(SoundID.MenuOpen);
+		_menuController.ShowRoot(new AccessibleJourneyDuplicationMenuState(_menuController, hierarchyLevel));
+	}
+
+	private void OpenBestiary()
+	{
+		int hierarchyLevel = GetOpenedScreenHierarchyLevel();
+		RememberFocusForResume();
+		AccessibleExternalUISystem.SetNextIngameHierarchyLevel(hierarchyLevel);
+		IngameFancyUI.OpenUIState(Main.BestiaryUI);
+		Main.BestiaryUI.OnOpenPage();
+	}
+
+	private void OpenEmotes()
+	{
+		RememberFocusForResume();
+		AccessibleExternalUISystem.OpenIngameStateFromInventory(new UIEmotesMenu());
+	}
+
+	private void OpenJourneyPowers()
+	{
+		int hierarchyLevel = GetOpenedScreenHierarchyLevel();
+		RememberFocusForResume();
+		AccessibleExternalUISystem.SetNextIngameHierarchyLevel(hierarchyLevel);
+		Main.CreativeMenu.ToggleMenu();
+		SoundEngine.PlaySound(SoundID.MenuOpen);
+	}
+
+	private int GetOpenedScreenHierarchyLevel()
+	{
+		return CurrentLevel + 1;
+	}
+
 	private void SaveAndExit()
 	{
 		SteamedWraps.StopPlaytimeTracking();
@@ -2081,28 +2330,37 @@ internal sealed class AccessibleInventoryController
 		SoundEngine.PlaySound(SoundID.MenuTick);
 	}
 
-	private static void AddModNpcChatButton(List<AccessibleInventoryEntry> entries, string label, bool firstButton)
+	private static void AddNpcChatButton(
+		List<AccessibleInventoryEntry> entries,
+		string label,
+		bool firstButton,
+		Action? nativeAction,
+		bool invokeLoaderHooks = true)
 	{
 		if (string.IsNullOrWhiteSpace(label))
 		{
 			return;
 		}
 
-		string id = firstButton ? "npc-mod-primary" : "npc-mod-secondary";
+		string id = firstButton ? "npc-primary" : "npc-secondary";
 		entries.Add(new AccessibleInventoryEntry(
 			id,
 			() => label,
 			() => $"Activate {label}.",
 			() =>
 			{
-				if (NPCLoader.PreChatButtonClicked(firstButton))
+				if (invokeLoaderHooks)
 				{
-					NPCLoader.OnChatButtonClicked(firstButton);
+					ActivateVanillaChatButton(firstButton, nativeAction);
+				}
+				else
+				{
+					nativeAction?.Invoke();
 				}
 			}));
 	}
 
-	private static void ActivateVanillaChatButton(bool firstButton, Action action)
+	private static void ActivateVanillaChatButton(bool firstButton, Action? action)
 	{
 		if (!NPCLoader.PreChatButtonClicked(firstButton))
 		{
@@ -2110,7 +2368,280 @@ internal sealed class AccessibleInventoryController
 		}
 
 		NPCLoader.OnChatButtonClicked(firstButton);
-		action();
+		action?.Invoke();
+	}
+
+	private static void PetTownAnimal(Player player, NPC npc)
+	{
+		player.PetAnimal(npc.whoAmI);
+		Main.npcChatText = $"You pet {npc.FullName}.";
+		SoundEngine.PlaySound(SoundID.MenuTick);
+	}
+
+	private static void ShowGuideHelp()
+	{
+		if (GuideHelpMethod is null)
+		{
+			Main.npcChatText = "Guide help is unavailable with this tModLoader version.";
+			return;
+		}
+
+		GuideHelpMethod.Invoke(null, null);
+		SoundEngine.PlaySound(SoundID.MenuTick);
+	}
+
+	private static string DescribeNurseButton(Player player, NPC nurse)
+	{
+		NurseService service = GetNurseService(player, nurse);
+		return service.Price <= 0
+			? "Heal, no treatment needed"
+			: $"Heal, costs {Main.ValueToCoins(service.Price)}";
+	}
+
+	private static NurseService GetNurseService(Player player, NPC nurse)
+	{
+		int health = player.statLifeMax2 - player.statLife;
+		int price = health;
+		for (int index = 0; index < player.buffType.Length; index++)
+		{
+			int buffType = player.buffType[index];
+			if (buffType > 0 && Main.debuff[buffType] && player.buffTime[index] > 60 && !BuffID.Sets.NurseCannotRemoveDebuff[buffType])
+			{
+				price += 100;
+			}
+		}
+
+		price *= NPC.downedGolemBoss ? 200 :
+			NPC.downedPlantBoss ? 150 :
+			NPC.downedMechBossAny ? 100 :
+			Main.hardMode ? 60 :
+			NPC.downedBoss3 || NPC.downedQueenBee ? 25 :
+			NPC.downedBoss2 ? 10 :
+			NPC.downedBoss1 ? 3 : 1;
+		if (Main.expertMode)
+		{
+			price *= 2;
+		}
+		price = (int)(price * player.currentShoppingSettings.PriceAdjustment);
+
+		bool removeDebuffs = true;
+		string rejection = Language.GetTextValue("tModLoader.DefaultNurseCantHealChat");
+		bool allowed = PlayerLoader.ModifyNurseHeal(player, nurse, ref health, ref removeDebuffs, ref rejection);
+		PlayerLoader.ModifyNursePrice(player, nurse, health, removeDebuffs, ref price);
+		return new NurseService(Math.Max(0, health), Math.Max(0, price), removeDebuffs, allowed, rejection);
+	}
+
+	private static void UseNurseService(Player player, NPC nurse)
+	{
+		NurseService service = GetNurseService(player, nurse);
+		if (!service.Allowed)
+		{
+			Main.npcChatText = service.Rejection;
+			SoundEngine.PlaySound(SoundID.MenuClose);
+			return;
+		}
+		if (service.Price <= 0)
+		{
+			Main.npcChatText = "No healing or removable debuffs are currently needed.";
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			return;
+		}
+		if (!player.BuyItem(service.Price))
+		{
+			Main.npcChatText = $"You cannot afford the healing cost of {Main.ValueToCoins(service.Price)}.";
+			SoundEngine.PlaySound(SoundID.MenuClose);
+			return;
+		}
+
+		AchievementsHelper.HandleNurseService(service.Price);
+		SoundEngine.PlaySound(SoundID.Item4);
+		player.HealEffect(service.Health);
+		player.statLife = Math.Min(player.statLifeMax2, player.statLife + service.Health);
+		int removedDebuffs = 0;
+		if (service.RemoveDebuffs)
+		{
+			for (int index = 0; index < player.buffType.Length; index++)
+			{
+				int buffType = player.buffType[index];
+				if (buffType <= 0 || !Main.debuff[buffType] || player.buffTime[index] <= 0 || BuffID.Sets.NurseCannotRemoveDebuff[buffType])
+				{
+					continue;
+				}
+				player.DelBuff(index);
+				removedDebuffs++;
+				index = -1;
+			}
+		}
+		PlayerLoader.PostNurseHeal(player, nurse, service.Health, service.RemoveDebuffs, service.Price);
+		Main.npcChatText = $"Treatment complete. Restored {service.Health} life and removed {removedDebuffs} debuffs for {Main.ValueToCoins(service.Price)}.";
+	}
+
+	private static void ShowDryadStatus(Player player, NPC dryad)
+	{
+		Main.npcChatCornerItem = 0;
+		SoundEngine.PlaySound(SoundID.MenuTick);
+		Main.npcChatText = Lang.GetDryadWorldStatusDialog(out bool worldIsEntirelyPure);
+		if (Main.CanDryadPlayStardewAnimation(player, dryad))
+		{
+			NPC.PreventJojaColaDialog = true;
+			NPC.RerollDryadText = 2;
+			player.ConsumeItem(ItemID.JojaCola, reverseOrder: true);
+			if (Main.netMode == NetmodeID.MultiplayerClient)
+			{
+				NetMessage.SendData(MessageID.RequestQuestEffect);
+			}
+			else
+			{
+				NPC.HaveDryadDoStardewAnimation();
+			}
+			Main.npcChatText = Language.GetTextValue("StardewTalk.PlayerGivesCola");
+		}
+		else if (worldIsEntirelyPure)
+		{
+			AchievementsHelper.HandleSpecialEvent(player, 27);
+		}
+	}
+
+	private static void SummonSkeletron()
+	{
+		if (Main.netMode == NetmodeID.SinglePlayer)
+		{
+			NPC.SpawnSkeletron(Main.myPlayer);
+		}
+		else
+		{
+			NetMessage.SendData(MessageID.MiscDataSync, number: Main.myPlayer, number2: 1f);
+		}
+		Main.npcChatText = string.Empty;
+	}
+
+	private static void ExchangeStrangePlant(Player player, NPC dyeTrader)
+	{
+		Main.npcChatCornerItem = 0;
+		bool receivedDye = false;
+		int inventoryIndex = player.FindItem(ItemID.Sets.ExoticPlantsForDyeTrade);
+		if (inventoryIndex >= 0)
+		{
+			player.inventory[inventoryIndex].stack--;
+			if (player.inventory[inventoryIndex].stack <= 0)
+			{
+				player.inventory[inventoryIndex] = new Item();
+			}
+			receivedDye = true;
+			SoundEngine.PlaySound(SoundID.Grab);
+			player.GetDyeTraderReward(dyeTrader);
+			Recipe.FindRecipes();
+		}
+		Main.npcChatText = Lang.DyeTraderQuestChat(receivedDye);
+	}
+
+	private static void ToggleOtherworldMusic()
+	{
+		Main.swapMusic = !Main.swapMusic;
+		Main.npcChatText = Language.GetTextValue($"PartyGirlSpecialText.Music{Main.rand.Next(1, 4)}");
+		SoundEngine.PlaySound(SoundID.MenuTick);
+	}
+
+	private static void SubmitAnglerQuest(Player player, NPC angler)
+	{
+		Main.npcChatCornerItem = 0;
+		SoundEngine.PlaySound(SoundID.MenuTick);
+		bool turnedIn = false;
+		if (!Main.anglerQuestFinished && !Main.anglerWhoFinishedToday.Contains(player.name))
+		{
+			int questItemType = Main.anglerQuestItemNetIDs[Main.anglerQuest];
+			int inventoryIndex = player.FindItem(questItemType);
+			if (inventoryIndex >= 0)
+			{
+				player.inventory[inventoryIndex].stack--;
+				if (player.inventory[inventoryIndex].stack <= 0)
+				{
+					player.inventory[inventoryIndex] = new Item();
+				}
+				turnedIn = true;
+				SoundEngine.PlaySound(SoundID.Grab);
+				player.anglerQuestsFinished++;
+				player.GetAnglerReward(angler, questItemType);
+				Recipe.FindRecipes();
+			}
+		}
+
+		Main.npcChatText = Lang.AnglerQuestChat(turnedIn);
+		if (!turnedIn)
+		{
+			return;
+		}
+		Main.anglerQuestFinished = true;
+		if (Main.netMode == NetmodeID.MultiplayerClient)
+		{
+			NetMessage.SendData(MessageID.AnglerQuestFinished);
+		}
+		else
+		{
+			Main.anglerWhoFinishedToday.Add(player.name);
+		}
+		AchievementsHelper.HandleAnglerService();
+	}
+
+	private static string DescribeTaxCollectorButton(Player player)
+	{
+		int amount = GetCollectibleTaxAmount(player);
+		return amount > 0 ? $"Collect {Main.ValueToCoins(amount)}" : "Collect taxes, none available";
+	}
+
+	private static int GetCollectibleTaxAmount(Player player)
+	{
+		return Math.Max(0, (int)(player.taxMoney / player.currentShoppingSettings.PriceAdjustment));
+	}
+
+	private static void CollectTaxes(Player player, NPC taxCollector)
+	{
+		int amount = GetCollectibleTaxAmount(player);
+		if (amount <= 0)
+		{
+			Main.npcChatText = "No taxes are ready to collect.";
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			return;
+		}
+
+		EntitySource_Gift source = new(taxCollector);
+		int remaining = amount;
+		SpawnCoin(ItemID.PlatinumCoin, 1_000_000);
+		SpawnCoin(ItemID.GoldCoin, 10_000);
+		SpawnCoin(ItemID.SilverCoin, 100);
+		SpawnCoin(ItemID.CopperCoin, 1);
+		player.taxMoney = 0;
+		Main.npcChatText = $"Collected {Main.ValueToCoins(amount)} in taxes.";
+		SoundEngine.PlaySound(SoundID.Coins);
+
+		void SpawnCoin(int itemType, int value)
+		{
+			int stack = remaining / value;
+			if (stack <= 0)
+			{
+				return;
+			}
+			remaining -= stack * value;
+			int itemIndex = Item.NewItem(
+				source,
+				(int)player.position.X,
+				(int)player.position.Y,
+				player.width,
+				player.height,
+				itemType,
+				stack);
+			if (Main.netMode == NetmodeID.MultiplayerClient)
+			{
+				NetMessage.SendData(MessageID.SyncItem, number: itemIndex, number2: 1f);
+			}
+		}
+	}
+
+	private static void ShowTavernkeepHelp(NPC tavernkeep)
+	{
+		GuideHelpMethod?.Invoke(null, null);
+		Main.npcChatText = Lang.BartenderHelpText(tavernkeep);
+		SoundEngine.PlaySound(SoundID.MenuTick);
 	}
 
 	private static void OpenVanillaShop(int shopIndex)
@@ -2141,6 +2672,12 @@ internal sealed class AccessibleInventoryController
 		SoundEngine.PlaySound(SoundID.MenuTick);
 	}
 
+	private void OpenStylist()
+	{
+		RememberFocusForResume();
+		_menuController.ShowRoot(new AccessibleStylistMenuState(_menuController, Main.LocalPlayer));
+	}
+
 	private static void CloseNpcConversation()
 	{
 		Main.LocalPlayer.SetTalkNPC(-1);
@@ -2169,6 +2706,30 @@ internal sealed class AccessibleInventoryController
 				_menuController.Close();
 			},
 			cancel: _menuController.Close));
+	}
+
+	private void OpenSignEditor(Player player, Sign sign)
+	{
+		string initialText = sign.text;
+		RememberFocusForResume();
+		Main.editSign = true;
+		_menuController.ShowRoot(new AccessibleTextInputState(
+			_menuController,
+			"Sign text",
+			initialText,
+			1_000,
+			value =>
+			{
+				Main.npcChatText = value;
+				Main.SubmitSignText();
+				_menuController.Close();
+			},
+			cancel: () =>
+			{
+				Main.editSign = false;
+				Main.npcChatText = initialText;
+				_menuController.Close();
+			}));
 	}
 
 	private static string GetContainerName(Player player)
@@ -2339,3 +2900,10 @@ internal sealed class PendingInventoryItemUse
 	internal string ItemName { get; }
 	internal bool UseStarted { get; set; }
 }
+
+internal readonly record struct NurseService(
+	int Health,
+	int Price,
+	bool RemoveDebuffs,
+	bool Allowed,
+	string Rejection);
