@@ -17,6 +17,8 @@ Use this tree first for Terrarium implementation work. It contains tModLoader's 
 | --- | --- |
 | Mod entry point | `Terraria/ModLoader/Mod.cs`, `ModType.cs`, and `ModContent.cs` |
 | Cross-cutting systems | `Terraria/ModLoader/ModSystem.cs`; especially `UpdateUI`, `PostUpdateInput`, `ModifyInterfaceLayers`, and `PostDrawInterface` |
+| World/player update observation | `ModSystem.PostUpdatePlayers()` runs after every active `Player.Update` in `Main.DoUpdateInWorld`; it is a stable point for client-only position observers that do not modify movement |
+| Player ground-contact observation | `Terraria/Collision.cs`; `FindCollisionTile` can probe a short distance in the player's gravity direction with both cardinal and slope checks, preserving solid tiles, platforms, half-blocks, slopes, and inverted gravity |
 | System hook dispatch | `Terraria/ModLoader/SystemLoader.cs`; shows when and how `ModSystem` hooks run |
 | Player hooks | `Terraria/ModLoader/ModPlayer.cs` and `PlayerLoader.cs` |
 | Content hooks | `ModItem.cs`, `GlobalItem.cs`, `ModNPC.cs`, `GlobalNPC.cs`, `ModProjectile.cs`, and their `*Loader.cs` dispatchers |
