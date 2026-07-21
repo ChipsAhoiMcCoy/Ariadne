@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using Terraria;
 using Terraria.ModLoader;
 
@@ -13,6 +14,9 @@ internal sealed class ScreenReaderService : IDisposable
 {
 	private const string PrismVersion = "0.17.3";
 	private const string PrismResourcePath = "Native/Prism/windows-x64/prism.dll";
+	private static readonly Regex EllipsisBeforeText = new(@"(?:\.{2,}|…)+(?=\p{L}|\p{N})", RegexOptions.Compiled);
+	private static readonly Regex Ellipsis = new(@"(?:\.{2,}|…)+", RegexOptions.Compiled);
+	private static readonly Regex SentencePunctuationBeforeComma = new(@"([.!?])\s*,\s*", RegexOptions.Compiled);
 
 	private nint _library;
 	private nint _context;
@@ -89,12 +93,13 @@ internal sealed class ScreenReaderService : IDisposable
 
 	internal bool Output(string text, bool interrupt = true)
 	{
-		if (_backend == 0 || _backendOutput is null || string.IsNullOrWhiteSpace(text))
+		string speechText = PrepareForSpeech(text);
+		if (_backend == 0 || _backendOutput is null || speechText.Length == 0)
 		{
 			return false;
 		}
 
-		nint utf8Text = Marshal.StringToCoTaskMemUTF8(text);
+		nint utf8Text = Marshal.StringToCoTaskMemUTF8(speechText);
 		try
 		{
 			int result = _backendOutput(_backend, utf8Text, interrupt);
@@ -118,6 +123,23 @@ internal sealed class ScreenReaderService : IDisposable
 		{
 			Marshal.FreeCoTaskMem(utf8Text);
 		}
+	}
+
+	internal static string PrepareForSpeech(string? text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return string.Empty;
+		}
+
+		// Literal ellipses can be announced as "dot dot dot" by screen readers
+		// configured to speak punctuation. Preserve their pause without sending the
+		// repeated punctuation to any Prism backend.
+		string speechText = EllipsisBeforeText.Replace(text, ", ");
+		speechText = Ellipsis.Replace(speechText, ".");
+		// Semantic metadata sometimes follows a user or game supplied sentence.
+		// Avoid sending combinations such as ".," that can expose punctuation names.
+		return SentencePunctuationBeforeComma.Replace(speechText, "$1 ").Trim();
 	}
 
 	public void Dispose()

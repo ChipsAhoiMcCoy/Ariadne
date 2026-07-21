@@ -537,16 +537,53 @@ internal abstract class AccessibleMenuState : UIState
 		}
 
 		AccessibleMenuEntry entry = _entries[_selectedIndex];
+		string label = entry.Label().Trim();
 		bool suppressRole = !AnnouncesSubmenuRole && entry.Role.Equals("submenu", StringComparison.OrdinalIgnoreCase);
-		string role = suppressRole || string.IsNullOrWhiteSpace(entry.Role) ? string.Empty : $", {entry.Role}";
-		string state = entry.IsEnabled ? string.Empty : ", unavailable";
-		string adjustable = entry.IsAdjustable ? ", adjustable" : string.Empty;
-		string description = entry.Description?.Invoke() ?? string.Empty;
-		if (!string.IsNullOrWhiteSpace(description))
+		List<string> semantics = [];
+		if (!suppressRole && !string.IsNullOrWhiteSpace(entry.Role))
 		{
-			description = $" {description}";
+			semantics.Add(entry.Role.Trim());
 		}
-		return $"{entry.Label()}{role}{adjustable}{state}, {_selectedIndex + 1} of {_entries.Count}.{description}";
+		if (entry.IsAdjustable)
+		{
+			semantics.Add("adjustable");
+		}
+		if (!entry.IsEnabled)
+		{
+			semantics.Add("unavailable");
+		}
+		semantics.Add($"{_selectedIndex + 1} of {_entries.Count}");
+
+		string separator = EndsWithSentencePunctuation(label) ? " " : ", ";
+		string description = entry.Description?.Invoke()?.Trim() ?? string.Empty;
+		if (DescriptionRepeatsLabel(label, description))
+		{
+			description = string.Empty;
+		}
+		string details = string.IsNullOrWhiteSpace(description) ? string.Empty : $" {description}";
+		return $"{label}{separator}{string.Join(", ", semantics)}.{details}";
+	}
+
+	private static bool EndsWithSentencePunctuation(string text)
+	{
+		return text.Length > 0 && text[^1] is '.' or '!' or '?' or '…';
+	}
+
+	private static bool DescriptionRepeatsLabel(string label, string description)
+	{
+		if (description.Length == 0)
+		{
+			return false;
+		}
+
+		if (label.Equals(description, StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		int separator = label.IndexOf(':');
+		return separator >= 0 &&
+			label[(separator + 1)..].Trim().Equals(description, StringComparison.OrdinalIgnoreCase);
 	}
 }
 
