@@ -27,7 +27,7 @@ internal sealed class AccessibleMapMenuState : AccessibleMenuState
 		Player player = Main.LocalPlayer;
 		entries.Add(new(
 			() => $"Current location: {DescribeBiome(player)}",
-			description: () => DescribeCoordinates(player.Center),
+			description: () => WorldPositionFormatter.DescribeCoordinates(player.Center),
 			role: "status"));
 
 		Vector2 spawn = new(Main.spawnTileX * 16f, Main.spawnTileY * 16f);
@@ -64,8 +64,8 @@ internal sealed class AccessibleMapMenuState : AccessibleMenuState
 	private static AccessibleMenuEntry CreatePointEntry(MapPoint point)
 	{
 		return new AccessibleMenuEntry(
-			() => $"{point.Name}, {DescribeRelativePosition(point.WorldPosition)}",
-			description: () => $"{point.Kind}. {DescribeCoordinates(point.WorldPosition)}",
+			() => $"{point.Name}, {WorldPositionFormatter.DescribeRelativePosition(point.WorldPosition)}",
+			description: () => $"{point.Kind}. {WorldPositionFormatter.DescribeCoordinates(point.WorldPosition)}",
 			role: point.Kind);
 	}
 
@@ -77,9 +77,9 @@ internal sealed class AccessibleMapMenuState : AccessibleMenuState
 			Vector2 position = captured.PositionInTiles.ToWorldCoordinates();
 			string name = DescribePylon(captured);
 			entries.Add(new(
-				() => $"{name}, {DescribeRelativePosition(position)}",
+				() => $"{name}, {WorldPositionFormatter.DescribeRelativePosition(position)}",
 				activate: () => TeleportToPylon(captured, name),
-				description: () => $"Pylon destination. {DescribeCoordinates(position)} Enter requests teleportation.",
+				description: () => $"Pylon destination. {WorldPositionFormatter.DescribeCoordinates(position)} Enter requests teleportation.",
 				role: "travel button"));
 		}
 	}
@@ -176,28 +176,6 @@ internal sealed class AccessibleMapMenuState : AccessibleMenuState
 			player.ZoneDirtLayerHeight ? "Underground" :
 			player.ZoneRockLayerHeight ? "Caverns" : "Underworld");
 		return string.Join(", ", parts);
-	}
-
-	private static string DescribeRelativePosition(Vector2 worldPosition)
-	{
-		Vector2 deltaTiles = (worldPosition - Main.LocalPlayer.Center) / 16f;
-		int distance = (int)MathF.Round(deltaTiles.Length());
-		string horizontal = MathF.Abs(deltaTiles.X) < 2f ? "same east-west position" :
-			$"{Math.Abs((int)MathF.Round(deltaTiles.X))} tiles {(deltaTiles.X < 0f ? "west" : "east")}";
-		string vertical = MathF.Abs(deltaTiles.Y) < 2f ? "same elevation" :
-			$"{Math.Abs((int)MathF.Round(deltaTiles.Y))} tiles {(deltaTiles.Y < 0f ? "above" : "below")}";
-		return $"about {distance} tiles away, {horizontal}, {vertical}";
-	}
-
-	private static string DescribeCoordinates(Vector2 worldPosition)
-	{
-		int tileX = (int)MathF.Round(worldPosition.X / 16f);
-		int tileY = (int)MathF.Round(worldPosition.Y / 16f);
-		int horizontalFromSpawn = tileX - Main.spawnTileX;
-		string horizontal = Math.Abs(horizontalFromSpawn) < 2
-			? "at the world's spawn longitude"
-			: $"{Math.Abs(horizontalFromSpawn)} tiles {(horizontalFromSpawn < 0 ? "west" : "east")} of world spawn";
-		return $"Tile {tileX}, {tileY}; {horizontal}.";
 	}
 
 	private static string Humanize(string value)

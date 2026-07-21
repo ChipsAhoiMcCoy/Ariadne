@@ -1,3 +1,5 @@
+Keybinds.OpenScanner.DisplayName: Open Scanner
+
 Configs: {
 	TerrariumClientConfig: {
 		DisplayName: Terrarium Test Configuration

@@ -3,6 +3,7 @@
 using Terraria;
 using Terraria.GameInput;
 using Terraria.ModLoader;
+using Terrarium.Ingame.Scanner;
 using Terrarium.Menus;
 
 namespace Terrarium.Ingame;
@@ -12,20 +13,39 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 {
 	private AccessibleMenuController? _menuController;
 	private AccessibleInventoryController? _inventoryController;
+	private ScannerSession? _scannerSession;
 	private bool _openingSettings;
 
 	public override void Load()
 	{
 		_menuController = new AccessibleMenuController(inGame: true);
 		_inventoryController = new AccessibleInventoryController(_menuController);
+		_scannerSession = new ScannerSession(_menuController, _inventoryController);
 	}
 
 	public override void PostUpdateInput()
 	{
-		if (Main.gameMenu || _menuController is null || _inventoryController is null)
+		if (Main.gameMenu || _menuController is null || _inventoryController is null || _scannerSession is null)
 		{
 			_inventoryController?.Deactivate();
+			_scannerSession?.Reset();
 			_openingSettings = false;
+			return;
+		}
+
+		_scannerSession.SynchronizeState();
+		if (_scannerSession.IsOpen && (!Main.LocalPlayer.active || Main.LocalPlayer.dead))
+		{
+			_scannerSession.Close();
+			_inventoryController.Deactivate();
+			return;
+		}
+		_scannerSession.ConsumeInput();
+		if (!_menuController.IsActive && ShouldOpenScanner())
+		{
+			_inventoryController.Deactivate();
+			_scannerSession.Open();
+			_scannerSession.ConsumeInput();
 			return;
 		}
 
@@ -36,6 +56,18 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 			Main.mapFullscreen = false;
 			_inventoryController.Deactivate();
 			_menuController.ShowRoot(new AccessibleMapMenuState(_menuController));
+			return;
+		}
+
+		if (!_menuController.IsActive && ShouldOpenNpcConversation(out NPC? conversationNpc) && conversationNpc is not null)
+		{
+			_inventoryController.OpenNpcConversation(conversationNpc, Main.npcChatText);
+			return;
+		}
+
+		if (!_menuController.IsActive && ShouldOpenSign(out int signIndex))
+		{
+			_inventoryController.OpenSign(Main.LocalPlayer, signIndex);
 			return;
 		}
 
@@ -77,11 +109,46 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 		_inventoryController.Update();
 	}
 
+	public override void PostUpdateEverything()
+	{
+		_scannerSession?.UpdateVerification();
+	}
+
+	public override void OnWorldLoad()
+	{
+		_scannerSession?.Reset();
+	}
+
+	public override void OnWorldUnload()
+	{
+		_scannerSession?.Reset();
+	}
+
 	public override void Unload()
 	{
+		_scannerSession = null;
 		_inventoryController = null;
 		_menuController = null;
 		_openingSettings = false;
+	}
+
+	private static bool ShouldOpenScanner()
+	{
+		Player player = Main.LocalPlayer;
+		return TerrariumMod.OpenScannerKeybind?.JustPressed == true &&
+			player.active &&
+			!player.dead &&
+			!player.ghost &&
+			!Main.playerInventory &&
+			!Main.drawingPlayerChat &&
+			!Main.editSign &&
+			!Main.editChest &&
+			!Main.mapFullscreen &&
+			!Main.ingameOptionsWindow &&
+			!Main.inFancyUI &&
+			Main.InGameUI.CurrentState is null &&
+			!(Main.CreativeMenu.Enabled && !Main.CreativeMenu.Blocked) &&
+			!PlayerInput.WritingText;
 	}
 
 	private static bool ShouldOpenAccessibleMap()
@@ -101,5 +168,35 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 			Main.InGameUI.CurrentState is null &&
 			!(Main.CreativeMenu.Enabled && !Main.CreativeMenu.Blocked) &&
 			!PlayerInput.WritingText;
+	}
+
+	private static bool ShouldOpenNpcConversation(out NPC? npc)
+	{
+		npc = Main.LocalPlayer.TalkNPC;
+		return npc is { active: true } &&
+			!Main.playerInventory &&
+			!Main.drawingPlayerChat &&
+			!Main.editSign &&
+			!Main.editChest &&
+			!Main.mapFullscreen &&
+			!Main.ingameOptionsWindow &&
+			!Main.inFancyUI &&
+			Main.InGameUI.CurrentState is null;
+	}
+
+	private static bool ShouldOpenSign(out int signIndex)
+	{
+		signIndex = Main.LocalPlayer.sign;
+		return signIndex >= 0 &&
+			signIndex < Main.sign.Length &&
+			Main.sign[signIndex] is not null &&
+			!Main.playerInventory &&
+			!Main.drawingPlayerChat &&
+			!Main.editSign &&
+			!Main.editChest &&
+			!Main.mapFullscreen &&
+			!Main.ingameOptionsWindow &&
+			!Main.inFancyUI &&
+			Main.InGameUI.CurrentState is null;
 	}
 }

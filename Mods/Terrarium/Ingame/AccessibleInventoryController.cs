@@ -78,7 +78,7 @@ internal sealed class AccessibleInventoryController
 	private PendingInventoryItemUse? _pendingItemUse;
 	private List<string>? _resumeFocusPath;
 	private bool _restoreFocusOnNextActivation;
-	private bool _suppressInventoryCloseUntilRelease;
+	private bool _suppressInventoryToggleUntilRelease;
 
 	internal AccessibleInventoryController(AccessibleMenuController menuController)
 	{
@@ -88,14 +88,14 @@ internal sealed class AccessibleInventoryController
 	internal void Update()
 	{
 		RestoreUsedItemWhenReady();
+		KeyboardState keyboard = Keyboard.GetState();
+		ConsumeSuppressedInventoryTrigger(keyboard);
 		if (!CanNavigateInventory())
 		{
 			Deactivate();
 			return;
 		}
 
-		KeyboardState keyboard = Keyboard.GetState();
-		ConsumeResumeInventoryTrigger(keyboard);
 		if (!_active)
 		{
 			Activate(keyboard);
@@ -104,8 +104,7 @@ internal sealed class AccessibleInventoryController
 
 		RebuildCategories();
 		RefreshActionsPane();
-		ConsumeNavigationTriggers();
-		ConsumeBoundLetterTriggers(keyboard);
+		AccessibleInputSuppression.ConsumeMenuNavigationAndLetterTriggers(keyboard);
 		if (_rootNodes.Count == 0)
 		{
 			_previousKeyboard = keyboard;
@@ -152,7 +151,7 @@ internal sealed class AccessibleInventoryController
 		if (Main.gameMenu)
 		{
 			ClearResumeFocus();
-			_suppressInventoryCloseUntilRelease = false;
+			_suppressInventoryToggleUntilRelease = false;
 		}
 	}
 
@@ -182,7 +181,6 @@ internal sealed class AccessibleInventoryController
 		_selectionPath.Add(0);
 		RebuildCategories();
 		RestoreResumeFocus();
-		ConsumeResumeInventoryTrigger(keyboard);
 		_lastSemanticState = GetSemanticState();
 		if (resumingPreviousFocus)
 		{
@@ -277,6 +275,53 @@ internal sealed class AccessibleInventoryController
 			ItemSorting.SortAmmo)));
 
 		AddBranch(_rootNodes, "inventory", "Inventory", sections);
+	}
+
+	internal void RequestSemanticFocusPath(IReadOnlyList<string> focusPath)
+	{
+		_resumeFocusPath = [.. focusPath];
+		_restoreFocusOnNextActivation = true;
+		if (_active && CanNavigateInventory())
+		{
+			RebuildCategories();
+			RestoreResumeFocus();
+		}
+	}
+
+	internal void OpenNpcConversation(NPC npc, string dialog)
+	{
+		if (!npc.active || Main.LocalPlayer.TalkNPC?.whoAmI != npc.whoAmI)
+		{
+			return;
+		}
+
+		Deactivate();
+		Main.playerInventory = false;
+		Main.npcChatText = dialog;
+		_menuController.ShowRoot(new AccessibleNpcConversationMenuState(
+			_menuController,
+			this,
+			Main.LocalPlayer,
+			npc,
+			dialog));
+	}
+
+	internal void SuppressInventoryToggleUntilRelease()
+	{
+		_suppressInventoryToggleUntilRelease = true;
+		Main.LocalPlayer.releaseInventory = false;
+	}
+
+	internal void OpenSign(Player player, int signIndex)
+	{
+		if (signIndex < 0 || signIndex >= Main.sign.Length || Main.sign[signIndex] is not Sign sign)
+		{
+			return;
+		}
+
+		Deactivate();
+		Main.playerInventory = false;
+		_menuController.ShowRoot(new AccessibleSignMenuState(_menuController, player, signIndex, sign.text));
 	}
 
 	private void AddJourneyEntry(Player player)
@@ -526,7 +571,7 @@ internal sealed class AccessibleInventoryController
 			: $"{npc.FullName}, housed near tile {npc.homeTileX}, {npc.homeTileY}";
 	}
 
-	private void BuildNpcChatButtons(
+	internal void BuildNpcChatButtons(
 		Player player,
 		NPC npc,
 		out string firstButton,
@@ -1717,53 +1762,6 @@ internal sealed class AccessibleInventoryController
 		return keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
 	}
 
-	private static void ConsumeBoundLetterTriggers(KeyboardState keyboard)
-	{
-		if (!PlayerInput.CurrentProfile.InputModes.TryGetValue(InputMode.Keyboard, out KeyConfiguration? bindings))
-		{
-			return;
-		}
-
-		TriggersSet current = PlayerInput.Triggers.Current;
-		TriggersSet justPressed = PlayerInput.Triggers.JustPressed;
-		for (int value = (int)Keys.A; value <= (int)Keys.Z; value++)
-		{
-			Keys key = (Keys)value;
-			if (keyboard.IsKeyUp(key))
-			{
-				continue;
-			}
-
-			string keyName = key.ToString();
-			foreach ((string triggerName, List<string> keys) in bindings.KeyStatus)
-			{
-				if (!keys.Contains(keyName))
-				{
-					continue;
-				}
-
-				if (current.KeyStatus.ContainsKey(triggerName))
-				{
-					current.KeyStatus[triggerName] = false;
-				}
-				if (justPressed.KeyStatus.ContainsKey(triggerName))
-				{
-					justPressed.KeyStatus[triggerName] = false;
-				}
-			}
-		}
-	}
-
-	private static void ConsumeNavigationTriggers()
-	{
-		TriggersSet current = PlayerInput.Triggers.Current;
-		TriggersSet justPressed = PlayerInput.Triggers.JustPressed;
-		current.MapStyle = false;
-		justPressed.MapStyle = false;
-		current.MenuUp = current.MenuDown = current.MenuLeft = current.MenuRight = false;
-		justPressed.MenuUp = justPressed.MenuDown = justPressed.MenuLeft = justPressed.MenuRight = false;
-	}
-
 	private static bool CanUse(AccessibleInventoryItemSlot slot)
 	{
 		return ReferenceEquals(slot.Items, Main.LocalPlayer.inventory) &&
@@ -2181,7 +2179,7 @@ internal sealed class AccessibleInventoryController
 		return string.IsNullOrWhiteSpace(second) ? first : $"{first} {second.Trim()}";
 	}
 
-	private static string DescribeRecipe(int availableIndex)
+	internal static string DescribeRecipe(int availableIndex)
 	{
 		Recipe recipe = Main.recipe[Main.availableRecipe[availableIndex]];
 		string stack = recipe.createItem.stack > 1 ? $", creates {recipe.createItem.stack}" : string.Empty;
@@ -2189,7 +2187,7 @@ internal sealed class AccessibleInventoryController
 		return $"{recipe.createItem.AffixName()}{stack}{selected}";
 	}
 
-	private static string DescribeRecipeDetails(int availableIndex)
+	internal static string DescribeRecipeDetails(int availableIndex)
 	{
 		Recipe recipe = Main.recipe[Main.availableRecipe[availableIndex]];
 		List<string> requirements = [];
@@ -2391,7 +2389,7 @@ internal sealed class AccessibleInventoryController
 	{
 		_resumeFocusPath = GetFocusPathIds();
 		_restoreFocusOnNextActivation = true;
-		_suppressInventoryCloseUntilRelease = true;
+		_suppressInventoryToggleUntilRelease = true;
 	}
 
 	private void RestoreResumeFocus()
@@ -2415,9 +2413,9 @@ internal sealed class AccessibleInventoryController
 		_restoreFocusOnNextActivation = false;
 	}
 
-	private void ConsumeResumeInventoryTrigger(KeyboardState keyboard)
+	private void ConsumeSuppressedInventoryTrigger(KeyboardState keyboard)
 	{
-		if (!_suppressInventoryCloseUntilRelease)
+		if (!_suppressInventoryToggleUntilRelease)
 		{
 			return;
 		}
@@ -2435,7 +2433,7 @@ internal sealed class AccessibleInventoryController
 			return;
 		}
 
-		_suppressInventoryCloseUntilRelease = false;
+		_suppressInventoryToggleUntilRelease = false;
 		Main.LocalPlayer.releaseInventory = true;
 	}
 
@@ -2476,7 +2474,7 @@ internal sealed class AccessibleInventoryController
 			}));
 	}
 
-	private static void ActivateVanillaChatButton(bool firstButton, Action? action)
+	internal static void ActivateVanillaChatButton(bool firstButton, Action? action)
 	{
 		if (!NPCLoader.PreChatButtonClicked(firstButton))
 		{
@@ -2760,32 +2758,76 @@ internal sealed class AccessibleInventoryController
 		SoundEngine.PlaySound(SoundID.MenuTick);
 	}
 
-	private static void OpenVanillaShop(int shopIndex)
+	private void OpenVanillaShop(int shopIndex)
 	{
 		Main.playerInventory = true;
 		Main.stackSplit = 9999;
 		Main.npcChatText = string.Empty;
 		Main.SetNPCShopIndex(1);
 		Main.instance.shop[Main.npcShop].SetupShop(shopIndex);
+		TransitionToInventory(["interactions", "shop"]);
 		SoundEngine.PlaySound(SoundID.MenuTick);
 	}
 
-	private static void OpenGuideCrafting()
+	private void OpenGuideCrafting()
 	{
-		Main.playerInventory = true;
+		OpenGuideCrafting(Main.npcChatText);
+	}
+
+	internal void OpenGuideCrafting(string returnDialog)
+	{
+		Main.playerInventory = false;
 		Main.npcChatText = string.Empty;
 		Main.InReforgeMenu = false;
 		Main.InGuideCraftMenu = true;
+		Recipe.FindRecipes();
+		_menuController.ShowRoot(new AccessibleGuideCraftingMenuState(
+			_menuController,
+			this,
+			Main.LocalPlayer,
+			Main.LocalPlayer.TalkNPC,
+			returnDialog));
 		SoundEngine.PlaySound(SoundID.MenuTick);
 	}
 
-	private static void OpenReforge()
+	private void OpenReforge()
 	{
 		Main.playerInventory = true;
 		Main.npcChatText = string.Empty;
 		Main.InGuideCraftMenu = false;
 		Main.InReforgeMenu = true;
+		TransitionToInventory(["interactions", "reforge", "reforge-slot"]);
 		SoundEngine.PlaySound(SoundID.MenuTick);
+	}
+
+	internal bool TryAdoptInventoryBackedNpcService(string returnDialog)
+	{
+		if (Main.InGuideCraftMenu)
+		{
+			OpenGuideCrafting(returnDialog);
+			return true;
+		}
+		if (Main.npcShop > 0)
+		{
+			TransitionToInventory(["interactions", "shop"]);
+			return true;
+		}
+		if (Main.InReforgeMenu)
+		{
+			TransitionToInventory(["interactions", "reforge", "reforge-slot"]);
+			return true;
+		}
+		return false;
+	}
+
+	private void TransitionToInventory(IReadOnlyList<string> focusPath)
+	{
+		RequestSemanticFocusPath(focusPath);
+		if (_menuController.IsActive)
+		{
+			_menuController.Close();
+		}
+		Main.playerInventory = true;
 	}
 
 	private void OpenStylist()
