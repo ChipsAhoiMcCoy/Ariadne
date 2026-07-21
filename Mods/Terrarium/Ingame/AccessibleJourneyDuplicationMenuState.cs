@@ -39,7 +39,7 @@ internal sealed class AccessibleJourneyDuplicationMenuState : AccessibleMenuStat
 
 	protected override int? HierarchyLevel => _hierarchyLevel;
 
-	protected override bool RightArrowActivatesSelection => false;
+	protected override bool RightArrowOpensSubmenu => false;
 
 	protected override string AdditionalControlHint => "    Tab: pane";
 

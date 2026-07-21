@@ -43,7 +43,7 @@ internal abstract class AccessibleMenuState : UIState
 
 	protected virtual bool UsesHierarchicalNavigation => Controller.IsInGame;
 
-	protected virtual bool RightArrowActivatesSelection => UsesHierarchicalNavigation;
+	protected virtual bool RightArrowOpensSubmenu => UsesHierarchicalNavigation;
 
 	protected virtual bool AnnouncesSubmenuRole => true;
 
@@ -113,8 +113,8 @@ internal abstract class AccessibleMenuState : UIState
 		string controlHint =
 			CanGoBack
 				? UsesHierarchicalNavigation
-					? RightArrowActivatesSelection
-						? "Up/Down: move    Letters: jump    Right/Enter: open or change    Left/Escape: back    F1: help"
+					? RightArrowOpensSubmenu
+						? "Up/Down: move    Letters: jump    Left/Right: adjust/tree    Enter: activate    Escape: back    F1: help"
 						: "Up/Down: move    Letters: jump    Enter: activate    Left/Escape: back    F1: help"
 					: "Up/Down: move    Letters: jump    Left/Right: change    Enter: select    Escape: back    F1: help"
 				: "Up/Down: move    Letters: jump    Left/Right: change    Enter: select    F1: help";
@@ -145,8 +145,8 @@ internal abstract class AccessibleMenuState : UIState
 			? string.Empty
 			: " Speech output is unavailable; see the tModLoader client log.";
 		string controls = UsesHierarchicalNavigation
-			? RightArrowActivatesSelection
-				? "Use Up and Down Arrow keys to move, letter keys to jump by name, Right Arrow or Enter to open groups and activate options, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Escape to go back, and F1 for contextual help."
+			? RightArrowOpensSubmenu
+				? "Use Up and Down Arrow keys to move, letter keys to jump by name, Right Arrow to open submenus, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Enter to activate the focused option, Escape to go back, and F1 for contextual help."
 				: "Use Up and Down Arrow keys to move, letter keys to jump by name, Enter to activate options, Left Arrow or Escape to go back, and F1 for contextual help."
 			: "Use Up and Down Arrow keys to move, letter keys to jump by name, Left and Right Arrow keys to change values, Enter to select" +
 				(CanGoBack ? ", Escape to go back" : string.Empty) +
@@ -224,13 +224,14 @@ internal abstract class AccessibleMenuState : UIState
 		}
 		else if (NavigationTriggered(keyboard, Keys.Right, gameTime))
 		{
-			if (RightArrowActivatesSelection && !_entries[_selectedIndex].IsAdjustable)
-			{
-				ActivateSelection();
-			}
-			else
+			AccessibleMenuEntry entry = _entries[_selectedIndex];
+			if (entry.IsAdjustable)
 			{
 				AdjustSelection(forward: true);
+			}
+			else if (RightArrowOpensSubmenu && entry.IsSubmenu)
+			{
+				ActivateSelection();
 			}
 		}
 		else if (Pressed(keyboard, Keys.Enter))
@@ -303,9 +304,9 @@ internal abstract class AccessibleMenuState : UIState
 			}
 			if (UsesHierarchicalNavigation)
 			{
-				if (RightArrowActivatesSelection)
+				if (RightArrowOpensSubmenu && _entries.Exists(entry => entry.IsSubmenu))
 				{
-					topics.Add(new("Right Arrow", "Open or activate a focused group, button, or other non-adjustable option."));
+					topics.Add(new("Right Arrow", "Open the focused submenu without activating buttons or toggles."));
 				}
 				if (CanGoBack)
 				{

@@ -45,4 +45,6 @@ internal sealed class AccessibleMenuEntry
 	internal bool IsEnabled => Enabled?.Invoke() ?? true;
 
 	internal bool IsAdjustable => PreviousValue is not null || NextValue is not null;
+
+	internal bool IsSubmenu => Role.Equals("submenu", StringComparison.OrdinalIgnoreCase);
 }

@@ -27,6 +27,9 @@ namespace Terrarium.Ingame;
 internal sealed class AccessibleInventoryController
 {
 	private const int MenuPageSize = 10;
+	private const int JourneyTimeCategory = 3;
+	private const int JourneyWeatherCategory = 4;
+	private const int JourneyPersonalPowersCategory = 6;
 	private static readonly TimeSpan NavigationRepeatDelay = TimeSpan.FromMilliseconds(450);
 	private static readonly TimeSpan NavigationRepeatInterval = TimeSpan.FromMilliseconds(85);
 	private static readonly FieldInfo? ModAccessoryItemsField = typeof(ModAccessorySlotPlayer).GetField("exAccessorySlot", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -189,7 +192,7 @@ internal sealed class AccessibleInventoryController
 		{
 			TerrariumMod.ScreenReader.Output(
 				$"Inventory tree, level 0. {DescribeSelection()} " +
-				"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Right Arrow or Enter to open a category, Home and End to move to the first and last category, Tab for actions on a focused item, and F1 for help.");
+				"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Left and Right Arrow keys to change adjustable entries or navigate into and out of the tree, Enter to open or activate the focused entry, Home and End to move to the first and last category, Tab for actions on a focused item, and F1 for help.");
 		}
 	}
 
@@ -287,16 +290,43 @@ internal sealed class AccessibleInventoryController
 		[
 			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
 				"journey-duplication",
-				() => "Duplication",
+				() => "Duplicated items",
 				() => "Browse and duplicate every fully researched item.",
 				OpenJourneyDuplication,
 				opensSubmenu: true)),
 			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
-				"journey-powers",
-				() => "Powers",
-				() => "Open Journey difficulty time, weather, difficulty, infection, and spawn controls.",
-				OpenJourneyPowers,
+				"journey-time",
+				() => "Time",
+				() => "Open Journey time controls.",
+				() => OpenJourneyPowerCategory(JourneyTimeCategory),
 				opensSubmenu: true)),
+			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"journey-weather",
+				() => "Weather",
+				() => "Open Journey wind and rain controls.",
+				() => OpenJourneyPowerCategory(JourneyWeatherCategory),
+				opensSubmenu: true)),
+			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"journey-personal-powers",
+				() => "Personal powers",
+				() => "Open Journey godmode, placement range, and enemy spawn-rate controls.",
+				() => OpenJourneyPowerCategory(JourneyPersonalPowersCategory),
+				opensSubmenu: true)),
+			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"journey-infection-spread",
+				DescribeJourneyInfectionSpread,
+				() => "Enable or disable the spread of Corruption, Crimson, and Hallow.",
+				ToggleJourneyInfectionSpread,
+				enabled: CanToggleJourneyInfectionSpread)),
+			AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+				"journey-enemy-difficulty",
+				DescribeJourneyEnemyDifficulty,
+				() => $"Adjust Journey enemy difficulty. {DescribeJourneyEnemyDifficulty()}.",
+				enabled: CanAdjustJourneyEnemyDifficulty,
+				previousValue: () => AdjustJourneyEnemyDifficulty(-0.05f),
+				nextValue: () => AdjustJourneyEnemyDifficulty(0.05f),
+				adjustmentAnnouncement: DescribeJourneyEnemyDifficulty,
+				announcesAdjustmentImmediately: false)),
 		];
 		AddBranch(_rootNodes, "journey", "Journey", journey);
 	}
@@ -486,7 +516,7 @@ internal sealed class AccessibleInventoryController
 				() => Main.instance.SetMouseNPC(captured.whoAmI, captured.type)));
 		}
 		AddCategory(interfaces, "housing", "NPC Housing", housing);
-		AddBranch(_rootNodes, "interfaces", "Interfaces", interfaces);
+		AddBranch(_rootNodes, "interfaces", "Other", interfaces);
 	}
 
 	private static string DescribeNpcHousing(NPC npc)
@@ -898,9 +928,17 @@ internal sealed class AccessibleInventoryController
 
 	private bool HandleInventoryTreeInput(KeyboardState keyboard)
 	{
-		if (Pressed(keyboard, Keys.Left) && CurrentLevel > 0)
+		if (CurrentNode.IsAction && CurrentEntry.IsAdjustable && NavigationTriggered(keyboard, Keys.Left))
+		{
+			AdjustCurrentEntry(forward: false);
+		}
+		else if (Pressed(keyboard, Keys.Left) && CurrentLevel > 0)
 		{
 			CloseSubmenu();
+		}
+		else if (CurrentNode.IsAction && CurrentEntry.IsAdjustable && NavigationTriggered(keyboard, Keys.Right))
+		{
+			AdjustCurrentEntry(forward: true);
 		}
 		else if (Pressed(keyboard, Keys.Right) && CurrentNode.OpensSubmenu)
 		{
@@ -932,7 +970,11 @@ internal sealed class AccessibleInventoryController
 		}
 		else if (Pressed(keyboard, Keys.Enter))
 		{
-			if (CurrentNode.HasChildren)
+			if (CurrentNode.IsAction && CurrentEntry.IsAdjustable)
+			{
+				AdjustCurrentEntry(forward: true);
+			}
+			else if (CurrentNode.HasChildren)
 			{
 				OpenSubmenu();
 			}
@@ -964,6 +1006,33 @@ internal sealed class AccessibleInventoryController
 		}
 
 		return true;
+	}
+
+	private void AdjustCurrentEntry(bool forward)
+	{
+		AccessibleInventoryEntry entry = CurrentEntry;
+		if (!entry.IsEnabled)
+		{
+			SoundEngine.PlaySound(SoundID.MenuClose);
+			TerrariumMod.ScreenReader.Output($"{entry.Label()}, unavailable.");
+			return;
+		}
+
+		Action? adjustment = forward ? entry.NextValue : entry.PreviousValue;
+		adjustment ??= forward ? entry.PreviousValue : entry.NextValue;
+		if (adjustment is null)
+		{
+			return;
+		}
+
+		adjustment();
+		RebuildCategories();
+		SoundEngine.PlaySound(SoundID.MenuTick);
+		if (entry.AnnouncesAdjustmentImmediately)
+		{
+			_lastSemanticState = GetSemanticState();
+			TerrariumMod.ScreenReader.Output(entry.AdjustmentAnnouncement?.Invoke() ?? DescribeSelection());
+		}
 	}
 
 	private bool HandleActionsPaneInput(KeyboardState keyboard)
@@ -1480,7 +1549,7 @@ internal sealed class AccessibleInventoryController
 
 		TerrariumMod.ScreenReader.Output(
 			$"Inventory tree help. {DescribeCurrentLevel()} {DescribeSelection()} " +
-			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Right Arrow or Enter opens the focused group or screen, and Left Arrow returns to its parent. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions and Shift Enter takes one item from a stack. Enter performs the primary or normal left click action. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
+			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Left and Right change an adjustable entry or navigate into and out of the tree. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions and Shift Enter takes one item from a stack. Enter performs the primary or normal left click action. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
 	private void AnnounceSelection(bool includeLevel = false)
@@ -1515,6 +1584,7 @@ internal sealed class AccessibleInventoryController
 		AccessibleInventoryNode node = CurrentNode;
 		AccessibleInventoryEntry? entry = node.Entry;
 		string unavailable = entry?.IsEnabled == false ? ", unavailable" : string.Empty;
+		string adjustable = entry?.IsAdjustable == true ? ", adjustable" : string.Empty;
 		string position = entry?.SelectionDetails is null ? $", {CurrentLevelIndex + 1} of {CurrentLevelCount}" : string.Empty;
 		string details = entry?.SelectionDetails?.Invoke() ?? string.Empty;
 		if (!string.IsNullOrWhiteSpace(details))
@@ -1522,7 +1592,7 @@ internal sealed class AccessibleInventoryController
 			details = $" {details}";
 		}
 		string held = entry is null || Main.mouseItem.IsAir ? string.Empty : $" Holding {DescribeItemBrief(Main.mouseItem)}.";
-		return $"{node.Label()}{unavailable}{position}.{details}{held}";
+		return $"{node.Label()}{adjustable}{unavailable}{position}.{details}{held}";
 	}
 
 	private string GetSemanticState()
@@ -2248,13 +2318,59 @@ internal sealed class AccessibleInventoryController
 		AccessibleExternalUISystem.OpenIngameStateFromInventory(new UIEmotesMenu());
 	}
 
-	private void OpenJourneyPowers()
+	private void OpenJourneyPowerCategory(int category)
 	{
 		int hierarchyLevel = GetOpenedScreenHierarchyLevel();
 		RememberFocusForResume();
 		AccessibleExternalUISystem.SetNextIngameHierarchyLevel(hierarchyLevel);
+		AccessibleExternalUISystem.SetNextJourneyPowerCategory(category);
 		Main.CreativeMenu.ToggleMenu();
 		SoundEngine.PlaySound(SoundID.MenuOpen);
+	}
+
+	private static string DescribeJourneyInfectionSpread()
+	{
+		CreativePowers.StopBiomeSpreadPower power = CreativePowerManager.Instance.GetPower<CreativePowers.StopBiomeSpreadPower>();
+		return power.Enabled ? "Infection spread, disabled" : "Infection spread, enabled";
+	}
+
+	private static bool CanToggleJourneyInfectionSpread()
+	{
+		CreativePowers.StopBiomeSpreadPower power = CreativePowerManager.Instance.GetPower<CreativePowers.StopBiomeSpreadPower>();
+		return CreativePowersHelper.IsAvailableForPlayer(power, Main.myPlayer);
+	}
+
+	private static void ToggleJourneyInfectionSpread()
+	{
+		if (!AccessibleExternalUISystem.TryToggleJourneyInfectionSpread())
+		{
+			TerrariumMod.ScreenReader.Output("The Journey infection-spread control is unavailable.");
+		}
+	}
+
+	private static string DescribeJourneyEnemyDifficulty()
+	{
+		return AccessibleExternalUISystem.TryGetJourneyEnemyDifficultySlider(out Func<float>? getValue, out _)
+			? $"Enemy difficulty, {Math.Clamp(getValue(), 0f, 1f):P0}"
+			: "Enemy difficulty";
+	}
+
+	private static bool CanAdjustJourneyEnemyDifficulty()
+	{
+		CreativePowers.DifficultySliderPower power = CreativePowerManager.Instance.GetPower<CreativePowers.DifficultySliderPower>();
+		return CreativePowersHelper.IsAvailableForPlayer(power, Main.myPlayer) &&
+			AccessibleExternalUISystem.TryGetJourneyEnemyDifficultySlider(out _, out _);
+	}
+
+	private static void AdjustJourneyEnemyDifficulty(float offset)
+	{
+		if (AccessibleExternalUISystem.TryGetJourneyEnemyDifficultySlider(out Func<float>? getValue, out Action<float>? setValue))
+		{
+			setValue(Math.Clamp(getValue() + offset, 0f, 1f));
+			return;
+		}
+
+		TerrariumMod.ScreenReader.Output("The Journey enemy-difficulty slider is unavailable.");
 	}
 
 	private int GetOpenedScreenHierarchyLevel()
@@ -2820,7 +2936,11 @@ internal sealed class AccessibleInventoryEntry
 		Func<string>? selectionDetails = null,
 		bool opensSubmenu = false,
 		AccessibleInventoryItemSlot? itemSlot = null,
-		Func<string?>? firstLetterName = null)
+		Func<string?>? firstLetterName = null,
+		Action? previousValue = null,
+		Action? nextValue = null,
+		Func<string>? adjustmentAnnouncement = null,
+		bool announcesAdjustmentImmediately = true)
 	{
 		Id = id;
 		Label = label;
@@ -2833,6 +2953,10 @@ internal sealed class AccessibleInventoryEntry
 		OpensSubmenu = opensSubmenu;
 		ItemSlot = itemSlot;
 		FirstLetterName = firstLetterName ?? (() => label());
+		PreviousValue = previousValue;
+		NextValue = nextValue;
+		AdjustmentAnnouncement = adjustmentAnnouncement;
+		AnnouncesAdjustmentImmediately = announcesAdjustmentImmediately;
 	}
 
 	internal string Id { get; }
@@ -2846,7 +2970,12 @@ internal sealed class AccessibleInventoryEntry
 	internal bool OpensSubmenu { get; }
 	internal AccessibleInventoryItemSlot? ItemSlot { get; }
 	internal Func<string?> FirstLetterName { get; }
+	internal Action? PreviousValue { get; }
+	internal Action? NextValue { get; }
+	internal Func<string>? AdjustmentAnnouncement { get; }
+	internal bool AnnouncesAdjustmentImmediately { get; }
 	internal bool IsEnabled => Enabled?.Invoke() ?? true;
+	internal bool IsAdjustable => PreviousValue is not null || NextValue is not null;
 }
 
 internal sealed class AccessibleInventoryItemSlot

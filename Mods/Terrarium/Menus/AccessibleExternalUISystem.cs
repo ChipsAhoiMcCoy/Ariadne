@@ -13,6 +13,7 @@ using Terraria;
 using Terraria.Audio;
 using Terraria.GameContent.Bestiary;
 using Terraria.GameContent.Creative;
+using Terraria.GameContent.ItemDropRules;
 using Terraria.GameContent.UI;
 using Terraria.GameContent.UI.Elements;
 using Terraria.GameContent.UI.States;
@@ -36,6 +37,7 @@ internal sealed class AccessibleExternalUISystem : ModSystem
 	private static readonly FieldInfo? CreativeUiStateField = typeof(CreativeUI).GetField("_uiState", BindingFlags.Instance | BindingFlags.NonPublic);
 	private static UIState? _returnToInventoryWhenClosed;
 	private static int? _nextIngameHierarchyLevel;
+	private static int? _nextJourneyPowerCategory;
 	private readonly AccessibleExternalUIController _controller = new();
 
 	internal static void OpenIngameStateFromInventory(UIState state)
@@ -49,12 +51,36 @@ internal sealed class AccessibleExternalUISystem : ModSystem
 		_nextIngameHierarchyLevel = level;
 	}
 
+	internal static void SetNextJourneyPowerCategory(int category)
+	{
+		_nextJourneyPowerCategory = category;
+	}
+
+	internal static bool TryToggleJourneyInfectionSpread()
+	{
+		return CreativeUiStateField?.GetValue(Main.CreativeMenu) is UICreativePowersMenu journeyPowers &&
+			AccessibleExternalUIController.TryToggleJourneyInfectionSpread(journeyPowers);
+	}
+
+	internal static bool TryGetJourneyEnemyDifficultySlider(out Func<float> getValue, out Action<float> setValue)
+	{
+		if (CreativeUiStateField?.GetValue(Main.CreativeMenu) is UICreativePowersMenu journeyPowers)
+		{
+			return AccessibleExternalUIController.TryGetJourneyEnemyDifficultySlider(journeyPowers, out getValue, out setValue);
+		}
+
+		getValue = null!;
+		setValue = null!;
+		return false;
+	}
+
 	public override void PostUpdateInput()
 	{
 		if (Main.gameMenu)
 		{
 			_returnToInventoryWhenClosed = null;
 			_nextIngameHierarchyLevel = null;
+			_nextJourneyPowerCategory = null;
 		}
 		else if (_returnToInventoryWhenClosed is not null && Main.InGameUI.CurrentState is null)
 		{
@@ -90,13 +116,19 @@ internal sealed class AccessibleExternalUISystem : ModSystem
 		int? hierarchyLevel = Main.gameMenu
 			? null
 			: _nextIngameHierarchyLevel ?? (state is UIBestiaryTest ? IngameBestiaryHierarchyLevel : null);
-		_controller.Update(state, hierarchyLevel);
+		int? journeyPowerCategory = state is UICreativePowersMenu ? _nextJourneyPowerCategory : null;
+		_controller.Update(state, hierarchyLevel, journeyPowerCategory);
+		if (journeyPowerCategory is not null)
+		{
+			_nextJourneyPowerCategory = null;
+		}
 	}
 
 	public override void Unload()
 	{
 		_returnToInventoryWhenClosed = null;
 		_nextIngameHierarchyLevel = null;
+		_nextJourneyPowerCategory = null;
 		_controller.Deactivate();
 	}
 
@@ -148,14 +180,15 @@ internal sealed class AccessibleExternalUIController
 	private string _lastStatus = string.Empty;
 	private string? _lastEditValue;
 	private int? _hierarchyLevel;
+	private int? _journeyCategoryOpenedFromInventory;
 
-	internal void Update(UIState state, int? hierarchyLevel)
+	internal void Update(UIState state, int? hierarchyLevel, int? journeyCategoryOpenedFromInventory = null)
 	{
 		KeyboardState keyboard = Keyboard.GetState();
 		long now = Environment.TickCount64;
-		if (!ReferenceEquals(state, _state))
+		if (!ReferenceEquals(state, _state) || journeyCategoryOpenedFromInventory is not null)
 		{
-			Activate(state, keyboard, now, hierarchyLevel);
+			Activate(state, keyboard, now, hierarchyLevel, journeyCategoryOpenedFromInventory);
 			return;
 		}
 
@@ -206,9 +239,10 @@ internal sealed class AccessibleExternalUIController
 		_lastStatus = string.Empty;
 		_lastEditValue = null;
 		_hierarchyLevel = null;
+		_journeyCategoryOpenedFromInventory = null;
 	}
 
-	private void Activate(UIState state, KeyboardState keyboard, long now, int? hierarchyLevel)
+	private void Activate(UIState state, KeyboardState keyboard, long now, int? hierarchyLevel, int? journeyCategoryOpenedFromInventory)
 	{
 		Deactivate();
 		_state = state;
@@ -216,6 +250,10 @@ internal sealed class AccessibleExternalUIController
 		if (state is UICreativePowersMenu journeyPowers)
 		{
 			ResetJourneyPowerHierarchy(journeyPowers);
+			if (journeyCategoryOpenedFromInventory is int category && TryOpenJourneyPowerCategory(journeyPowers, category))
+			{
+				_journeyCategoryOpenedFromInventory = category;
+			}
 		}
 		if (!Main.gameMenu && state is UIBestiaryTest)
 		{
@@ -240,7 +278,7 @@ internal sealed class AccessibleExternalUIController
 		_lastSelectionState = GetSelectionState();
 		TerrariumMod.ScreenReader.Output(
 			$"{hierarchy}{title}. {DescribeSelection()} " +
-			"Use Up and Down Arrow keys to move, Right Arrow or Enter to open or activate, Left Arrow to return, Shift Enter for the alternate action, letter keys to jump by name, Control R for details, Escape for the screen's normal back action, and F1 for help.");
+			"Use Up and Down Arrow keys to move, Left and Right Arrow keys to adjust sliders or navigate the menu tree, Enter to activate, Shift Enter for the alternate action, letter keys to jump by name, Control R for details, Escape for the screen's normal back action, and F1 for help.");
 	}
 
 	private bool HandleInput(KeyboardState keyboard, long now)
@@ -282,22 +320,14 @@ internal sealed class AccessibleExternalUIController
 		}
 		else if (NavigationTriggered(keyboard, Keys.Left, now))
 		{
-			if (TryAdjustSelectedSlider(-0.05f))
-			{
-				AnnounceSelection();
-			}
-			else
+			if (!TryAdjustSelectedSlider(-0.05f))
 			{
 				NavigateBack();
 			}
 		}
 		else if (NavigationTriggered(keyboard, Keys.Right, now))
 		{
-			if (TryAdjustSelectedSlider(0.05f))
-			{
-				AnnounceSelection();
-			}
-			else
+			if (!TryAdjustSelectedSlider(0.05f) && CanOpenSelectedSubmenu())
 			{
 				ActivateSelection(secondary: false);
 			}
@@ -395,30 +425,23 @@ internal sealed class AccessibleExternalUIController
 		{
 			BestiaryEntry entry = entries[index];
 			string label = DescribeBestiaryEntryLabel(entry);
+			string? cachedDetails = null;
+			Func<string> getDetails = () => cachedDetails ??= DescribeBestiaryEntry(entry).Details;
 			int capturedIndex = index;
 			_controls.Add(new AccessibleExternalControl(
 				null,
 				$"bestiary-entry-{capturedIndex}-{label}",
 				label,
-				() => DescribeBestiaryEntry(entry).Details,
+				getDetails,
 				"entry",
 				_ => SelectBestiaryEntry(bestiary, entry, capturedIndex),
-				() => ShowBestiaryEntryOnNativeGrid(bestiary, capturedIndex)));
+				() => FocusBestiaryEntry(bestiary, entry, capturedIndex)));
 		}
 	}
 
 	private static (string Label, string Details) DescribeBestiaryEntry(BestiaryEntry entry)
 	{
-		BestiaryUICollectionInfo collectionInfo;
-		try
-		{
-			collectionInfo = entry.UIInfoProvider?.GetEntryUICollectionInfo() ?? default;
-		}
-		catch
-		{
-			collectionInfo = default;
-		}
-
+		BestiaryUICollectionInfo collectionInfo = GetBestiaryCollectionInfo(entry);
 		int? displayIndex = entry.Info.OfType<IBestiaryEntryDisplayIndex>().Select(info => (int?)info.BestiaryDisplayIndex).FirstOrDefault();
 		string label;
 		try
@@ -434,17 +457,56 @@ internal sealed class AccessibleExternalUIController
 			label = displayIndex is int knownIndex ? $"Unknown entry {knownIndex}" : "Unknown entry";
 		}
 
-		List<string> details = [label, $"Discovery level: {Humanize(collectionInfo.UnlockState.ToString())}"];
+		List<string> details = [label, DescribeBestiaryUnlockState(collectionInfo.UnlockState)];
+		List<string> tags = [];
+		int unidentifiedDropCount = 0;
 		foreach (IBestiaryInfoElement infoElement in entry.Info)
 		{
-			if (infoElement is NPCStatsReportInfoElement stats && collectionInfo.UnlockState >= BestiaryEntryUnlockState.CanShowStats_2)
-			{
-				details.Add($"Life {stats.LifeMax}, attack {stats.Damage}, defense {stats.Defense}, knockback resistance {stats.KnockbackResist:P0}");
-				continue;
-			}
-
 			try
 			{
+				if (infoElement is IUpdateBeforeSorting updateBeforeSorting)
+				{
+					updateBeforeSorting.UpdateBeforeSorting();
+				}
+
+				switch (infoElement)
+				{
+					case NPCStatsReportInfoElement stats when collectionInfo.UnlockState >= BestiaryEntryUnlockState.CanShowStats_2:
+						details.Add(DescribeBestiaryStats(stats));
+						continue;
+					case NPCStatsReportInfoElement:
+						continue;
+					case NPCKillCounterInfoElement killCounter:
+						if (TryDescribeBestiaryKillCount(killCounter, out string killCount))
+						{
+							details.Add(killCount);
+						}
+						continue;
+					case ItemDropBestiaryInfoElement itemDrop:
+						if (collectionInfo.UnlockState == BestiaryEntryUnlockState.CanShowStats_2 &&
+							TryGetVisibleBestiaryDropInfo(itemDrop, out _))
+						{
+							unidentifiedDropCount++;
+						}
+						else if (TryDescribeBestiaryDrop(itemDrop, collectionInfo, out string drop))
+						{
+							details.Add(drop);
+						}
+						continue;
+					case ItemFromCatchingNPCBestiaryInfoElement catchItem:
+						if (TryDescribeBestiaryCatchItem(catchItem, collectionInfo, out string caughtAs))
+						{
+							details.Add(caughtAs);
+						}
+						continue;
+					case BossBestiaryInfoElement when collectionInfo.UnlockState >= BestiaryEntryUnlockState.CanShowPortraitOnly_1:
+						details.Add("Boss");
+						continue;
+					case RareSpawnBestiaryInfoElement rareSpawn when collectionInfo.UnlockState >= BestiaryEntryUnlockState.CanShowPortraitOnly_1:
+						details.Add($"Rare enemy, rarity level {rareSpawn.RarityLevel}");
+						continue;
+				}
+
 				UIElement? element = infoElement.ProvideUIElement(collectionInfo);
 				if (element is null)
 				{
@@ -452,7 +514,15 @@ internal sealed class AccessibleExternalUIController
 				}
 				List<string> text = [];
 				CollectText(element, text);
-				string semanticText = string.Join(". ", text.Distinct(StringComparer.OrdinalIgnoreCase));
+				string semanticText = JoinSpokenSentences(text);
+				if (infoElement is IFilterInfoProvider)
+				{
+					string? tag = infoElement is IProvideSearchFilterString searchProvider
+						? searchProvider.GetSearchString(ref collectionInfo)
+						: null;
+					AddText(tags, string.IsNullOrWhiteSpace(tag) ? semanticText : tag);
+					continue;
+				}
 				if (!string.IsNullOrWhiteSpace(semanticText) && !semanticText.Equals(label, StringComparison.OrdinalIgnoreCase))
 				{
 					details.Add(semanticText);
@@ -463,22 +533,21 @@ internal sealed class AccessibleExternalUIController
 				// A mod-provided Bestiary information element must not break the entire list.
 			}
 		}
+		if (unidentifiedDropCount > 0)
+		{
+			details.Add($"{unidentifiedDropCount} {(unidentifiedDropCount == 1 ? "drop remains" : "drops remain")} unidentified");
+		}
+		if (tags.Count > 0)
+		{
+			details.Add($"Bestiary tags: {JoinSpokenList(tags)}");
+		}
 
-		return (label, string.Join(". ", details.Distinct(StringComparer.OrdinalIgnoreCase)));
+		return (label, JoinSpokenSentences(details));
 	}
 
 	private static string DescribeBestiaryEntryLabel(BestiaryEntry entry)
 	{
-		BestiaryUICollectionInfo collectionInfo;
-		try
-		{
-			collectionInfo = entry.UIInfoProvider?.GetEntryUICollectionInfo() ?? default;
-		}
-		catch
-		{
-			collectionInfo = default;
-		}
-
+		BestiaryUICollectionInfo collectionInfo = GetBestiaryCollectionInfo(entry);
 		string label;
 		try
 		{
@@ -497,13 +566,152 @@ internal sealed class AccessibleExternalUIController
 		return displayIndex is int knownIndex ? $"Unknown entry {knownIndex}" : "Unknown entry";
 	}
 
+	private static BestiaryUICollectionInfo GetBestiaryCollectionInfo(BestiaryEntry entry)
+	{
+		BestiaryUICollectionInfo collectionInfo;
+		try
+		{
+			collectionInfo = entry.UIInfoProvider?.GetEntryUICollectionInfo() ?? default;
+		}
+		catch
+		{
+			collectionInfo = default;
+		}
+		collectionInfo.OwnerEntry = entry;
+		return collectionInfo;
+	}
+
+	private static string DescribeBestiaryUnlockState(BestiaryEntryUnlockState unlockState)
+	{
+		return unlockState switch
+		{
+			BestiaryEntryUnlockState.NotKnownAtAll_0 => "Not yet discovered",
+			BestiaryEntryUnlockState.CanShowPortraitOnly_1 => "Portrait unlocked; stats and drops remain unknown",
+			BestiaryEntryUnlockState.CanShowStats_2 => "Stats unlocked; drop identities remain unknown",
+			BestiaryEntryUnlockState.CanShowDropsWithoutDropRates_3 => "Drops unlocked; drop rates remain unknown",
+			BestiaryEntryUnlockState.CanShowDropsWithDropRates_4 => "Fully unlocked, including drop rates",
+			_ => $"Discovery level: {Humanize(unlockState.ToString())}",
+		};
+	}
+
+	private static string DescribeBestiaryStats(NPCStatsReportInfoElement stats)
+	{
+		string knockbackCategory = stats.KnockbackResist > 0.8f
+			? Language.GetTextValue("BestiaryInfo.KnockbackHigh")
+			: stats.KnockbackResist > 0.4f
+				? Language.GetTextValue("BestiaryInfo.KnockbackMedium")
+				: stats.KnockbackResist > 0f
+					? Language.GetTextValue("BestiaryInfo.KnockbackLow")
+					: Language.GetTextValue("BestiaryInfo.KnockbackNone");
+		string value = stats.MonetaryValue > 0f ? $", value {DescribeCoinValue((long)stats.MonetaryValue)}" : string.Empty;
+		return $"Stats: life {stats.LifeMax}, attack {stats.Damage}, defense {stats.Defense}, knockback resistance {stats.KnockbackResist:P0}, {knockbackCategory}{value}";
+	}
+
+	private static string DescribeCoinValue(long value)
+	{
+		int[] coins = Utils.CoinsSplit(Math.Max(0L, value));
+		string[] names = ["copper", "silver", "gold", "platinum"];
+		List<string> parts = [];
+		for (int index = coins.Length - 1; index >= 0; index--)
+		{
+			if (coins[index] > 0)
+			{
+				parts.Add($"{coins[index]} {names[index]}");
+			}
+		}
+		return parts.Count > 0 ? string.Join(", ", parts) : "0 copper";
+	}
+
+	private static bool TryDescribeBestiaryKillCount(NPCKillCounterInfoElement killCounter, out string description)
+	{
+		if (GetFieldValue(killCounter.GetType(), killCounter, "_instance") is NPC npc &&
+			Main.BestiaryTracker.Kills.GetKillCount(npc) is int count && count > 0)
+		{
+			description = $"Defeated {count}";
+			return true;
+		}
+		description = string.Empty;
+		return false;
+	}
+
+	private static bool TryDescribeBestiaryDrop(
+		ItemDropBestiaryInfoElement itemDrop,
+		BestiaryUICollectionInfo collectionInfo,
+		out string description)
+	{
+		description = string.Empty;
+		if (collectionInfo.UnlockState < BestiaryEntryUnlockState.CanShowDropsWithoutDropRates_3 ||
+			!TryGetVisibleBestiaryDropInfo(itemDrop, out DropRateInfo dropInfo) ||
+			!ContentSamples.ItemsByType.TryGetValue(dropInfo.itemId, out Item? item))
+		{
+			return false;
+		}
+
+		List<string> conditions = [];
+		if (dropInfo.conditions is not null)
+		{
+			foreach (IItemDropRuleCondition condition in dropInfo.conditions)
+			{
+				AddText(conditions, condition.GetConditionDescription());
+			}
+		}
+
+		string quantity = dropInfo.stackMin != dropInfo.stackMax
+			? $", quantity {dropInfo.stackMin} to {dropInfo.stackMax}"
+			: dropInfo.stackMin > 1 ? $", quantity {dropInfo.stackMin}" : string.Empty;
+		string rate = string.Empty;
+		if (collectionInfo.UnlockState >= BestiaryEntryUnlockState.CanShowDropsWithDropRates_4)
+		{
+			string format = dropInfo.dropRate < 0.001f ? "P4" : "P";
+			string percentage = dropInfo.dropRate == 1f ? "100%" : Utils.PrettifyPercentDisplay(dropInfo.dropRate, format);
+			rate = $", drop chance {percentage}";
+		}
+		string conditionText = conditions.Count > 0
+			? $", conditions: {JoinSpokenList(conditions)}"
+			: string.Empty;
+		description = $"Drops {item.Name}{quantity}{rate}{conditionText}";
+		return true;
+	}
+
+	private static bool TryGetVisibleBestiaryDropInfo(ItemDropBestiaryInfoElement itemDrop, out DropRateInfo dropInfo)
+	{
+		if (GetFieldValue(itemDrop.GetType(), itemDrop, "_droprateInfo") is not DropRateInfo found)
+		{
+			dropInfo = default;
+			return false;
+		}
+		if (found.conditions is not null && found.conditions.Any(condition => !condition.CanShowItemDropInUI()))
+		{
+			dropInfo = default;
+			return false;
+		}
+		dropInfo = found;
+		return true;
+	}
+
+	private static bool TryDescribeBestiaryCatchItem(
+		ItemFromCatchingNPCBestiaryInfoElement catchItem,
+		BestiaryUICollectionInfo collectionInfo,
+		out string description)
+	{
+		description = string.Empty;
+		if (collectionInfo.UnlockState < BestiaryEntryUnlockState.CanShowDropsWithoutDropRates_3 ||
+			GetFieldValue(catchItem.GetType(), catchItem, "_itemType") is not int itemType ||
+			!ContentSamples.ItemsByType.TryGetValue(itemType, out Item? item))
+		{
+			return false;
+		}
+		description = $"Catch item: {item.Name}";
+		return true;
+	}
+
 	private static void CollectText(UIElement root, List<string> destination)
 	{
 		if (root is UIText rootText)
 		{
 			AddText(destination, rootText.Text);
 		}
-		else if (IsTextPanel(root))
+		else
 		{
 			AddSemanticMemberText(root, destination);
 		}
@@ -514,14 +722,68 @@ internal sealed class AccessibleExternalUIController
 			{
 				AddText(destination, uiText.Text);
 			}
-			else if (IsTextPanel(child))
+			else
 			{
 				AddSemanticMemberText(child, destination);
 			}
 		}
 	}
 
+	private static string JoinSpokenSentences(IEnumerable<string> values)
+	{
+		List<string> sentences = [];
+		HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+		foreach (string value in values)
+		{
+			string sentence = NormalizeSpokenSentence(value);
+			if (!string.IsNullOrWhiteSpace(sentence) && seen.Add(sentence))
+			{
+				sentences.Add(sentence);
+			}
+		}
+		return string.Join(" ", sentences);
+	}
+
+	private static string JoinSpokenList(IEnumerable<string> values)
+	{
+		List<string> items = [];
+		HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+		foreach (string value in values)
+		{
+			string item = value.Trim().TrimEnd('.', ',', ';', ':').TrimEnd();
+			if (!string.IsNullOrWhiteSpace(item) && seen.Add(item))
+			{
+				items.Add(item);
+			}
+		}
+		return string.Join(", ", items);
+	}
+
+	private static string NormalizeSpokenSentence(string value)
+	{
+		string sentence = value.Trim();
+		while (sentence.EndsWith("..", StringComparison.Ordinal))
+		{
+			sentence = sentence[..^1].TrimEnd();
+		}
+		if (sentence.Length >= 2 && sentence[^1] == '.' && sentence[^2] is '?' or '!' or '…')
+		{
+			sentence = sentence[..^1].TrimEnd();
+		}
+		if (sentence.Length > 0 && sentence[^1] is not ('.' or '?' or '!' or '…'))
+		{
+			sentence += ".";
+		}
+		return sentence;
+	}
+
 	private void SelectBestiaryEntry(UIBestiaryTest bestiary, BestiaryEntry entry, int entryIndex)
+	{
+		FocusBestiaryEntry(bestiary, entry, entryIndex);
+		TerrariumMod.ScreenReader.Output(DescribeBestiaryEntry(entry).Details);
+	}
+
+	private static void FocusBestiaryEntry(UIBestiaryTest bestiary, BestiaryEntry entry, int entryIndex)
 	{
 		ShowBestiaryEntryOnNativeGrid(bestiary, entryIndex);
 		UIBestiaryEntryInfoPage? infoPage = GetFieldValue(bestiary.GetType(), bestiary, "_infoSpace") as UIBestiaryEntryInfoPage;
@@ -532,7 +794,6 @@ internal sealed class AccessibleExternalUIController
 				BestiaryProgressReport = bestiary.GetUnlockProgress(),
 			});
 		}
-		TerrariumMod.ScreenReader.Output(DescribeBestiaryEntry(entry).Details);
 	}
 
 	private static void ShowBestiaryEntryOnNativeGrid(UIBestiaryTest bestiary, int entryIndex)
@@ -560,22 +821,14 @@ internal sealed class AccessibleExternalUIController
 		if (rootOption is null)
 		{
 			_controls.RemoveAll(control => control.Element is null || GetStripDepth(control.Element) != 0);
+			SuppressJourneyPowerRoleVerbiage();
 			return;
 		}
 
-		int deepestStrip = _controls
-			.Where(control => control.Element is not null)
-			.Select(control => GetStripDepth(control.Element!))
-			.DefaultIfEmpty(0)
-			.Max();
-		if (deepestStrip > 0)
-		{
-			_controls.RemoveAll(control => control.Element is null || GetStripDepth(control.Element) != deepestStrip);
-		}
-		else
-		{
-			_controls.RemoveAll(control => control.Element is not null && GetStripDepth(control.Element) == 0);
-		}
+		// Slider controls are projected onto their strip-one category buttons below,
+		// so Journey navigation never needs the native strip-two slider level.
+		_controls.RemoveAll(control => control.Element is null || GetStripDepth(control.Element) != 1);
+		SuppressJourneyPowerRoleVerbiage();
 	}
 
 	private void ApplyJourneyPowerStripSemantics(int? rootOption)
@@ -599,33 +852,7 @@ internal sealed class AccessibleExternalUIController
 			}
 		}
 
-		int? nestedOption = _controls
-			.Where(control => control.Element is UIElement element &&
-				GetStripDepth(element) == 1 &&
-				GetOptionValueType(element) == typeof(int) &&
-				IsGroupOptionSelected(element))
-			.Select(control => control.Element!.GetType().GetProperty("OptionValue", InstanceMembers)?.GetValue(control.Element) as int?)
-			.FirstOrDefault(option => option is not null);
-		string? sliderLabel = (rootOption.Value, nestedOption) switch
-		{
-			(3, 1) => GetCreativeSubmenuLabel("CreativePowers.ModifyTimeRate"),
-			(4, 1) => GetCreativeSubmenuLabel("CreativePowers.ModifyWindDirectionAndStrength"),
-			(4, 2) => GetCreativeSubmenuLabel("CreativePowers.ModifyRainPower"),
-			(6, 1) => GetCreativeSubmenuLabel("CreativePowers.NPCSpawnRateSlider"),
-			_ => null,
-		};
-		if (sliderLabel is null)
-		{
-			return;
-		}
-
-		for (int index = 0; index < _controls.Count; index++)
-		{
-			if (_controls[index].Element is UIElement element && GetStripDepth(element) == 2)
-			{
-				SetJourneyPowerControlLabel(index, sliderLabel);
-			}
-		}
+		FlattenJourneySliderControls(rootOption.Value, stripOneControls);
 	}
 
 	private static string? GetJourneyStripOneLabel(int rootOption, int position, UIElement element)
@@ -640,22 +867,22 @@ internal sealed class AccessibleExternalUIController
 				2 => GetLocalizedValue("CreativePowers.StartNoonImmediately", "CreativePowers.StartNoonImmediately"),
 				3 => GetLocalizedValue("CreativePowers.StartNightImmediately", "CreativePowers.StartNightImmediately"),
 				4 => GetLocalizedValue("CreativePowers.StartMidnightImmediately", "CreativePowers.StartMidnightImmediately"),
-				5 => GetCreativeSubmenuLabel("CreativePowers.ModifyTimeRate"),
+				5 => GetCreativeSliderLabel("CreativePowers.ModifyTimeRate"),
 				_ => null,
 			},
 			4 => position switch
 			{
-				0 => GetCreativeSubmenuLabel("CreativePowers.ModifyWindDirectionAndStrength"),
+				0 => GetCreativeSliderLabel("CreativePowers.ModifyWindDirectionAndStrength"),
 				1 => GetCreativeToggleLabel(element, "CreativePowers.FreezeWindDirectionAndStrength"),
-				2 => GetCreativeSubmenuLabel("CreativePowers.ModifyRainPower"),
+				2 => GetCreativeSliderLabel("CreativePowers.ModifyRainPower"),
 				3 => GetCreativeToggleLabel(element, "CreativePowers.FreezeRainPower"),
 				_ => null,
 			},
 			6 => position switch
 			{
-				0 => GetCreativeToggleLabel(element, "CreativePowers.Godmode"),
-				1 => GetCreativeToggleLabel(element, "CreativePowers.InfinitePlacementRange"),
-				2 => GetCreativeSubmenuLabel("CreativePowers.NPCSpawnRateSlider"),
+				0 => GetToggleStateLabel(element, "God Mode"),
+				1 => GetToggleStateLabel(element, "Increase Placement Range"),
+				2 => GetCreativeSliderLabel("CreativePowers.NPCSpawnRateSlider"),
 				_ => null,
 			},
 			_ => null,
@@ -668,7 +895,12 @@ internal sealed class AccessibleExternalUIController
 		return GetLocalizedValue(stateKey, powerNameKey);
 	}
 
-	private static string GetCreativeSubmenuLabel(string powerNameKey)
+	private static string GetToggleStateLabel(UIElement element, string label)
+	{
+		return $"{label} {(IsGroupOptionSelected(element) ? "On" : "Off")}";
+	}
+
+	private static string GetCreativeSliderLabel(string powerNameKey)
 	{
 		return NormalizeCreativePowerLabel(GetLocalizedValue(powerNameKey + "_Closed", powerNameKey));
 	}
@@ -681,6 +913,142 @@ internal sealed class AccessibleExternalUIController
 			Label = label,
 			Details = () => label,
 		};
+	}
+
+	private void FlattenJourneySliderControls(int rootOption, IReadOnlyList<int> stripOneControls)
+	{
+		if (_state is not UICreativePowersMenu journeyPowers)
+		{
+			return;
+		}
+
+		switch (rootOption)
+		{
+			case 3:
+				ReplaceJourneySliderControl(journeyPowers, stripOneControls, position: 5, "_timeCategory", sliderOption: 1);
+				break;
+			case 4:
+				ReplaceJourneySliderControl(journeyPowers, stripOneControls, position: 0, "_weatherCategory", sliderOption: 1);
+				ReplaceJourneySliderControl(journeyPowers, stripOneControls, position: 2, "_weatherCategory", sliderOption: 2);
+				break;
+			case 6:
+				ReplaceJourneySliderControl(journeyPowers, stripOneControls, position: 2, "_personalCategory", sliderOption: 1);
+				break;
+		}
+	}
+
+	private void ReplaceJourneySliderControl(
+		UICreativePowersMenu journeyPowers,
+		IReadOnlyList<int> stripOneControls,
+		int position,
+		string categoryFieldName,
+		int sliderOption)
+	{
+		if (position < 0 || position >= stripOneControls.Count ||
+			GetJourneySliderElement(journeyPowers, categoryFieldName, sliderOption) is not UIElement sliderElement ||
+			!TryGetSlider(sliderElement, out Func<float>? getValue, out Action<float>? setValue))
+		{
+			return;
+		}
+
+		int controlIndex = stripOneControls[position];
+		AccessibleExternalControl control = _controls[controlIndex];
+		string label = control.Label;
+		_controls[controlIndex] = control with
+		{
+			Details = () => DescribeJourneySlider(label, getValue),
+			Role = "slider",
+			Activate = _ =>
+			{
+				setValue(Math.Clamp(getValue() + 0.05f, 0f, 1f));
+				SoundEngine.PlaySound(SoundID.MenuTick);
+			},
+			SliderValue = getValue,
+			SetSliderValue = setValue,
+		};
+	}
+
+	private static UIElement? GetJourneySliderElement(
+		UICreativePowersMenu journeyPowers,
+		string categoryFieldName,
+		int sliderOption)
+	{
+		object? category = GetFieldValue(journeyPowers.GetType(), journeyPowers, categoryFieldName);
+		object? sliders = category is null ? null : GetFieldValue(category.GetType(), category, "Sliders");
+		if (sliders is not IDictionary sliderDictionary ||
+			!sliderDictionary.Contains(sliderOption) ||
+			sliderDictionary[sliderOption] is not UIElement sliderContainer)
+		{
+			return null;
+		}
+
+		if (TryGetSlider(sliderContainer, out _, out _))
+		{
+			return sliderContainer;
+		}
+
+		return EnumerateDescendants(sliderContainer)
+			.FirstOrDefault(element => TryGetSlider(element, out _, out _));
+	}
+
+	private static string DescribeJourneySlider(string label, Func<float> getValue)
+	{
+		return $"{label}, {Math.Clamp(getValue(), 0f, 1f):P0}";
+	}
+
+	private void SuppressJourneyPowerRoleVerbiage()
+	{
+		for (int index = 0; index < _controls.Count; index++)
+		{
+			AccessibleExternalControl control = _controls[index];
+			if (control.Role.Equals("toggle", StringComparison.OrdinalIgnoreCase) ||
+				control.Role.Equals("submenu", StringComparison.OrdinalIgnoreCase))
+			{
+				_controls[index] = control with { AnnouncesRole = false };
+			}
+		}
+	}
+
+	private static bool TryOpenJourneyPowerCategory(UICreativePowersMenu journeyPowers, int option)
+	{
+		UIElement? category = EnumerateDescendants(journeyPowers).FirstOrDefault(element =>
+			GetStripDepth(element) == 0 && GetIntOptionValue(element) == option);
+		if (category is null)
+		{
+			return false;
+		}
+
+		ActivateElement(category, secondary: false, "Journey power category");
+		return true;
+	}
+
+	internal static bool TryToggleJourneyInfectionSpread(UICreativePowersMenu journeyPowers)
+	{
+		UIElement? toggle = EnumerateDescendants(journeyPowers).FirstOrDefault(element =>
+			GetStripDepth(element) == 0 && GetOptionValueType(element) == typeof(bool));
+		if (toggle is null)
+		{
+			return false;
+		}
+
+		ActivateElement(toggle, secondary: false, "Journey infection spread");
+		return true;
+	}
+
+	internal static bool TryGetJourneyEnemyDifficultySlider(
+		UICreativePowersMenu journeyPowers,
+		out Func<float> getValue,
+		out Action<float> setValue)
+	{
+		UIElement? sliderElement = GetJourneySliderElement(journeyPowers, "_mainCategory", sliderOption: 5);
+		if (sliderElement is not null && TryGetSlider(sliderElement, out getValue, out setValue))
+		{
+			return true;
+		}
+
+		getValue = null!;
+		setValue = null!;
+		return false;
 	}
 
 	private static void ResetJourneyPowerHierarchy(UICreativePowersMenu journeyPowers)
@@ -699,7 +1067,19 @@ internal sealed class AccessibleExternalUIController
 
 	private static bool ShouldHideControl(UIState state, UIElement element)
 	{
-		return state is UIEmotesMenu && IsBackControl(element);
+		return state is UIEmotesMenu && IsBackControl(element) ||
+			state is UICreativePowersMenu && IsRedundantJourneyCategory(element);
+	}
+
+	private static bool IsRedundantJourneyCategory(UIElement element)
+	{
+		if (GetStripDepth(element) != 0 || GetOptionValueType(element) != typeof(int))
+		{
+			return false;
+		}
+
+		int? option = GetIntOptionValue(element);
+		return option is 1 or 2;
 	}
 
 	private static bool IsBackControl(UIElement element)
@@ -740,6 +1120,13 @@ internal sealed class AccessibleExternalUIController
 	private static Type? GetOptionValueType(UIElement element)
 	{
 		return element.GetType().GetProperty("OptionValue", InstanceMembers)?.PropertyType;
+	}
+
+	private static int? GetIntOptionValue(UIElement element)
+	{
+		return element.GetType().GetProperty("OptionValue", InstanceMembers)?.GetValue(element) is int option
+			? option
+			: null;
 	}
 
 	private static bool IsGroupOptionSelected(UIElement element)
@@ -908,8 +1295,6 @@ internal sealed class AccessibleExternalUIController
 			{
 				string? categoryLabel = mainOption switch
 				{
-					1 => "Duplication",
-					2 => "Research",
 					3 => "Time",
 					4 => "Weather",
 					5 => "Enemy difficulty",
@@ -1374,7 +1759,7 @@ internal sealed class AccessibleExternalUIController
 		if (control.Activate is not null)
 		{
 			control.Activate(secondary);
-			_lastSelectionState = GetSelectionState();
+			_lastSelectionState = control.SliderValue is null ? GetSelectionState() : string.Empty;
 			_nextRebuildAt = 0;
 			return;
 		}
@@ -1466,7 +1851,13 @@ internal sealed class AccessibleExternalUIController
 
 	private bool TryAdjustSelectedSlider(float offset)
 	{
-		if (_controls[_selectedIndex].Element is not UIElement element)
+		AccessibleExternalControl control = _controls[_selectedIndex];
+		if (control.SliderValue is not null && control.SetSliderValue is not null)
+		{
+			control.SetSliderValue(Math.Clamp(control.SliderValue() + offset, 0f, 1f));
+			return true;
+		}
+		if (control.Element is not UIElement element)
 		{
 			return false;
 		}
@@ -1477,6 +1868,18 @@ internal sealed class AccessibleExternalUIController
 
 		setValue(Math.Clamp(getValue() + offset, 0f, 1f));
 		return true;
+	}
+
+	private bool CanOpenSelectedSubmenu()
+	{
+		AccessibleExternalControl control = _controls[_selectedIndex];
+		if (!control.Role.Equals("submenu", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		return _state is not UICreativePowersMenu ||
+			control.Element is UIElement element && GetStripDepth(element) == 0;
 	}
 
 	private void NavigateBack()
@@ -1512,6 +1915,15 @@ internal sealed class AccessibleExternalUIController
 				.FirstOrDefault();
 			if (openCategory is not null)
 			{
+				if (_journeyCategoryOpenedFromInventory is int inventoryCategory &&
+					GetStripDepth(openCategory) == 0 &&
+					GetIntOptionValue(openCategory) == inventoryCategory)
+				{
+					Main.CreativeMenu.ToggleMenu();
+					SoundEngine.PlaySound(SoundID.MenuClose);
+					return;
+				}
+
 				string returnControlId = GetElementStableId(openCategory);
 				ActivateElement(openCategory, secondary: false, DescribeElement(openCategory, includeAllText: false));
 				RebuildAndAnnounceLevel(returnControlId);
@@ -1652,14 +2064,35 @@ internal sealed class AccessibleExternalUIController
 	{
 		AccessibleExternalControl control = _controls[_selectedIndex];
 		string liveLabel = GetLiveLabel(control);
-		return $"{liveLabel}, {control.Role}, {_selectedIndex + 1} of {_controls.Count}.";
+		if (_state is UIBestiaryTest)
+		{
+			return $"{NormalizeSpokenSentence(liveLabel)} Entry {_selectedIndex + 1} of {_controls.Count}.";
+		}
+		string role = control.AnnouncesRole && !string.IsNullOrWhiteSpace(control.Role) ? $", {control.Role}" : string.Empty;
+		return $"{liveLabel}{role}, {_selectedIndex + 1} of {_controls.Count}.";
 	}
 
 	private string GetLiveLabel(AccessibleExternalControl control)
 	{
-		return _state is UICreativePowersMenu || control.Element is null
+		if (_state is UIBestiaryTest)
+		{
+			return control.Details();
+		}
+		string label = _state is UICreativePowersMenu || control.Element is null
 			? control.Label
 			: DescribeElement(control.Element, includeAllText: false);
+		if (_state is UICreativePowersMenu)
+		{
+			if (control.SliderValue is not null)
+			{
+				return DescribeJourneySlider(label, control.SliderValue);
+			}
+			if (control.Element is UIElement element && TryGetSlider(element, out Func<float>? getValue, out _))
+			{
+				return DescribeJourneySlider(label, getValue);
+			}
+		}
+		return label;
 	}
 
 	private void ReadHelp()
@@ -1668,7 +2101,7 @@ internal sealed class AccessibleExternalUIController
 		TerrariumMod.ScreenReader.Output(
 			$"Accessible screen help. {focus} " +
 			"Up and Down move through discovered controls. Home and End move to the first and last controls. Page Up and Page Down move by ten. " +
-			"Letter keys jump to controls by name. Right Arrow or Enter opens or activates a control. Left Arrow returns to the parent level when the control is not adjustable. Shift Enter performs an alternate right click. Control R reads all discovered text for the control. " +
+			"Letter keys jump to controls by name. Left and Right Arrow keys adjust sliders or navigate into and out of submenus. Enter activates the focused control, and Shift Enter performs an alternate right click. Control R reads all discovered text for the control. " +
 			"Text fields use the screen's native editor after activation. Escape uses the screen's normal back or cancel behavior. This semantic adapter is the fallback for stock and mod screens without a purpose-built Terrarium menu.");
 	}
 
@@ -1965,5 +2398,8 @@ internal sealed class AccessibleExternalUIController
 		Func<string> Details,
 		string Role,
 		Action<bool>? Activate = null,
-		Action? Focus = null);
+		Action? Focus = null,
+		Func<float>? SliderValue = null,
+		Action<float>? SetSliderValue = null,
+		bool AnnouncesRole = true);
 }
