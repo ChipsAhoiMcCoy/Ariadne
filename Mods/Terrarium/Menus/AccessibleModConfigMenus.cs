@@ -161,29 +161,45 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
 		entries.Add(new(
-			() => $"Test toggle: {OnOff(_pending.TestToggle)}",
-			ToggleTest,
-			previousValue: ToggleTest,
-			nextValue: ToggleTest,
-			description: () => "A harmless test boolean used to verify accessible Mod Configuration support.",
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneEnabled))}: {OnOff(_pending.WallToneEnabled)}",
+			ToggleWallToneEnabled,
+			previousValue: ToggleWallToneEnabled,
+			nextValue: ToggleWallToneEnabled,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.WallToneEnabled)),
 			role: "toggle",
-			adjustmentAnnouncement: () => OnOff(_pending.TestToggle)));
+			adjustmentAnnouncement: () => OnOff(_pending.WallToneEnabled)));
 		entries.Add(new(
-			() => $"Test level: {_pending.TestLevel}",
-			IncreaseTestLevel,
-			previousValue: DecreaseTestLevel,
-			nextValue: IncreaseTestLevel,
-			description: () => "A harmless test number from 0 through 10.",
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneVolumePercent))}: {_pending.WallToneVolumePercent} percent",
+			IncreaseWallToneVolume,
+			previousValue: DecreaseWallToneVolume,
+			nextValue: IncreaseWallToneVolume,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.WallToneVolumePercent)),
 			role: "slider",
-			adjustmentAnnouncement: () => _pending.TestLevel.ToString()));
+			adjustmentAnnouncement: () => $"{_pending.WallToneVolumePercent} percent"));
 		entries.Add(new(
-			() => $"Test mode: {TestModeName(_pending.TestMode)}",
-			NextTestMode,
-			previousValue: PreviousTestMode,
-			nextValue: NextTestMode,
-			description: () => "A harmless test choice used to verify cycling through configuration values.",
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneRangeTiles))}: {_pending.WallToneRangeTiles} tiles",
+			IncreaseWallToneRange,
+			previousValue: DecreaseWallToneRange,
+			nextValue: IncreaseWallToneRange,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.WallToneRangeTiles)),
+			role: "slider",
+			adjustmentAnnouncement: () => $"{_pending.WallToneRangeTiles} tiles"));
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneSpatialization))}: {SpatializationName(_pending.WallToneSpatialization)}",
+			NextSpatialization,
+			previousValue: PreviousSpatialization,
+			nextValue: NextSpatialization,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.WallToneSpatialization)),
 			role: "choice",
-			adjustmentAnnouncement: () => TestModeName(_pending.TestMode)));
+			adjustmentAnnouncement: () => SpatializationName(_pending.WallToneSpatialization)));
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneItdMilliseconds))}: {ItdAmount(_pending.WallToneItdMilliseconds)}",
+			IncreaseWallToneItd,
+			previousValue: DecreaseWallToneItd,
+			nextValue: IncreaseWallToneItd,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.WallToneItdMilliseconds)),
+			role: "slider",
+			adjustmentAnnouncement: () => ItdAmount(_pending.WallToneItdMilliseconds)));
 		entries.Add(new(
 			() => "Save changes",
 			Save,
@@ -197,7 +213,7 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 		entries.Add(new(
 			() => "Restore defaults",
 			RestoreDefaults,
-			description: () => WithStatus("Set all pending Terrarium test options back to their defaults. Use Save changes to keep them.")));
+			description: () => WithStatus("Set all pending wall-tone options back to their defaults. Use Save changes to keep them.")));
 	}
 
 	protected override void GoBack()
@@ -215,33 +231,63 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 			DiscardAndGoBack));
 	}
 
-	private void ToggleTest()
+	private void ToggleWallToneEnabled()
 	{
-		_pending.TestToggle = !_pending.TestToggle;
+		_pending.WallToneEnabled = !_pending.WallToneEnabled;
 		MarkChanged();
 	}
 
-	private void IncreaseTestLevel()
+	private void IncreaseWallToneVolume()
 	{
-		_pending.TestLevel = Math.Min(10, _pending.TestLevel + 1);
+		_pending.WallToneVolumePercent = Math.Min(100, _pending.WallToneVolumePercent + 5);
 		MarkChanged();
 	}
 
-	private void DecreaseTestLevel()
+	private void DecreaseWallToneVolume()
 	{
-		_pending.TestLevel = Math.Max(0, _pending.TestLevel - 1);
+		_pending.WallToneVolumePercent = Math.Max(0, _pending.WallToneVolumePercent - 5);
 		MarkChanged();
 	}
 
-	private void NextTestMode()
+	private void IncreaseWallToneRange()
 	{
-		_pending.TestMode = (TerrariumTestMode)(((int)_pending.TestMode + 1) % 3);
+		_pending.WallToneRangeTiles = Math.Min(30, _pending.WallToneRangeTiles + 1);
 		MarkChanged();
 	}
 
-	private void PreviousTestMode()
+	private void DecreaseWallToneRange()
 	{
-		_pending.TestMode = (TerrariumTestMode)(((int)_pending.TestMode + 2) % 3);
+		_pending.WallToneRangeTiles = Math.Max(4, _pending.WallToneRangeTiles - 1);
+		MarkChanged();
+	}
+
+	private void NextSpatialization()
+	{
+		_pending.WallToneSpatialization = _pending.WallToneSpatialization == WallToneSpatializationMode.Binaural
+			? WallToneSpatializationMode.StereoPan
+			: WallToneSpatializationMode.Binaural;
+		MarkChanged();
+	}
+
+	private void PreviousSpatialization()
+	{
+		NextSpatialization();
+	}
+
+	private void IncreaseWallToneItd()
+	{
+		AdjustWallToneItd(0.05f);
+	}
+
+	private void DecreaseWallToneItd()
+	{
+		AdjustWallToneItd(-0.05f);
+	}
+
+	private void AdjustWallToneItd(float adjustment)
+	{
+		float adjusted = Math.Clamp(_pending.WallToneItdMilliseconds + adjustment, 0f, 1f);
+		_pending.WallToneItdMilliseconds = MathF.Round(adjusted * 20f) / 20f;
 		MarkChanged();
 	}
 
@@ -268,9 +314,11 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	private void RestoreDefaults()
 	{
 		TerrariumClientConfig defaults = new();
-		_pending.TestToggle = defaults.TestToggle;
-		_pending.TestLevel = defaults.TestLevel;
-		_pending.TestMode = defaults.TestMode;
+		_pending.WallToneEnabled = defaults.WallToneEnabled;
+		_pending.WallToneVolumePercent = defaults.WallToneVolumePercent;
+		_pending.WallToneRangeTiles = defaults.WallToneRangeTiles;
+		_pending.WallToneSpatialization = defaults.WallToneSpatialization;
+		_pending.WallToneItdMilliseconds = defaults.WallToneItdMilliseconds;
 		_lastStatus = "Defaults restored as pending values.";
 	}
 
@@ -288,9 +336,11 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 
 	private bool HasChanges()
 	{
-		return _pending.TestToggle != _active.TestToggle ||
-			_pending.TestLevel != _active.TestLevel ||
-			_pending.TestMode != _active.TestMode;
+		return _pending.WallToneEnabled != _active.WallToneEnabled ||
+			_pending.WallToneVolumePercent != _active.WallToneVolumePercent ||
+			_pending.WallToneRangeTiles != _active.WallToneRangeTiles ||
+			_pending.WallToneSpatialization != _active.WallToneSpatialization ||
+			_pending.WallToneItdMilliseconds != _active.WallToneItdMilliseconds;
 	}
 
 	private string SaveDescription()
@@ -313,14 +363,27 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 		return value ? "On" : "Off";
 	}
 
-	private static string TestModeName(TerrariumTestMode mode)
+	private static string SpatializationName(WallToneSpatializationMode mode)
 	{
-		return mode switch
-		{
-			TerrariumTestMode.Brief => "Brief",
-			TerrariumTestMode.Detailed => "Detailed",
-			_ => "Standard",
-		};
+		return Language.GetTextValue(
+			$"Mods.Terrarium.Configs.WallToneSpatializationMode.{mode}.Label");
+	}
+
+	private static string ItdAmount(float milliseconds)
+	{
+		return $"{milliseconds:0.00} milliseconds";
+	}
+
+	private static string ConfigFieldLabel(string fieldName)
+	{
+		return Language.GetTextValue(
+			$"Mods.Terrarium.Configs.TerrariumClientConfig.{fieldName}.Label");
+	}
+
+	private static string ConfigFieldTooltip(string fieldName)
+	{
+		return Language.GetTextValue(
+			$"Mods.Terrarium.Configs.TerrariumClientConfig.{fieldName}.Tooltip");
 	}
 
 	private static string SaveResultDescription(ConfigSaveResult result)

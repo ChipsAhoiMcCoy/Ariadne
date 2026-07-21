@@ -1,40 +1,53 @@
-Keybinds.OpenScanner.DisplayName: Open Scanner
+Keybinds: {
+	OpenScanner.DisplayName: Open Scanner
+	ToggleWallTones.DisplayName: Toggle Wall Tones
+}
+
+Announcements: {
+	WallTonesOn: Wall tones on
+	WallTonesOff: Wall tones off
+}
 
 Configs: {
 	TerrariumClientConfig: {
-		DisplayName: Terrarium Test Configuration
+		DisplayName: Wall Tone Settings
 
-		TestToggle: {
-			Label: Test toggle
-			Tooltip: A harmless boolean used to verify accessible Mod Configuration support.
+		WallToneEnabled: {
+			Label: Wall tones
+			Tooltip: Continuously indicate nearby left walls, right walls, and the gravity-relative ceiling with procedural audio.
 		}
 
-		TestLevel: {
-			Label: Test level
-			Tooltip: A harmless number from 0 through 10 used to verify accessible sliders.
+		WallToneVolumePercent: {
+			Label: Wall tone volume
+			Tooltip: Set wall-tone loudness as a percentage of the game's Sound volume.
 		}
 
-		TestMode: {
-			Label: Test mode
-			Tooltip: A harmless choice used to verify accessible value cycling.
+		WallToneRangeTiles: {
+			Label: Wall tone range
+			Tooltip: Set the maximum sensing distance in tiles. A larger range begins indicating terrain sooner.
+		}
+
+		WallToneSpatialization: {
+			Label: Wall tone spatialization
+			Tooltip: Binaural adds a small far-ear timing difference. Stereo pan retains only ear-level differences for devices where timing cues are unsuitable.
+		}
+
+		WallToneItdMilliseconds: {
+			Label: ITD amount
+			Tooltip: Set the maximum interaural time difference in milliseconds. This applies only in Binaural mode; Stereo pan always uses zero delay.
 		}
 	}
 
-	TerrariumTestMode: {
+	WallToneSpatializationMode: {
 		Tooltip: ""
 
-		Standard: {
-			Label: Standard
+		Binaural: {
+			Label: Binaural
 			Tooltip: ""
 		}
 
-		Brief: {
-			Label: Brief
-			Tooltip: ""
-		}
-
-		Detailed: {
-			Label: Detailed
+		StereoPan: {
+			Label: Stereo pan
 			Tooltip: ""
 		}
 	}

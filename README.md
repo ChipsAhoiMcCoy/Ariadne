@@ -1,6 +1,6 @@
 # Terrarium
 
-Terrarium is an accessibility-focused tModLoader mod for Terraria. The first development area is menu reading for blind and low-vision players.
+Terrarium is an accessibility-focused tModLoader mod for Terraria. It provides semantic menu reading and spatial terrain audio for blind and low-vision players.
 
 ## Current Accessibility
 
@@ -16,6 +16,10 @@ Current custom screens include:
 - A multi-level in-game inventory tree covering the hotbar, backpack, coins and ammo, trash, armor, accessories, vanity, dyes, equipment, loadouts, containers, shops, crafting, and reforging. Focused conversation, Guide crafting-help, and sign screens expose NPC services, tModLoader chat-button hooks, material-based recipe lookup, sign editing, modded shops, Stylist and Dresser customization, NPC housing selection, Journey research and duplication, the Bestiary, emotes, and Journey powers without opening the general inventory for ordinary dialogue.
 - A semantic world map listing the current biome and coordinates, world spawn, the last death marker, active players, bosses, town NPCs, and discovered pylons. Pylon entries request normal Terraria travel without requiring mouse targeting.
 - Spoken legacy chat editing and death/respawn status, including edit feedback, dropped coins, and the visible respawn countdown.
+
+Terrarium also provides continuous wall tones during unobstructed gameplay. Three independent procedural-noise voices indicate the nearest collision terrain to the left, right, and gravity-relative ceiling. Distance controls pitch and loudness, screen position supplies stereo or binaural placement and vertical pitch, rough terrain adds controlled irregularity, and the ceiling has a gentle pulse so it remains distinguishable from equal side walls. Floors, pass-through platforms, liquids, entities, background walls, and hazards are intentionally silent.
+
+Wall tones are enabled by default at 35 percent volume with a 12-tile range and binaural spatialization. These values can be changed in Wall Tone Settings through either Terrarium's accessible configuration editor or tModLoader's standard editor. Binaural mode defaults to 0.65 milliseconds of maximum far-ear delay; the ITD amount slider adjusts it from 0 to 1.00 milliseconds in 0.05-millisecond steps. Stereo pan retains ear-level differences without any delay.
 
 Any Terraria, tModLoader, or third-party `UIState` without a purpose-built Terrarium screen receives a universal semantic keyboard adapter. It discovers live buttons, list entries, item slots, text fields, toggles, and sliders; derives their labels from localized UI content; keeps the selected row in view; and announces changing progress or error text. This supplies baseline access to newly added screens without waiting for a dedicated implementation. See [the screen coverage matrix](docs/accessibility-screen-coverage.md) for the routing model and known spatial boundaries.
 
@@ -43,6 +47,10 @@ While the inventory is open:
 - Enter performs the normal primary click. Shift+Enter performs the secondary click used for splitting stacks and other alternate actions.
 - Ctrl+F toggles favorite on supported inventory items, Ctrl+R reads full details and tooltips, and F1 reads the inventory controls.
 - Escape closes the inventory. Settings and Save and Exit are available at the bottom of the main tree.
+
+During gameplay, Home toggles wall tones for the current session and announces the new state without changing the saved configuration. Home remains available for its existing navigation behavior whenever an inventory, chat field, map, NPC/sign editor, full-screen interface, or accessible menu is active. Saving a changed Wall tones setting clears the session override.
+
+The audio stream stops and clears its terrain, filter, delay, and queued-buffer state on pause, focus loss, death, title/world transitions, and all supported UI contexts, then fades back in when normal gameplay resumes. Wall tones are entirely client-side, generate no network traffic, package no looping audio asset, and fail silently apart from one log message when streaming audio is unavailable.
 
 Speech and braille output use [Prism](https://github.com/ethindp/prism), with active screen readers such as NVDA preferred over built-in speech fallbacks. Terrarium currently packages Prism for 64-bit Windows clients; servers and unsupported platforms skip speech initialization safely.
 
