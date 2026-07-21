@@ -9,11 +9,15 @@ namespace Terrarium.Ingame.WallTones;
 internal static class WallToneTerrainProbe
 {
 	private const int ProbeCount = 7;
+	private const int MinimumAlignedProbeCount = 4;
+	// Require a side surface to continue through three tile-spaced samples above the player.
+	private const int JumpClearanceProbeCount = 3;
 	private const float TileSize = 16f;
 	private const float MarchStepPixels = 2f;
 	private const float FirstProbeOffsetPixels = 0.25f;
 	private const int RefinementSteps = 6;
-	private const float FanHalfAngleRadians = MathF.PI / 6f;
+	private const float BodyProbeSpan = 0.85f;
+	private const float SurfaceAlignmentTolerancePixels = TileSize * 1.25f;
 
 	internal static WallToneSnapshot Sample(Player player, int rangeTiles)
 	{
@@ -23,30 +27,30 @@ internal static class WallToneTerrainProbe
 		float gravityDirection = player.gravDir < 0f ? -1f : 1f;
 
 		return new(
-			SampleRegion(center, halfSize, MathF.PI, maximumDistance),
-			SampleRegion(center, halfSize, 0f, maximumDistance),
-			SampleRegion(center, halfSize, -MathHelper.PiOver2 * gravityDirection, maximumDistance));
+			SampleSideRegion(center, halfSize, -1f, gravityDirection, maximumDistance),
+			SampleSideRegion(center, halfSize, 1f, gravityDirection, maximumDistance),
+			SampleCeilingRegion(center, halfSize, gravityDirection, maximumDistance));
 	}
 
-	private static WallToneRegionSnapshot SampleRegion(
+	private static WallToneRegionSnapshot SampleSideRegion(
 		Vector2 playerCenter,
 		Vector2 playerHalfSize,
-		float centerAngle,
+		float horizontalDirection,
+		float gravityDirection,
 		float maximumDistance)
 	{
 		Span<float> distances = stackalloc float[ProbeCount];
 		Span<Vector2> hitPoints = stackalloc Vector2[ProbeCount];
 		Span<bool> hits = stackalloc bool[ProbeCount];
+		hits.Clear();
+		Vector2 direction = new(horizontalDirection, 0f);
 
-		float weightedDistance = 0f;
-		Vector2 weightedCentroid = Vector2.Zero;
-		float totalWeight = 0f;
 		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
 		{
-			float fanAmount = probeIndex / (float)(ProbeCount - 1) * 2f - 1f;
-			float angle = centerAngle + fanAmount * FanHalfAngleRadians;
-			Vector2 direction = new(MathF.Cos(angle), MathF.Sin(angle));
-			Vector2 origin = PlayerBoundaryPoint(playerCenter, playerHalfSize, direction);
+			float verticalAmount = probeIndex / (float)(ProbeCount - 1) * 2f - 1f;
+			Vector2 origin = playerCenter + new Vector2(
+				horizontalDirection * playerHalfSize.X,
+				verticalAmount * playerHalfSize.Y * BodyProbeSpan);
 			if (!TryRaycast(origin, direction, maximumDistance, out float distance, out Vector2 hitPoint))
 			{
 				distances[probeIndex] = maximumDistance;
@@ -56,37 +60,200 @@ internal static class WallToneTerrainProbe
 			hits[probeIndex] = true;
 			distances[probeIndex] = distance;
 			hitPoints[probeIndex] = hitPoint;
-			float proximity = 1f - distance / maximumDistance;
-			float weight = 0.05f + 4f * proximity * proximity;
-			weightedDistance += distance * weight;
-			weightedCentroid += hitPoint * weight;
-			totalWeight += weight;
 		}
 
-		if (totalWeight <= 0f)
+		Span<bool> alignedHits = stackalloc bool[ProbeCount];
+		if (!TrySelectAlignedSurface(hits, distances, alignedHits, out float surfaceDistance) ||
+			!BlocksJumpClearance(
+				playerCenter,
+				playerHalfSize,
+				horizontalDirection,
+				gravityDirection,
+				maximumDistance,
+				surfaceDistance))
 		{
 			return WallToneRegionSnapshot.Empty(maximumDistance);
 		}
 
-		float roughness = CalculateRoughness(hits, distances, maximumDistance);
+		return CreateSnapshot(
+			playerCenter,
+			maximumDistance,
+			alignedHits,
+			distances,
+			hitPoints);
+	}
+
+	private static WallToneRegionSnapshot SampleCeilingRegion(
+		Vector2 playerCenter,
+		Vector2 playerHalfSize,
+		float gravityDirection,
+		float maximumDistance)
+	{
+		Span<float> distances = stackalloc float[ProbeCount];
+		Span<Vector2> hitPoints = stackalloc Vector2[ProbeCount];
+		Span<bool> hits = stackalloc bool[ProbeCount];
+		hits.Clear();
+		Vector2 direction = new(0f, -gravityDirection);
+		float horizontalSpan = MathF.Max(playerHalfSize.X * BodyProbeSpan, TileSize * 1.5f);
+
+		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
+		{
+			float horizontalAmount = probeIndex / (float)(ProbeCount - 1) * 2f - 1f;
+			Vector2 origin = playerCenter + new Vector2(
+				horizontalAmount * horizontalSpan,
+				-gravityDirection * playerHalfSize.Y);
+			if (!TryRaycast(origin, direction, maximumDistance, out float distance, out Vector2 hitPoint))
+			{
+				distances[probeIndex] = maximumDistance;
+				continue;
+			}
+
+			hits[probeIndex] = true;
+			distances[probeIndex] = distance;
+			hitPoints[probeIndex] = hitPoint;
+		}
+
+		Span<bool> alignedHits = stackalloc bool[ProbeCount];
+		if (!TrySelectAlignedSurface(hits, distances, alignedHits, out _))
+		{
+			return WallToneRegionSnapshot.Empty(maximumDistance);
+		}
+
+		return CreateSnapshot(
+			playerCenter,
+			maximumDistance,
+			alignedHits,
+			distances,
+			hitPoints);
+	}
+
+	private static bool TrySelectAlignedSurface(
+		ReadOnlySpan<bool> hits,
+		ReadOnlySpan<float> distances,
+		Span<bool> alignedHits,
+		out float surfaceDistance)
+	{
+		alignedHits.Clear();
+		int bestCount = 0;
+		float bestCandidate = float.PositiveInfinity;
+		for (int candidateIndex = 0; candidateIndex < ProbeCount; candidateIndex++)
+		{
+			if (!hits[candidateIndex])
+			{
+				continue;
+			}
+
+			float candidate = distances[candidateIndex];
+			int alignedCount = 0;
+			for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
+			{
+				if (hits[probeIndex] &&
+					MathF.Abs(distances[probeIndex] - candidate) <= SurfaceAlignmentTolerancePixels)
+				{
+					alignedCount++;
+				}
+			}
+
+			if (alignedCount > bestCount ||
+				(alignedCount == bestCount && candidate < bestCandidate))
+			{
+				bestCount = alignedCount;
+				bestCandidate = candidate;
+			}
+		}
+
+		if (bestCount < MinimumAlignedProbeCount)
+		{
+			surfaceDistance = 0f;
+			return false;
+		}
+
+		float alignedDistanceTotal = 0f;
+		int selectedCount = 0;
+		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
+		{
+			bool isAligned = hits[probeIndex] &&
+				MathF.Abs(distances[probeIndex] - bestCandidate) <= SurfaceAlignmentTolerancePixels;
+			alignedHits[probeIndex] = isAligned;
+			if (isAligned)
+			{
+				alignedDistanceTotal += distances[probeIndex];
+				selectedCount++;
+			}
+		}
+
+		surfaceDistance = alignedDistanceTotal / selectedCount;
+		return true;
+	}
+
+	private static bool BlocksJumpClearance(
+		Vector2 playerCenter,
+		Vector2 playerHalfSize,
+		float horizontalDirection,
+		float gravityDirection,
+		float maximumDistance,
+		float surfaceDistance)
+	{
+		Vector2 direction = new(horizontalDirection, 0f);
+		for (int probeIndex = 1; probeIndex <= JumpClearanceProbeCount; probeIndex++)
+		{
+			Vector2 origin = playerCenter + new Vector2(
+				horizontalDirection * playerHalfSize.X,
+				-gravityDirection * (playerHalfSize.Y + probeIndex * TileSize));
+			if (IsBlockingPoint(origin))
+			{
+				return true;
+			}
+
+			if (!TryRaycast(origin, direction, maximumDistance, out float distance, out _))
+			{
+				return false;
+			}
+
+			if (distance <= MarchStepPixels)
+			{
+				return true;
+			}
+
+			if (MathF.Abs(distance - surfaceDistance) > SurfaceAlignmentTolerancePixels)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static WallToneRegionSnapshot CreateSnapshot(
+		Vector2 playerCenter,
+		float maximumDistance,
+		ReadOnlySpan<bool> alignedHits,
+		ReadOnlySpan<float> distances,
+		ReadOnlySpan<Vector2> hitPoints)
+	{
+		float weightedDistance = 0f;
+		Vector2 weightedCentroid = Vector2.Zero;
+		float totalWeight = 0f;
+		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
+		{
+			if (!alignedHits[probeIndex])
+			{
+				continue;
+			}
+
+			float proximity = 1f - distances[probeIndex] / maximumDistance;
+			float weight = 0.05f + 4f * proximity * proximity;
+			weightedDistance += distances[probeIndex] * weight;
+			weightedCentroid += hitPoints[probeIndex] * weight;
+			totalWeight += weight;
+		}
+
 		Vector2 centroid = weightedCentroid / totalWeight;
 		return new(
 			true,
 			weightedDistance / totalWeight,
 			maximumDistance,
-			NormalizeToVisibleRectangle(centroid, playerCenter),
-			roughness);
-	}
-
-	private static Vector2 PlayerBoundaryPoint(Vector2 center, Vector2 halfSize, Vector2 direction)
-	{
-		float horizontalScale = MathF.Abs(direction.X) > 0.0001f
-			? halfSize.X / MathF.Abs(direction.X)
-			: float.PositiveInfinity;
-		float verticalScale = MathF.Abs(direction.Y) > 0.0001f
-			? halfSize.Y / MathF.Abs(direction.Y)
-			: float.PositiveInfinity;
-		return center + direction * MathF.Min(horizontalScale, verticalScale);
+			NormalizeToScanSquare(centroid, playerCenter, maximumDistance));
 	}
 
 	private static bool TryRaycast(
@@ -143,42 +310,16 @@ internal static class WallToneTerrainProbe
 		return Collision.IsWorldPointSolid(point, treatPlatformsAsNonSolid: true);
 	}
 
-	private static float CalculateRoughness(
-		ReadOnlySpan<bool> hits,
-		ReadOnlySpan<float> distances,
+	private static Vector2 NormalizeToScanSquare(
+		Vector2 point,
+		Vector2 playerCenter,
 		float maximumDistance)
 	{
-		float total = 0f;
-		for (int index = 1; index < ProbeCount; index++)
-		{
-			if (hits[index] != hits[index - 1])
-			{
-				total += 1f;
-			}
-			else if (hits[index])
-			{
-				float difference = MathF.Abs(distances[index] - distances[index - 1]);
-				total += MathHelper.Clamp(difference / (maximumDistance * 0.22f), 0f, 1f);
-			}
-		}
-
-		return MathHelper.Clamp(total / (ProbeCount - 1), 0f, 1f);
-	}
-
-	private static Vector2 NormalizeToVisibleRectangle(Vector2 point, Vector2 playerCenter)
-	{
-		Vector2 viewportPosition = Main.Camera.ScaledPosition;
-		Vector2 viewportSize = Main.Camera.ScaledSize;
 		Vector2 offset = point - playerCenter;
-		float horizontalExtent = offset.X < 0f
-			? MathF.Max(1f, playerCenter.X - viewportPosition.X)
-			: MathF.Max(1f, viewportPosition.X + viewportSize.X - playerCenter.X);
-		float verticalExtent = offset.Y < 0f
-			? MathF.Max(1f, playerCenter.Y - viewportPosition.Y)
-			: MathF.Max(1f, viewportPosition.Y + viewportSize.Y - playerCenter.Y);
+		float extent = MathF.Max(1f, maximumDistance);
 
 		return new(
-			MathHelper.Clamp(offset.X / horizontalExtent, -1f, 1f),
-			MathHelper.Clamp(offset.Y / verticalExtent, -1f, 1f));
+			MathHelper.Clamp(offset.X / extent, -1f, 1f),
+			MathHelper.Clamp(offset.Y / extent, -1f, 1f));
 	}
 }

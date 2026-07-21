@@ -4,23 +4,15 @@ using Microsoft.Xna.Framework;
 
 namespace Terrarium.Ingame.WallTones;
 
-internal enum WallToneRegion
-{
-	Left,
-	Right,
-	Ceiling,
-}
-
 internal readonly record struct WallToneRegionSnapshot(
 	bool HasHit,
 	float DistancePixels,
 	float MaximumDistancePixels,
-	Vector2 NormalizedPosition,
-	float Roughness)
+	Vector2 NormalizedPosition)
 {
 	internal static WallToneRegionSnapshot Empty(float maximumDistancePixels)
 	{
-		return new(false, maximumDistancePixels, maximumDistancePixels, Vector2.Zero, 0f);
+		return new(false, maximumDistancePixels, maximumDistancePixels, Vector2.Zero);
 	}
 
 	internal float Proximity => HasHit && MaximumDistancePixels > 0f

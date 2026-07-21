@@ -67,7 +67,8 @@ internal sealed class SpatialAudioEmitter
 {
 	private const int DelayBufferLength = 64;
 	private static readonly float PositionSmoothing = SmoothingCoefficient(0.025f);
-	private static readonly float GainSmoothing = SmoothingCoefficient(0.018f);
+	private static readonly float GainAttackSmoothing = SmoothingCoefficient(0.100f);
+	private static readonly float GainReleaseSmoothing = SmoothingCoefficient(0.160f);
 
 	private readonly float[] _delayBuffer = new float[DelayBufferLength];
 	private SpatialSourceParameters _target;
@@ -78,10 +79,11 @@ internal sealed class SpatialAudioEmitter
 
 	internal void SetTarget(in SpatialSourceParameters target)
 	{
+		float distanceGain = Math.Clamp(target.DistanceGain, 0f, 1f);
 		_target = new(
-			Math.Clamp(target.NormalizedX, -1f, 1f),
-			Math.Clamp(target.NormalizedY, -1f, 1f),
-			Math.Clamp(target.DistanceGain, 0f, 1f));
+			distanceGain > 0f ? Math.Clamp(target.NormalizedX, -1f, 1f) : _target.NormalizedX,
+			distanceGain > 0f ? Math.Clamp(target.NormalizedY, -1f, 1f) : _target.NormalizedY,
+			distanceGain);
 	}
 
 	internal void Render(
@@ -95,7 +97,10 @@ internal sealed class SpatialAudioEmitter
 		{
 			_currentX += (_target.NormalizedX - _currentX) * PositionSmoothing;
 			_currentY += (_target.NormalizedY - _currentY) * PositionSmoothing;
-			_currentDistanceGain += (_target.DistanceGain - _currentDistanceGain) * GainSmoothing;
+			float gainSmoothing = _target.DistanceGain > _currentDistanceGain
+				? GainAttackSmoothing
+				: GainReleaseSmoothing;
+			_currentDistanceGain += (_target.DistanceGain - _currentDistanceGain) * gainSmoothing;
 			SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
 				_currentX,
 				_currentY,

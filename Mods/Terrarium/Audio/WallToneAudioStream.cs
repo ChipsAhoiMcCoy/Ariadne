@@ -13,15 +13,15 @@ namespace Terrarium.Audio;
 internal sealed class WallToneAudioStream : IDisposable
 {
 	private const int FramesPerBuffer = 512;
-	private const int TargetQueuedBuffers = 3;
+	private const int TargetQueuedBuffers = 6;
 	private const float VoiceHeadroomGain = 0.28f;
 	private const float MinimumFrequency = 320f;
 	private const float MaximumFrequency = 2_400f;
 
 	private readonly Mod _owner;
-	private readonly WallToneVoice _leftVoice = new(WallToneRegion.Left, 0x93A4_52E1u);
-	private readonly WallToneVoice _rightVoice = new(WallToneRegion.Right, 0xD17B_8305u);
-	private readonly WallToneVoice _ceilingVoice = new(WallToneRegion.Ceiling, 0x6C8E_9CF3u);
+	private readonly WallToneVoice _leftVoice = new(0x93A4_52E1u);
+	private readonly WallToneVoice _rightVoice = new(0xD17B_8305u);
+	private readonly WallToneVoice _ceilingVoice = new(0x6C8E_9CF3u);
 	private readonly SpatialAudioEmitter _leftEmitter = new();
 	private readonly SpatialAudioEmitter _rightEmitter = new();
 	private readonly SpatialAudioEmitter _ceilingEmitter = new();
@@ -178,7 +178,7 @@ internal sealed class WallToneAudioStream : IDisposable
 		float proximity = snapshot.Proximity;
 		float distanceGain = proximity * proximity * (3f - 2f * proximity);
 		float frequency = MinimumFrequency * MathF.Pow(MaximumFrequency / MinimumFrequency, proximity);
-		voice.SetTarget(frequency, masterGain, snapshot.Roughness);
+		voice.SetTarget(frequency, masterGain);
 		emitter.SetTarget(new(
 			snapshot.NormalizedPosition.X,
 			snapshot.NormalizedPosition.Y,
@@ -256,87 +256,44 @@ internal sealed class WallToneVoice : ISpatialMonoSource
 	private const float DefaultFilterQ = 1.4f;
 	private static readonly float FrequencySmoothing = SmoothingCoefficient(0.035f);
 	private static readonly float GainSmoothing = SmoothingCoefficient(0.020f);
-	private static readonly float RoughnessSmoothing = SmoothingCoefficient(0.060f);
-	private static readonly float ModulationNoiseSmoothing = SmoothingCoefficient(0.012f);
 
-	private readonly WallToneRegion _region;
 	private readonly uint _initialNoiseState;
-	private readonly uint _initialModulationState;
 	private uint _noiseState;
-	private uint _modulationState;
 	private float _targetFrequency = 320f;
 	private float _targetGain;
-	private float _targetRoughness;
 	private float _currentFrequency = 320f;
 	private float _currentGain;
-	private float _currentRoughness;
-	private float _modulationNoise;
-	private float _modulationPhase;
 	private float _integratorOne;
 	private float _integratorTwo;
 
-	internal WallToneVoice(WallToneRegion region, uint seed)
+	internal WallToneVoice(uint seed)
 	{
-		_region = region;
 		_initialNoiseState = seed;
-		_initialModulationState = seed ^ 0xA511_E9B3u;
 		_noiseState = _initialNoiseState;
-		_modulationState = _initialModulationState;
 	}
 
-	internal void SetTarget(float frequency, float gain, float roughness)
+	internal void SetTarget(float frequency, float gain)
 	{
 		_targetFrequency = Math.Clamp(frequency, 120f, 6_000f);
 		_targetGain = Math.Clamp(gain, 0f, 1f);
-		_targetRoughness = Math.Clamp(roughness, 0f, 1f);
 	}
 
 	public float ReadSample(float pitchRatio)
 	{
 		_currentFrequency += (_targetFrequency - _currentFrequency) * FrequencySmoothing;
 		_currentGain += (_targetGain - _currentGain) * GainSmoothing;
-		_currentRoughness += (_targetRoughness - _currentRoughness) * RoughnessSmoothing;
-		float modulationNoiseTarget = NextWhiteNoise(ref _modulationState);
-		_modulationNoise += (modulationNoiseTarget - _modulationNoise) * ModulationNoiseSmoothing;
-
-		float baseModulationFrequency = _region == WallToneRegion.Ceiling ? 2.35f : 4.1f;
-		float irregularSpeed = 1f + _currentRoughness * 0.34f * _modulationNoise;
-		_modulationPhase += MathF.Tau * baseModulationFrequency * irregularSpeed /
-			SpatialAudioTransformCalculator.SampleRate;
-		if (_modulationPhase >= MathF.Tau)
-		{
-			_modulationPhase -= MathF.Tau;
-		}
-
-		float regularPulse = 0.5f + 0.5f * MathF.Sin(_modulationPhase);
-		float irregularPulse = Math.Clamp(
-			0.5f + 0.30f * MathF.Sin(_modulationPhase) + 0.20f * _modulationNoise,
-			0f,
-			1f);
-		float modulationShape = Lerp(regularPulse, irregularPulse, _currentRoughness);
-		float amplitudeDepth = _region == WallToneRegion.Ceiling
-			? 0.10f + 0.20f * _currentRoughness
-			: 0.24f * _currentRoughness;
-		float amplitude = 1f - amplitudeDepth * modulationShape;
-		float bandwidthVariation = _currentRoughness * (0.35f + 0.35f * irregularPulse);
-		float filterQ = Math.Clamp(DefaultFilterQ - bandwidthVariation, 0.70f, DefaultFilterQ);
 		float centerFrequency = Math.Clamp(_currentFrequency * pitchRatio, 120f, 6_000f);
-		float bandPassedNoise = FilterBandPass(NextWhiteNoise(ref _noiseState), centerFrequency, filterQ);
-		return bandPassedNoise * amplitude * _currentGain;
+		float bandPassedNoise = FilterBandPass(NextWhiteNoise(ref _noiseState), centerFrequency, DefaultFilterQ);
+		return bandPassedNoise * _currentGain;
 	}
 
 	public void Reset()
 	{
 		_noiseState = _initialNoiseState;
-		_modulationState = _initialModulationState;
 		_targetFrequency = 320f;
 		_targetGain = 0f;
-		_targetRoughness = 0f;
 		_currentFrequency = 320f;
 		_currentGain = 0f;
-		_currentRoughness = 0f;
-		_modulationNoise = 0f;
-		_modulationPhase = 0f;
 		_integratorOne = 0f;
 		_integratorTwo = 0f;
 	}
@@ -367,8 +324,4 @@ internal sealed class WallToneVoice : ISpatialMonoSource
 		return 1f - MathF.Exp(-1f / (SpatialAudioTransformCalculator.SampleRate * timeConstantSeconds));
 	}
 
-	private static float Lerp(float from, float to, float amount)
-	{
-		return from + (to - from) * amount;
-	}
 }
