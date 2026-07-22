@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ModLoader;
 using Terrarium.Audio;
@@ -15,19 +14,13 @@ internal sealed class HostileMobToneSystem : ModSystem
 {
 	private const int MaximumEmitterCount = 4;
 	private const float ReplacementDistanceRatio = 0.8f;
-	private const float FixedUpdatesPerSecond = 60f;
-	private const float InterFlightPauseSeconds = 0.16f;
-	private const float CompletedCyclePauseSeconds = 0.61f;
 
 	private readonly HostileMobTracker _tracker = new();
 	private readonly EmitterAssignment[] _assignments = [new(), new(), new(), new()];
-	private readonly HostileMobFlightTarget[] _audioTargets = new HostileMobFlightTarget[MaximumEmitterCount];
+	private readonly HostileMobToneTarget[] _audioTargets = new HostileMobToneTarget[MaximumEmitterCount];
 	private readonly Dictionary<HostileMobIdentity, HostileMobCandidate> _candidatesByIdentity = [];
 	private readonly List<HostileMobCandidate> _orderedCandidates = [];
-	private readonly HashSet<HostileMobIdentity> _flownThisCycle = [];
 	private HostileMobToneAudioStream? _audio;
-	private long _schedulerTick;
-	private long _nextGlobalFlightTick;
 	private bool _isReset = true;
 
 	public override void Load()
@@ -56,7 +49,6 @@ internal sealed class HostileMobToneSystem : ModSystem
 			return;
 		}
 
-		_schedulerTick++;
 		IReadOnlyList<HostileMobCandidate> candidates = _tracker.Capture(Main.LocalPlayer);
 		int maximumEmitters = Math.Clamp(config.HostileMobMaximumEmitters, 1, MaximumEmitterCount);
 		ReconcileAssignments(candidates, maximumEmitters);
@@ -66,6 +58,7 @@ internal sealed class HostileMobToneSystem : ModSystem
 			{
 				HostileMobCandidate candidate = _assignments[index].Candidate;
 				_audioTargets[index] = new(
+					true,
 					candidate.NormalizedPosition.X,
 					candidate.NormalizedPosition.Y,
 					candidate.ViewportEdgeFraction);
@@ -75,12 +68,7 @@ internal sealed class HostileMobToneSystem : ModSystem
 				_audioTargets[index] = default;
 			}
 		}
-		_audio?.UpdateTargets(
-			_audioTargets,
-			maximumEmitters,
-			NormalizePlayerViewportY(Main.LocalPlayer),
-			config);
-		ScheduleFlight(maximumEmitters);
+		_audio?.UpdateTargets(_audioTargets, config);
 		_isReset = false;
 	}
 
@@ -201,79 +189,8 @@ internal sealed class HostileMobToneSystem : ModSystem
 		return challenger.DistanceSquared <= replacementThreshold ? farthestMatchingPriority : -1;
 	}
 
-	private void ScheduleFlight(int maximumEmitters)
-	{
-		if (_schedulerTick < _nextGlobalFlightTick)
-		{
-			return;
-		}
-
-		int nextFlightIndex = -1;
-		for (int index = 0; index < maximumEmitters; index++)
-		{
-			if (!_assignments[index].HasCandidate ||
-				_flownThisCycle.Contains(_assignments[index].Candidate.Identity))
-			{
-				continue;
-			}
-			if (nextFlightIndex < 0 ||
-				IsHigherPriority(
-					_assignments[index].Candidate,
-					_assignments[nextFlightIndex].Candidate))
-			{
-				nextFlightIndex = index;
-			}
-		}
-
-		if (nextFlightIndex < 0)
-		{
-			_flownThisCycle.Clear();
-			return;
-		}
-
-		HostileMobCandidate candidate = _assignments[nextFlightIndex].Candidate;
-		_audio?.StartFlight(nextFlightIndex);
-		_flownThisCycle.Add(candidate.Identity);
-		bool completedCycle = true;
-		for (int index = 0; index < maximumEmitters; index++)
-		{
-			if (_assignments[index].HasCandidate &&
-				!_flownThisCycle.Contains(_assignments[index].Candidate.Identity))
-			{
-				completedCycle = false;
-				break;
-			}
-		}
-
-		float pauseSeconds = completedCycle
-			? CompletedCyclePauseSeconds
-			: InterFlightPauseSeconds;
-		if (completedCycle)
-		{
-			_flownThisCycle.Clear();
-		}
-		float spacingSeconds =
-			HostileMobToneAudioStream.FlightDurationSeconds(candidate.ViewportEdgeFraction) +
-			pauseSeconds;
-		_nextGlobalFlightTick = _schedulerTick +
-			Math.Max(1L, (long)MathF.Ceiling(spacingSeconds * FixedUpdatesPerSecond));
-	}
-
-	private static bool IsHigherPriority(
-		in HostileMobCandidate challenger,
-		in HostileMobCandidate incumbent)
-	{
-		return challenger.IsBoss != incumbent.IsBoss
-			? challenger.IsBoss
-			: challenger.DistanceSquared < incumbent.DistanceSquared;
-	}
-
 	private void Assign(int index, HostileMobCandidate candidate)
 	{
-		if (_assignments[index].HasCandidate)
-		{
-			_flownThisCycle.Remove(_assignments[index].Candidate.Identity);
-		}
 		_audio?.ResetEmitter(index);
 		_assignments[index].HasCandidate = true;
 		_assignments[index].Candidate = candidate;
@@ -283,7 +200,6 @@ internal sealed class HostileMobToneSystem : ModSystem
 	{
 		if (_assignments[index].HasCandidate)
 		{
-			_flownThisCycle.Remove(_assignments[index].Candidate.Identity);
 			_audio?.ResetEmitter(index);
 		}
 		_assignments[index].HasCandidate = false;
@@ -300,18 +216,6 @@ internal sealed class HostileMobToneSystem : ModSystem
 			}
 		}
 		return -1;
-	}
-
-	private static float NormalizePlayerViewportY(Player player)
-	{
-		Vector2 viewportPosition = Main.Camera.ScaledPosition;
-		Vector2 viewportSize = Main.Camera.ScaledSize;
-		return viewportSize.Y > 0f
-			? MathHelper.Clamp(
-				(player.Center.Y - viewportPosition.Y) / viewportSize.Y * 2f - 1f,
-				-1f,
-				1f)
-			: 0f;
 	}
 
 	private int FindOpenAssignment(int maximumEmitters)
@@ -350,9 +254,6 @@ internal sealed class HostileMobToneSystem : ModSystem
 		_tracker.Reset();
 		_candidatesByIdentity.Clear();
 		_orderedCandidates.Clear();
-		_flownThisCycle.Clear();
-		_schedulerTick = 0;
-		_nextGlobalFlightTick = 0;
 		_isReset = true;
 	}
 

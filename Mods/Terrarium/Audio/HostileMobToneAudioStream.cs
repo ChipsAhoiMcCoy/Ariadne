@@ -9,7 +9,8 @@ using Terrarium.Configs;
 
 namespace Terrarium.Audio;
 
-internal readonly record struct HostileMobFlightTarget(
+internal readonly record struct HostileMobToneTarget(
+	bool IsActive,
 	float NormalizedX,
 	float NormalizedY,
 	float ViewportEdgeFraction);
@@ -19,26 +20,26 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	private const int FramesPerBuffer = 512;
 	private const int TargetQueuedBuffers = 6;
 	private const int MaximumEmitterCount = 4;
-	private const float VoiceHeadroomGain = 0.85f;
+	private const float VoiceHeadroomGain = 0.28f;
+	private const float CarrierFrequency = 320f;
+	private const float MinimumModulationRate = 1.5f;
+	private const float MaximumModulationRate = 12f;
 
 	private readonly Mod _owner;
-	private readonly FlyingVectorVoice[] _voices =
+	private readonly ModulatedSquareToneVoice[] _voices =
 	[
-		new(0xA11C_E551u),
-		new(0xB42D_7193u),
-		new(0xC73E_62A5u),
-		new(0xD84F_93B7u),
+		new(0.00f, 0.00f),
+		new(0.19f, 0.25f),
+		new(0.41f, 0.50f),
+		new(0.67f, 0.75f),
 	];
 	private readonly SpatialAudioEmitter[] _emitters = [new(), new(), new(), new()];
-	private readonly HostileMobFlightTarget[] _targets = new HostileMobFlightTarget[MaximumEmitterCount];
 	private readonly float[] _leftMix = new float[FramesPerBuffer];
 	private readonly float[] _rightMix = new float[FramesPerBuffer];
 	private readonly byte[] _pcmBuffer = new byte[FramesPerBuffer * 2 * sizeof(short)];
 	private DynamicSoundEffectInstance? _stream;
 	private WallToneSpatializationMode _spatialization;
 	private float _maximumItdMilliseconds = 0.65f;
-	private float _masterGain;
-	private float _playerNormalizedY;
 	private bool _isRunning;
 	private bool _isReset = true;
 	private bool _failureLogged;
@@ -56,14 +57,14 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		{
 			return null;
 		}
+		if (!SoundEngine.IsAudioSupported)
+		{
+			owner.Logger.Warn("Hostile-mob tones are unavailable because this client does not support audio.");
+			return null;
+		}
 
 		try
 		{
-			if (!SoundEngine.IsAudioSupported)
-			{
-				throw new InvalidOperationException("this client does not support audio");
-			}
-
 			DynamicSoundEffectInstance stream = new(
 				SpatialAudioTransformCalculator.SampleRate,
 				AudioChannels.Stereo);
@@ -71,20 +72,13 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		}
 		catch (Exception exception)
 		{
-			owner.Logger.Warn($"Hostile-mob vectors could not be initialized and will remain silent: {exception.GetBaseException().Message}");
+			owner.Logger.Warn($"Hostile-mob tone streaming could not be initialized and will remain silent: {exception.GetBaseException().Message}");
 			return null;
 		}
 	}
 
-	internal static float FlightDurationSeconds(float viewportEdgeFraction)
-	{
-		return FlyingVectorVoice.CalculateFlightDurationSeconds(viewportEdgeFraction);
-	}
-
 	internal void UpdateTargets(
-		ReadOnlySpan<HostileMobFlightTarget> targets,
-		int activeTargetCount,
-		float playerNormalizedY,
+		ReadOnlySpan<HostileMobToneTarget> targets,
 		TerrariumClientConfig config)
 	{
 		if (_disposed || _stream is null)
@@ -95,32 +89,14 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		_spatialization = config.HostileMobToneSpatialization;
 		_maximumItdMilliseconds = config.HostileMobToneItdMilliseconds;
 		float configuredGain = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
-		_masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceHeadroomGain;
-		_playerNormalizedY = float.IsFinite(playerNormalizedY)
-			? Math.Clamp(playerNormalizedY, -1f, 1f)
-			: 0f;
-		int clampedCount = Math.Clamp(activeTargetCount, 0, Math.Min(MaximumEmitterCount, targets.Length));
+		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceHeadroomGain;
 		for (int index = 0; index < MaximumEmitterCount; index++)
 		{
-			_targets[index] = index < clampedCount
+			HostileMobToneTarget target = index < targets.Length
 				? SanitizeTarget(targets[index])
 				: default;
+			SetVoiceTarget(_voices[index], _emitters[index], target, masterGain);
 		}
-		_isReset = false;
-	}
-
-	internal void StartFlight(int emitterIndex)
-	{
-		if (_disposed || _stream is null || (uint)emitterIndex >= MaximumEmitterCount)
-		{
-			return;
-		}
-
-		_voices[emitterIndex].Start(
-			_targets[emitterIndex],
-			_playerNormalizedY,
-			_masterGain);
-		_emitters[emitterIndex].Reset();
 		_isReset = false;
 	}
 
@@ -207,13 +183,30 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		ResetSignalState();
 	}
 
+	private static void SetVoiceTarget(
+		ModulatedSquareToneVoice voice,
+		SpatialAudioEmitter emitter,
+		in HostileMobToneTarget target,
+		float masterGain)
+	{
+		float proximity = target.IsActive ? 1f - target.ViewportEdgeFraction : 0f;
+		float distanceGain = SpatialAudioDistanceGain.FromProximity(proximity);
+		float modulationRate = MinimumModulationRate *
+			MathF.Pow(MaximumModulationRate / MinimumModulationRate, proximity);
+		voice.SetTarget(CarrierFrequency, modulationRate, target.IsActive ? masterGain : 0f);
+		emitter.SetTarget(new(
+			target.NormalizedX,
+			target.NormalizedY,
+			target.IsActive ? distanceGain : 0f));
+	}
+
 	private void GenerateBuffer()
 	{
 		Array.Clear(_leftMix);
 		Array.Clear(_rightMix);
 		for (int index = 0; index < MaximumEmitterCount; index++)
 		{
-			_emitters[index].RenderMoving(
+			_emitters[index].Render(
 				_voices[index],
 				_spatialization,
 				_maximumItdMilliseconds,
@@ -239,10 +232,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		{
 			_voices[index].Reset();
 			_emitters[index].Reset();
-			_targets[index] = default;
 		}
-		_masterGain = 0f;
-		_playerNormalizedY = 0f;
 		Array.Clear(_leftMix);
 		Array.Clear(_rightMix);
 		Array.Clear(_pcmBuffer);
@@ -253,7 +243,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	{
 		if (!_failureLogged)
 		{
-			_owner.Logger.Warn($"Hostile-mob vector streaming failed and has been disabled for this session: {exception.GetBaseException().Message}");
+			_owner.Logger.Warn($"Hostile-mob tone streaming failed and has been disabled for this session: {exception.GetBaseException().Message}");
 			_failureLogged = true;
 		}
 
@@ -270,9 +260,10 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		ResetSignalState();
 	}
 
-	private static HostileMobFlightTarget SanitizeTarget(in HostileMobFlightTarget target)
+	private static HostileMobToneTarget SanitizeTarget(in HostileMobToneTarget target)
 	{
 		return new(
+			target.IsActive,
 			float.IsFinite(target.NormalizedX) ? Math.Clamp(target.NormalizedX, -1f, 1f) : 0f,
 			float.IsFinite(target.NormalizedY) ? Math.Clamp(target.NormalizedY, -1f, 1f) : 0f,
 			float.IsFinite(target.ViewportEdgeFraction)
@@ -286,208 +277,93 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	}
 }
 
-internal sealed class FlyingVectorVoice : IMovingSpatialMonoSource
+internal sealed class ModulatedSquareToneVoice : ISpatialMonoSource
 {
-	private const float MinimumFlightSeconds = 0.22f;
-	private const float MaximumFlightSeconds = 0.64f;
-	private const float ImpactSeconds = 0.09f;
-	private const float FlightFilterQ = 2.2f;
-	private const float ImpactFilterQ = 1.2f;
-	private const float FlightSignalGain = 0.55f;
-	private const float ImpactNoiseGain = 0.65f;
-	private const float ImpactBodyGain = 0.32f;
-	private const float MinimumEndpointGain = 0.28f;
+	private const float MinimumModulationGain = 0.16f;
+	private static readonly float FrequencySmoothing = SmoothingCoefficient(0.035f);
+	private static readonly float ModulationSmoothing = SmoothingCoefficient(0.060f);
+	private static readonly float GainSmoothing = SmoothingCoefficient(0.020f);
 
-	private readonly uint _initialNoiseState;
-	private uint _noiseState;
-	private HostileMobFlightTarget _target;
-	private float _playerNormalizedY;
-	private float _masterGain;
-	private int _sampleIndex;
-	private int _flightSampleCount;
-	private int _totalSampleCount;
-	private float _flightIntegratorOne;
-	private float _flightIntegratorTwo;
-	private float _impactIntegratorOne;
-	private float _impactIntegratorTwo;
-	private float _impactPhase;
+	private readonly float _initialCarrierPhase;
+	private readonly float _initialModulationPhase;
+	private float _targetFrequency = 320f;
+	private float _targetModulationRate = 1.5f;
+	private float _targetGain;
+	private float _currentFrequency = 320f;
+	private float _currentModulationRate = 1.5f;
+	private float _currentGain;
+	private float _carrierPhase;
+	private float _modulationPhase;
 
-	internal FlyingVectorVoice(uint seed)
+	internal ModulatedSquareToneVoice(float carrierPhase, float modulationPhase)
 	{
-		_initialNoiseState = seed;
-		_noiseState = seed;
+		_initialCarrierPhase = WrapPhase(carrierPhase);
+		_initialModulationPhase = WrapPhase(modulationPhase);
+		_carrierPhase = _initialCarrierPhase;
+		_modulationPhase = _initialModulationPhase;
 	}
 
-	public SpatialSourceParameters CurrentSpatialParameters
+	internal void SetTarget(float frequency, float modulationRate, float gain)
 	{
-		get
-		{
-			if (!IsPlaying)
-			{
-				return default;
-			}
-
-			float progress = _sampleIndex < _flightSampleCount
-				? Math.Clamp(_sampleIndex / (float)Math.Max(1, _flightSampleCount - 1), 0f, 1f)
-				: 1f;
-			float horizontalProgress = MathF.Pow(progress, 0.65f);
-			float edgeFraction = _target.ViewportEdgeFraction * progress;
-			float currentProximityGain = SpatialAudioDistanceGain.FromProximity(1f - edgeFraction);
-			float gentleDistanceGain = MinimumEndpointGain + currentProximityGain * (1f - MinimumEndpointGain);
-			return new(
-				_target.NormalizedX * horizontalProgress,
-				Lerp(_playerNormalizedY, _target.NormalizedY, progress),
-				_masterGain * gentleDistanceGain);
-		}
-	}
-
-	private bool IsPlaying => _sampleIndex < _totalSampleCount;
-
-	internal static float CalculateFlightDurationSeconds(float viewportEdgeFraction)
-	{
-		float edgeFraction = float.IsFinite(viewportEdgeFraction)
-			? Math.Clamp(viewportEdgeFraction, 0f, 1f)
-			: 1f;
-		return Lerp(MinimumFlightSeconds, MaximumFlightSeconds, edgeFraction);
-	}
-
-	internal void Start(
-		in HostileMobFlightTarget target,
-		float playerNormalizedY,
-		float masterGain)
-	{
-		_target = target;
-		_playerNormalizedY = Math.Clamp(playerNormalizedY, -1f, 1f);
-		_masterGain = Math.Clamp(masterGain, 0f, 1f);
-		_sampleIndex = 0;
-		_flightSampleCount = Math.Max(
-			1,
-			(int)MathF.Round(
-				CalculateFlightDurationSeconds(target.ViewportEdgeFraction) *
-				SpatialAudioTransformCalculator.SampleRate));
-		_totalSampleCount = _flightSampleCount +
-			(int)MathF.Round(ImpactSeconds * SpatialAudioTransformCalculator.SampleRate);
-		_noiseState = _initialNoiseState;
-		_flightIntegratorOne = 0f;
-		_flightIntegratorTwo = 0f;
-		_impactIntegratorOne = 0f;
-		_impactIntegratorTwo = 0f;
-		_impactPhase = 0f;
+		_targetFrequency = Math.Clamp(frequency, 120f, 6_000f);
+		_targetModulationRate = Math.Clamp(modulationRate, 0.25f, 30f);
+		_targetGain = Math.Clamp(gain, 0f, 1f);
 	}
 
 	public float ReadSample(float pitchRatio)
 	{
-		if (!IsPlaying)
-		{
-			return 0f;
-		}
+		_currentFrequency += (_targetFrequency - _currentFrequency) * FrequencySmoothing;
+		_currentModulationRate += (_targetModulationRate - _currentModulationRate) * ModulationSmoothing;
+		_currentGain += (_targetGain - _currentGain) * GainSmoothing;
 
-		float sample = _sampleIndex < _flightSampleCount
-			? ReadFlightSample()
-			: ReadImpactSample(_sampleIndex - _flightSampleCount);
-		_sampleIndex++;
-		return sample;
+		float carrierFrequency = Math.Clamp(_currentFrequency * pitchRatio, 120f, 6_000f);
+		float carrierIncrement = carrierFrequency / SpatialAudioTransformCalculator.SampleRate;
+		float square = _carrierPhase < 0.5f ? 1f : -1f;
+		square += PolyBlep(_carrierPhase, carrierIncrement);
+		square -= PolyBlep(WrapPhase(_carrierPhase + 0.5f), carrierIncrement);
+
+		float modulationAmount = 0.5f + 0.5f * MathF.Sin(_modulationPhase * MathF.Tau);
+		float modulationGain = MinimumModulationGain + modulationAmount * (1f - MinimumModulationGain);
+		_carrierPhase = WrapPhase(_carrierPhase + carrierIncrement);
+		_modulationPhase = WrapPhase(
+			_modulationPhase + _currentModulationRate / SpatialAudioTransformCalculator.SampleRate);
+		return square * modulationGain * _currentGain;
 	}
 
 	public void Reset()
 	{
-		_target = default;
-		_playerNormalizedY = 0f;
-		_masterGain = 0f;
-		_sampleIndex = 0;
-		_flightSampleCount = 0;
-		_totalSampleCount = 0;
-		_noiseState = _initialNoiseState;
-		_flightIntegratorOne = 0f;
-		_flightIntegratorTwo = 0f;
-		_impactIntegratorOne = 0f;
-		_impactIntegratorTwo = 0f;
-		_impactPhase = 0f;
+		_targetFrequency = 320f;
+		_targetModulationRate = 1.5f;
+		_targetGain = 0f;
+		_currentFrequency = 320f;
+		_currentModulationRate = 1.5f;
+		_currentGain = 0f;
+		_carrierPhase = _initialCarrierPhase;
+		_modulationPhase = _initialModulationPhase;
 	}
 
-	private float ReadFlightSample()
+	private static float PolyBlep(float phase, float phaseIncrement)
 	{
-		float progress = Math.Clamp(
-			_sampleIndex / (float)Math.Max(1, _flightSampleCount - 1),
-			0f,
-			1f);
-		float durationSeconds = _flightSampleCount / (float)SpatialAudioTransformCalculator.SampleRate;
-		float attackFraction = Math.Min(1f, 0.04f / durationSeconds);
-		float attack = attackFraction > 0f
-			? Math.Clamp(progress / attackFraction, 0f, 1f)
-			: 1f;
-		float release = progress <= 0.72f
-			? 1f
-			: MathF.Pow(Math.Clamp((1f - progress) / 0.28f, 0f, 1f), 2f);
-		float centerFrequency = Lerp(900f, 2_800f, progress);
-		float filteredNoise = FilterBandPass(
-			NextWhiteNoise(ref _noiseState),
-			centerFrequency,
-			FlightFilterQ,
-			ref _flightIntegratorOne,
-			ref _flightIntegratorTwo);
-		return filteredNoise * attack * release * FlightSignalGain;
-	}
-
-	private float ReadImpactSample(int impactSampleIndex)
-	{
-		float impactTime = impactSampleIndex / (float)SpatialAudioTransformCalculator.SampleRate;
-		float targetHeight = (_target.NormalizedY + 1f) * 0.5f;
-		float initialBrightness = Lerp(4_300f, 850f, targetHeight);
-		float noiseProgress = Math.Clamp(impactTime / 0.055f, 0f, 1f);
-		float noiseEnvelope = MathF.Pow(1f - noiseProgress, 2f);
-		float brightness = Lerp(initialBrightness, initialBrightness * 0.55f, noiseProgress);
-		float impactNoise = FilterBandPass(
-			NextWhiteNoise(ref _noiseState),
-			brightness,
-			ImpactFilterQ,
-			ref _impactIntegratorOne,
-			ref _impactIntegratorTwo) *
-			noiseEnvelope *
-			ImpactNoiseGain;
-
-		float bodyProgress = Math.Clamp(impactTime / 0.075f, 0f, 1f);
-		float initialBodyFrequency = Lerp(150f, 520f, _target.ViewportEdgeFraction);
-		float bodyFrequency = initialBodyFrequency * MathF.Pow(0.58f, bodyProgress);
-		_impactPhase += MathF.Tau * bodyFrequency / SpatialAudioTransformCalculator.SampleRate;
-		if (_impactPhase >= MathF.Tau)
+		if (phase < phaseIncrement)
 		{
-			_impactPhase -= MathF.Tau;
+			float normalized = phase / phaseIncrement;
+			return normalized + normalized - normalized * normalized - 1f;
 		}
-		float bodyEnvelope = MathF.Pow(1f - bodyProgress, 2f);
-		float impactBody = MathF.Sin(_impactPhase) * bodyEnvelope * ImpactBodyGain;
-		return impactNoise + impactBody;
+		if (phase > 1f - phaseIncrement)
+		{
+			float normalized = (phase - 1f) / phaseIncrement;
+			return normalized * normalized + normalized + normalized + 1f;
+		}
+		return 0f;
 	}
 
-	private static float FilterBandPass(
-		float input,
-		float centerFrequency,
-		float filterQ,
-		ref float integratorOne,
-		ref float integratorTwo)
+	private static float WrapPhase(float phase)
 	{
-		float clampedFrequency = Math.Clamp(centerFrequency, 120f, 6_000f);
-		float g = MathF.Tan(MathF.PI * clampedFrequency / SpatialAudioTransformCalculator.SampleRate);
-		float k = 1f / filterQ;
-		float a1 = 1f / (1f + g * (g + k));
-		float v3 = input - integratorTwo;
-		float v1 = a1 * (integratorOne + g * v3);
-		float v2 = integratorTwo + g * v1;
-		integratorOne = 2f * v1 - integratorOne;
-		integratorTwo = 2f * v2 - integratorTwo;
-		return v1;
+		return phase - MathF.Floor(phase);
 	}
 
-	private static float NextWhiteNoise(ref uint state)
+	private static float SmoothingCoefficient(float timeConstantSeconds)
 	{
-		state ^= state << 13;
-		state ^= state >> 17;
-		state ^= state << 5;
-		return (state & 0x00FF_FFFFu) / 8_388_607.5f - 1f;
-	}
-
-	private static float Lerp(float from, float to, float amount)
-	{
-		return from + (to - from) * amount;
+		return 1f - MathF.Exp(-1f / (SpatialAudioTransformCalculator.SampleRate * timeConstantSeconds));
 	}
 }

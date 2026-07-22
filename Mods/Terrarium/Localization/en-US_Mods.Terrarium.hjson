@@ -43,18 +43,18 @@ Configs: {
 		}
 
 		HostileMobTonesEnabled: {
-			Label: Hostile mob tones
-			Tooltip: Play filtered-noise vectors that travel from the player to a prioritized set of hostile NPCs whose hitboxes are currently on screen.
+			Label: Hostile mob proximity tones
+			Tooltip: Play continuous modulated square tones for a prioritized set of hostile NPCs whose hitboxes are currently on screen. Tones become louder and more rapidly modulated as an enemy approaches, while screen height alone controls pitch.
 		}
 
 		HostileMobToneVolumePercent: {
 			Label: Hostile mob tone volume
-			Tooltip: Set hostile-mob vector loudness as a percentage of the game's Sound volume.
+			Tooltip: Set hostile-mob tone loudness as a percentage of the game's Sound volume.
 		}
 
 		HostileMobMaximumEmitters: {
 			Label: Maximum hostile mob emitters
-			Tooltip: Set how many on-screen enemies can receive sequential flying vectors. Bosses have priority, followed by enemies nearest the player.
+			Tooltip: Set how many on-screen enemies can emit continuous proximity tones at once. Bosses have priority, followed by enemies nearest the player.
 		}
 
 		HostileMobToneSpatialization: {
@@ -64,7 +64,7 @@ Configs: {
 
 		HostileMobToneItdMilliseconds: {
 			Label: Hostile mob tone ITD amount
-			Tooltip: Set the maximum hostile-vector interaural time difference in milliseconds. This applies only in Binaural mode; Stereo pan always uses zero delay.
+			Tooltip: Set the maximum hostile-tone interaural time difference in milliseconds. The full amount occurs at either screen edge in Binaural mode; Stereo pan always uses zero delay.
 		}
 	}
 

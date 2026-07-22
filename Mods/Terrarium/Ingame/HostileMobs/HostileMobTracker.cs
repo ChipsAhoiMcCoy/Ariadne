@@ -21,8 +21,6 @@ internal readonly record struct HostileMobCandidate(
 /// </summary>
 internal sealed class HostileMobTracker
 {
-	private const float HorizontalPositionExpansionExponent = 0.65f;
-
 	private readonly bool[] _wasActive = new bool[Main.maxNPCs];
 	private readonly int[] _lastNetIds = new int[Main.maxNPCs];
 	private readonly uint[] _generations = new uint[Main.maxNPCs];
@@ -86,7 +84,7 @@ internal sealed class HostileMobTracker
 		{
 			Vector2 center = builder.Center;
 			Vector2 normalizedPosition = new(
-				NormalizeExpandedHorizontalPosition(player.Center.X, center.X, viewportLeft, viewportRight),
+				MathHelper.Clamp((center.X - viewportLeft) / viewportSize.X * 2f - 1f, -1f, 1f),
 				MathHelper.Clamp((center.Y - viewportTop) / viewportSize.Y * 2f - 1f, -1f, 1f));
 			_candidates.Add(new(
 				identity,
@@ -97,31 +95,6 @@ internal sealed class HostileMobTracker
 		}
 
 		return _candidates;
-	}
-
-	private static float NormalizeExpandedHorizontalPosition(
-		float playerX,
-		float candidateX,
-		float viewportLeft,
-		float viewportRight)
-	{
-		float offset = candidateX - playerX;
-		if (MathF.Abs(offset) < 0.001f)
-		{
-			return 0f;
-		}
-
-		float directionalExtent = offset < 0f
-			? playerX - viewportLeft
-			: viewportRight - playerX;
-		if (directionalExtent <= 0f)
-		{
-			return offset < 0f ? -1f : 1f;
-		}
-
-		float linearPosition = MathHelper.Clamp(offset / directionalExtent, -1f, 1f);
-		float expandedAmount = MathF.Pow(MathF.Abs(linearPosition), HorizontalPositionExpansionExponent);
-		return linearPosition < 0f ? -expandedAmount : expandedAmount;
 	}
 
 	internal void Reset()
