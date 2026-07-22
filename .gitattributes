@@ -8,3 +8,4 @@
 *.txt text eol=lf
 *.hjson text eol=lf
 *.png binary
+*.wav binary

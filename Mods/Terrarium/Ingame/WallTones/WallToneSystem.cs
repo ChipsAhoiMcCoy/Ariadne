@@ -3,8 +3,6 @@
 using System;
 using Microsoft.Xna.Framework;
 using Terraria;
-using Terraria.Audio;
-using Terraria.GameInput;
 using Terraria.Localization;
 using Terraria.ModLoader;
 using Terrarium.Audio;
@@ -49,7 +47,7 @@ internal sealed class WallToneSystem : ModSystem
 	public override void PostUpdatePlayers()
 	{
 		TerrariumClientConfig config = ModContent.GetInstance<TerrariumClientConfig>();
-		if (!IsEffectivelyEnabled(config) || !CanListenDuringGameplay())
+		if (!IsEffectivelyEnabled(config) || !GameplayAudioGate.CanListen())
 		{
 			ResetTerrainHistory();
 			return;
@@ -89,7 +87,7 @@ internal sealed class WallToneSystem : ModSystem
 		bool shouldStream = IsEffectivelyEnabled(config) &&
 			config.WallToneVolumePercent > 0 &&
 			Main.soundVolume > 0f &&
-			CanListenDuringGameplay();
+			GameplayAudioGate.CanListen();
 		if (!shouldStream)
 		{
 			_audio?.StopAndReset();
@@ -132,36 +130,7 @@ internal sealed class WallToneSystem : ModSystem
 		return !Main.gameMenu &&
 			!Main.gamePaused &&
 			Main.hasFocus &&
-			CanListenDuringGameplay();
-	}
-
-	private static bool CanListenDuringGameplay()
-	{
-		if (Main.dedServ ||
-			Main.gameMenu ||
-			Main.gamePaused ||
-			!Main.hasFocus ||
-			SoundEngine.AreSoundsPaused ||
-			Main.playerInventory ||
-			Main.drawingPlayerChat ||
-			Main.editSign ||
-			Main.editChest ||
-			Main.mapFullscreen ||
-			Main.ingameOptionsWindow ||
-			Main.inFancyUI ||
-			Main.InGameUI.CurrentState is not null ||
-			(Main.CreativeMenu.Enabled && !Main.CreativeMenu.Blocked) ||
-			PlayerInput.WritingText)
-		{
-			return false;
-		}
-
-		Player player = Main.LocalPlayer;
-		return player.active &&
-			!player.dead &&
-			!player.ghost &&
-			player.talkNPC < 0 &&
-			player.sign < 0;
+			GameplayAudioGate.CanListen();
 	}
 
 	private void ResetTerrainHistory()

@@ -176,7 +176,7 @@ internal sealed class WallToneAudioStream : IDisposable
 		float masterGain)
 	{
 		float proximity = snapshot.Proximity;
-		float distanceGain = proximity * proximity * (3f - 2f * proximity);
+		float distanceGain = SpatialAudioDistanceGain.FromProximity(proximity);
 		float frequency = MinimumFrequency * MathF.Pow(MaximumFrequency / MinimumFrequency, proximity);
 		voice.SetTarget(frequency, masterGain);
 		emitter.SetTarget(new(

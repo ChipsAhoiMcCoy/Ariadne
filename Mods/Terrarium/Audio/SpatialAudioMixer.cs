@@ -28,6 +28,15 @@ internal readonly record struct SpatialAudioTransform(
 	float RightDelaySamples,
 	float PitchRatio);
 
+internal static class SpatialAudioDistanceGain
+{
+	internal static float FromProximity(float proximity)
+	{
+		float clampedProximity = Math.Clamp(proximity, 0f, 1f);
+		return clampedProximity * clampedProximity * (3f - 2f * clampedProximity);
+	}
+}
+
 internal static class SpatialAudioTransformCalculator
 {
 	internal const int SampleRate = 44_100;
@@ -79,11 +88,17 @@ internal sealed class SpatialAudioEmitter
 
 	internal void SetTarget(in SpatialSourceParameters target)
 	{
-		float distanceGain = Math.Clamp(target.DistanceGain, 0f, 1f);
-		_target = new(
-			distanceGain > 0f ? Math.Clamp(target.NormalizedX, -1f, 1f) : _target.NormalizedX,
-			distanceGain > 0f ? Math.Clamp(target.NormalizedY, -1f, 1f) : _target.NormalizedY,
-			distanceGain);
+		_target = SanitizeTarget(target, _target.NormalizedX, _target.NormalizedY);
+	}
+
+	internal void SetTargetImmediately(in SpatialSourceParameters target)
+	{
+		_target = SanitizeTarget(target, 0f, 0f);
+		_currentX = _target.NormalizedX;
+		_currentY = _target.NormalizedY;
+		_currentDistanceGain = _target.DistanceGain;
+		_writeIndex = 0;
+		Array.Clear(_delayBuffer);
 	}
 
 	internal void Render(
@@ -140,6 +155,18 @@ internal sealed class SpatialAudioEmitter
 		}
 		int olderIndex = newerIndex == 0 ? DelayBufferLength - 1 : newerIndex - 1;
 		return _delayBuffer[newerIndex] * (1f - fraction) + _delayBuffer[olderIndex] * fraction;
+	}
+
+	private static SpatialSourceParameters SanitizeTarget(
+		in SpatialSourceParameters target,
+		float silentX,
+		float silentY)
+	{
+		float distanceGain = Math.Clamp(target.DistanceGain, 0f, 1f);
+		return new(
+			distanceGain > 0f ? Math.Clamp(target.NormalizedX, -1f, 1f) : silentX,
+			distanceGain > 0f ? Math.Clamp(target.NormalizedY, -1f, 1f) : silentY,
+			distanceGain);
 	}
 
 	private static float SmoothingCoefficient(float timeConstantSeconds)

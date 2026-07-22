@@ -201,6 +201,46 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 			role: "slider",
 			adjustmentAnnouncement: () => ItdAmount(_pending.WallToneItdMilliseconds)));
 		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.HostileMobTonesEnabled))}: {OnOff(_pending.HostileMobTonesEnabled)}",
+			ToggleHostileMobTonesEnabled,
+			previousValue: ToggleHostileMobTonesEnabled,
+			nextValue: ToggleHostileMobTonesEnabled,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.HostileMobTonesEnabled)),
+			role: "toggle",
+			adjustmentAnnouncement: () => OnOff(_pending.HostileMobTonesEnabled)));
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.HostileMobToneVolumePercent))}: {_pending.HostileMobToneVolumePercent} percent",
+			IncreaseHostileMobToneVolume,
+			previousValue: DecreaseHostileMobToneVolume,
+			nextValue: IncreaseHostileMobToneVolume,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.HostileMobToneVolumePercent)),
+			role: "slider",
+			adjustmentAnnouncement: () => $"{_pending.HostileMobToneVolumePercent} percent"));
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.HostileMobMaximumEmitters))}: {_pending.HostileMobMaximumEmitters}",
+			IncreaseHostileMobMaximumEmitters,
+			previousValue: DecreaseHostileMobMaximumEmitters,
+			nextValue: IncreaseHostileMobMaximumEmitters,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.HostileMobMaximumEmitters)),
+			role: "slider",
+			adjustmentAnnouncement: () => $"{_pending.HostileMobMaximumEmitters} enemies"));
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.HostileMobToneSpatialization))}: {SpatializationName(_pending.HostileMobToneSpatialization)}",
+			NextHostileMobSpatialization,
+			previousValue: PreviousHostileMobSpatialization,
+			nextValue: NextHostileMobSpatialization,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.HostileMobToneSpatialization)),
+			role: "choice",
+			adjustmentAnnouncement: () => SpatializationName(_pending.HostileMobToneSpatialization)));
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.HostileMobToneItdMilliseconds))}: {ItdAmount(_pending.HostileMobToneItdMilliseconds)}",
+			IncreaseHostileMobToneItd,
+			previousValue: DecreaseHostileMobToneItd,
+			nextValue: IncreaseHostileMobToneItd,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.HostileMobToneItdMilliseconds)),
+			role: "slider",
+			adjustmentAnnouncement: () => ItdAmount(_pending.HostileMobToneItdMilliseconds)));
+		entries.Add(new(
 			() => "Save changes",
 			Save,
 			description: SaveDescription,
@@ -213,7 +253,7 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 		entries.Add(new(
 			() => "Restore defaults",
 			RestoreDefaults,
-			description: () => WithStatus("Set all pending wall-tone options back to their defaults. Use Save changes to keep them.")));
+			description: () => WithStatus("Set all pending Terrarium audio options back to their defaults. Use Save changes to keep them.")));
 	}
 
 	protected override void GoBack()
@@ -291,6 +331,66 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 		MarkChanged();
 	}
 
+	private void ToggleHostileMobTonesEnabled()
+	{
+		_pending.HostileMobTonesEnabled = !_pending.HostileMobTonesEnabled;
+		MarkChanged();
+	}
+
+	private void IncreaseHostileMobToneVolume()
+	{
+		_pending.HostileMobToneVolumePercent = Math.Min(100, _pending.HostileMobToneVolumePercent + 5);
+		MarkChanged();
+	}
+
+	private void DecreaseHostileMobToneVolume()
+	{
+		_pending.HostileMobToneVolumePercent = Math.Max(0, _pending.HostileMobToneVolumePercent - 5);
+		MarkChanged();
+	}
+
+	private void IncreaseHostileMobMaximumEmitters()
+	{
+		_pending.HostileMobMaximumEmitters = Math.Min(4, _pending.HostileMobMaximumEmitters + 1);
+		MarkChanged();
+	}
+
+	private void DecreaseHostileMobMaximumEmitters()
+	{
+		_pending.HostileMobMaximumEmitters = Math.Max(1, _pending.HostileMobMaximumEmitters - 1);
+		MarkChanged();
+	}
+
+	private void NextHostileMobSpatialization()
+	{
+		_pending.HostileMobToneSpatialization = _pending.HostileMobToneSpatialization == WallToneSpatializationMode.Binaural
+			? WallToneSpatializationMode.StereoPan
+			: WallToneSpatializationMode.Binaural;
+		MarkChanged();
+	}
+
+	private void PreviousHostileMobSpatialization()
+	{
+		NextHostileMobSpatialization();
+	}
+
+	private void IncreaseHostileMobToneItd()
+	{
+		AdjustHostileMobToneItd(0.05f);
+	}
+
+	private void DecreaseHostileMobToneItd()
+	{
+		AdjustHostileMobToneItd(-0.05f);
+	}
+
+	private void AdjustHostileMobToneItd(float adjustment)
+	{
+		float adjusted = Math.Clamp(_pending.HostileMobToneItdMilliseconds + adjustment, 0f, 1f);
+		_pending.HostileMobToneItdMilliseconds = MathF.Round(adjusted * 20f) / 20f;
+		MarkChanged();
+	}
+
 	private void Save()
 	{
 		string status = string.Empty;
@@ -319,6 +419,11 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 		_pending.WallToneRangeTiles = defaults.WallToneRangeTiles;
 		_pending.WallToneSpatialization = defaults.WallToneSpatialization;
 		_pending.WallToneItdMilliseconds = defaults.WallToneItdMilliseconds;
+		_pending.HostileMobTonesEnabled = defaults.HostileMobTonesEnabled;
+		_pending.HostileMobToneVolumePercent = defaults.HostileMobToneVolumePercent;
+		_pending.HostileMobMaximumEmitters = defaults.HostileMobMaximumEmitters;
+		_pending.HostileMobToneSpatialization = defaults.HostileMobToneSpatialization;
+		_pending.HostileMobToneItdMilliseconds = defaults.HostileMobToneItdMilliseconds;
 		_lastStatus = "Defaults restored as pending values.";
 	}
 
@@ -340,7 +445,12 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 			_pending.WallToneVolumePercent != _active.WallToneVolumePercent ||
 			_pending.WallToneRangeTiles != _active.WallToneRangeTiles ||
 			_pending.WallToneSpatialization != _active.WallToneSpatialization ||
-			_pending.WallToneItdMilliseconds != _active.WallToneItdMilliseconds;
+			_pending.WallToneItdMilliseconds != _active.WallToneItdMilliseconds ||
+			_pending.HostileMobTonesEnabled != _active.HostileMobTonesEnabled ||
+			_pending.HostileMobToneVolumePercent != _active.HostileMobToneVolumePercent ||
+			_pending.HostileMobMaximumEmitters != _active.HostileMobMaximumEmitters ||
+			_pending.HostileMobToneSpatialization != _active.HostileMobToneSpatialization ||
+			_pending.HostileMobToneItdMilliseconds != _active.HostileMobToneItdMilliseconds;
 	}
 
 	private string SaveDescription()

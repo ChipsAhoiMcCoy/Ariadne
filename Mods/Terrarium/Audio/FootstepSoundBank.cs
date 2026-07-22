@@ -110,7 +110,10 @@ internal sealed class FootstepSoundBank : IDisposable
 				design.Brightness * MathF.Sin(angle * 3.05f + phaseOffset);
 			float impact = impactEnvelope *
 				(design.Texture * filteredNoise + 0.10f * MathF.Sin(angle * 4.7f + phaseOffset));
-			float sample = Math.Clamp((body * bodyEnvelope + impact) / peak * 0.85f * release, -1f, 1f);
+			float sample = Math.Clamp(
+				(body * bodyEnvelope + impact) / peak * AuthoredAudioLevels.NormalizedOneShotPeak * release,
+				-1f,
+				1f);
 			short encoded = (short)MathF.Round(sample * short.MaxValue);
 			pcm[i * 2] = (byte)encoded;
 			pcm[i * 2 + 1] = (byte)(encoded >> 8);
