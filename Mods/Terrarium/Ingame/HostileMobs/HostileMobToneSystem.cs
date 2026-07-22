@@ -14,21 +14,20 @@ namespace Terrarium.Ingame.HostileMobs;
 internal sealed class HostileMobToneSystem : ModSystem
 {
 	private const int MaximumEmitterCount = 4;
-	// The lowest vertical pitch stretches the 120 ms source to about 170 ms.
-	// Eleven fixed updates retain a small non-overlap margin after buffer quantization.
-	private const long GlobalPulseSpacingTicks = 11;
 	private const float ReplacementDistanceRatio = 0.8f;
-	private const float MinimumPulseIntervalTicks = 11f;
-	private const float MaximumPulseIntervalTicks = 33f;
+	private const float FixedUpdatesPerSecond = 60f;
+	private const float InterFlightPauseSeconds = 0.16f;
+	private const float CompletedCyclePauseSeconds = 0.61f;
 
 	private readonly HostileMobTracker _tracker = new();
 	private readonly EmitterAssignment[] _assignments = [new(), new(), new(), new()];
-	private readonly SpatialSourceParameters[] _audioTargets = new SpatialSourceParameters[MaximumEmitterCount];
+	private readonly HostileMobFlightTarget[] _audioTargets = new HostileMobFlightTarget[MaximumEmitterCount];
 	private readonly Dictionary<HostileMobIdentity, HostileMobCandidate> _candidatesByIdentity = [];
 	private readonly List<HostileMobCandidate> _orderedCandidates = [];
+	private readonly HashSet<HostileMobIdentity> _flownThisCycle = [];
 	private HostileMobToneAudioStream? _audio;
 	private long _schedulerTick;
-	private long _nextGlobalPulseTick;
+	private long _nextGlobalFlightTick;
 	private bool _isReset = true;
 
 	public override void Load()
@@ -66,19 +65,22 @@ internal sealed class HostileMobToneSystem : ModSystem
 			if (index < maximumEmitters && _assignments[index].HasCandidate)
 			{
 				HostileMobCandidate candidate = _assignments[index].Candidate;
-				float proximity = 1f - candidate.ViewportEdgeFraction;
 				_audioTargets[index] = new(
 					candidate.NormalizedPosition.X,
 					candidate.NormalizedPosition.Y,
-					SpatialAudioDistanceGain.FromProximity(proximity));
+					candidate.ViewportEdgeFraction);
 			}
 			else
 			{
 				_audioTargets[index] = default;
 			}
 		}
-		_audio?.UpdateTargets(_audioTargets, maximumEmitters, config);
-		SchedulePulse(maximumEmitters);
+		_audio?.UpdateTargets(
+			_audioTargets,
+			maximumEmitters,
+			NormalizePlayerViewportY(Main.LocalPlayer),
+			config);
+		ScheduleFlight(maximumEmitters);
 		_isReset = false;
 	}
 
@@ -199,85 +201,93 @@ internal sealed class HostileMobToneSystem : ModSystem
 		return challenger.DistanceSquared <= replacementThreshold ? farthestMatchingPriority : -1;
 	}
 
-	private void SchedulePulse(int maximumEmitters)
+	private void ScheduleFlight(int maximumEmitters)
 	{
-		if (_schedulerTick < _nextGlobalPulseTick)
+		if (_schedulerTick < _nextGlobalFlightTick)
 		{
 			return;
 		}
 
-		int mostOverdueIndex = -1;
+		int nextFlightIndex = -1;
 		for (int index = 0; index < maximumEmitters; index++)
 		{
-			if (!_assignments[index].HasCandidate || _assignments[index].NextPulseTick > _schedulerTick)
+			if (!_assignments[index].HasCandidate ||
+				_flownThisCycle.Contains(_assignments[index].Candidate.Identity))
 			{
 				continue;
 			}
-			if (mostOverdueIndex < 0 ||
-				_assignments[index].NextPulseTick < _assignments[mostOverdueIndex].NextPulseTick)
+			if (nextFlightIndex < 0 ||
+				IsHigherPriority(
+					_assignments[index].Candidate,
+					_assignments[nextFlightIndex].Candidate))
 			{
-				mostOverdueIndex = index;
+				nextFlightIndex = index;
 			}
 		}
 
-		if (mostOverdueIndex < 0)
+		if (nextFlightIndex < 0)
 		{
+			_flownThisCycle.Clear();
 			return;
 		}
 
-		EmitterAssignment assignment = _assignments[mostOverdueIndex];
-		_audio?.StartPulse(mostOverdueIndex);
-		long intervalTicks = PulseIntervalTicks(assignment.Candidate);
-		assignment.NextPulseTick = _schedulerTick + intervalTicks;
-		// Use one global cadence based on the nearest assigned threat. Emitters rotate
-		// through that regular sequence instead of creating short clusters followed by
-		// longer gaps when enemies at different distances are overdue together.
-		_nextGlobalPulseTick = _schedulerTick + Math.Max(
-			GlobalPulseSpacingTicks,
-			NearestAssignedPulseIntervalTicks(maximumEmitters));
-	}
-
-	private long NearestAssignedPulseIntervalTicks(int maximumEmitters)
-	{
-		long nearestIntervalTicks = (long)MaximumPulseIntervalTicks;
+		HostileMobCandidate candidate = _assignments[nextFlightIndex].Candidate;
+		_audio?.StartFlight(nextFlightIndex);
+		_flownThisCycle.Add(candidate.Identity);
+		bool completedCycle = true;
 		for (int index = 0; index < maximumEmitters; index++)
 		{
-			if (_assignments[index].HasCandidate)
+			if (_assignments[index].HasCandidate &&
+				!_flownThisCycle.Contains(_assignments[index].Candidate.Identity))
 			{
-				nearestIntervalTicks = Math.Min(
-					nearestIntervalTicks,
-					PulseIntervalTicks(_assignments[index].Candidate));
+				completedCycle = false;
+				break;
 			}
 		}
-		return nearestIntervalTicks;
+
+		float pauseSeconds = completedCycle
+			? CompletedCyclePauseSeconds
+			: InterFlightPauseSeconds;
+		if (completedCycle)
+		{
+			_flownThisCycle.Clear();
+		}
+		float spacingSeconds =
+			HostileMobToneAudioStream.FlightDurationSeconds(candidate.ViewportEdgeFraction) +
+			pauseSeconds;
+		_nextGlobalFlightTick = _schedulerTick +
+			Math.Max(1L, (long)MathF.Ceiling(spacingSeconds * FixedUpdatesPerSecond));
 	}
 
-	private static long PulseIntervalTicks(HostileMobCandidate candidate)
+	private static bool IsHigherPriority(
+		in HostileMobCandidate challenger,
+		in HostileMobCandidate incumbent)
 	{
-		float interval = MathHelper.Lerp(
-			MinimumPulseIntervalTicks,
-			MaximumPulseIntervalTicks,
-			candidate.ViewportEdgeFraction);
-		return (long)MathF.Round(interval);
+		return challenger.IsBoss != incumbent.IsBoss
+			? challenger.IsBoss
+			: challenger.DistanceSquared < incumbent.DistanceSquared;
 	}
 
 	private void Assign(int index, HostileMobCandidate candidate)
 	{
+		if (_assignments[index].HasCandidate)
+		{
+			_flownThisCycle.Remove(_assignments[index].Candidate.Identity);
+		}
 		_audio?.ResetEmitter(index);
 		_assignments[index].HasCandidate = true;
 		_assignments[index].Candidate = candidate;
-		_assignments[index].NextPulseTick = _schedulerTick;
 	}
 
 	private void ClearAssignment(int index)
 	{
 		if (_assignments[index].HasCandidate)
 		{
+			_flownThisCycle.Remove(_assignments[index].Candidate.Identity);
 			_audio?.ResetEmitter(index);
 		}
 		_assignments[index].HasCandidate = false;
 		_assignments[index].Candidate = default;
-		_assignments[index].NextPulseTick = 0;
 	}
 
 	private int FindAssignment(HostileMobIdentity identity, int maximumEmitters)
@@ -290,6 +300,18 @@ internal sealed class HostileMobToneSystem : ModSystem
 			}
 		}
 		return -1;
+	}
+
+	private static float NormalizePlayerViewportY(Player player)
+	{
+		Vector2 viewportPosition = Main.Camera.ScaledPosition;
+		Vector2 viewportSize = Main.Camera.ScaledSize;
+		return viewportSize.Y > 0f
+			? MathHelper.Clamp(
+				(player.Center.Y - viewportPosition.Y) / viewportSize.Y * 2f - 1f,
+				-1f,
+				1f)
+			: 0f;
 	}
 
 	private int FindOpenAssignment(int maximumEmitters)
@@ -323,14 +345,14 @@ internal sealed class HostileMobToneSystem : ModSystem
 		{
 			_assignments[index].HasCandidate = false;
 			_assignments[index].Candidate = default;
-			_assignments[index].NextPulseTick = 0;
 			_audioTargets[index] = default;
 		}
 		_tracker.Reset();
 		_candidatesByIdentity.Clear();
 		_orderedCandidates.Clear();
+		_flownThisCycle.Clear();
 		_schedulerTick = 0;
-		_nextGlobalPulseTick = 0;
+		_nextGlobalFlightTick = 0;
 		_isReset = true;
 	}
 
@@ -338,6 +360,5 @@ internal sealed class HostileMobToneSystem : ModSystem
 	{
 		internal bool HasCandidate;
 		internal HostileMobCandidate Candidate;
-		internal long NextPulseTick;
 	}
 }

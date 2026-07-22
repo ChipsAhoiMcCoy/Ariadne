@@ -16,6 +16,16 @@ internal interface ISpatialMonoSource
 	void Reset();
 }
 
+/// <summary>
+/// A mono source that supplies its own per-sample screen position.
+/// This bypasses emitter smoothing so authored motion keeps its intended path
+/// while still using the shared ILD and ITD transform.
+/// </summary>
+internal interface IMovingSpatialMonoSource : ISpatialMonoSource
+{
+	SpatialSourceParameters CurrentSpatialParameters { get; }
+}
+
 internal readonly record struct SpatialSourceParameters(
 	float NormalizedX,
 	float NormalizedY,
@@ -127,6 +137,34 @@ internal sealed class SpatialAudioEmitter
 			float rightSample = ReadDelayed(transform.RightDelaySamples);
 			left[index] += leftSample * transform.LeftGain * _currentDistanceGain;
 			right[index] += rightSample * transform.RightGain * _currentDistanceGain;
+			_writeIndex = (_writeIndex + 1) % DelayBufferLength;
+		}
+	}
+
+	internal void RenderMoving(
+		IMovingSpatialMonoSource source,
+		WallToneSpatializationMode spatialization,
+		float maximumItdMilliseconds,
+		Span<float> left,
+		Span<float> right)
+	{
+		for (int index = 0; index < left.Length; index++)
+		{
+			SpatialSourceParameters parameters = source.CurrentSpatialParameters;
+			float x = Math.Clamp(parameters.NormalizedX, -1f, 1f);
+			float y = Math.Clamp(parameters.NormalizedY, -1f, 1f);
+			float distanceGain = Math.Clamp(parameters.DistanceGain, 0f, 1f);
+			SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
+				x,
+				y,
+				spatialization,
+				maximumItdMilliseconds);
+			float monoSample = source.ReadSample(transform.PitchRatio);
+			_delayBuffer[_writeIndex] = monoSample;
+			float leftSample = ReadDelayed(transform.LeftDelaySamples);
+			float rightSample = ReadDelayed(transform.RightDelaySamples);
+			left[index] += leftSample * transform.LeftGain * distanceGain;
+			right[index] += rightSample * transform.RightGain * distanceGain;
 			_writeIndex = (_writeIndex + 1) % DelayBufferLength;
 		}
 	}

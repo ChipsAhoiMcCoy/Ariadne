@@ -161,6 +161,14 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
 		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.BiomeAnnouncementsEnabled))}: {OnOff(_pending.BiomeAnnouncementsEnabled)}",
+			ToggleBiomeAnnouncementsEnabled,
+			previousValue: ToggleBiomeAnnouncementsEnabled,
+			nextValue: ToggleBiomeAnnouncementsEnabled,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.BiomeAnnouncementsEnabled)),
+			role: "toggle",
+			adjustmentAnnouncement: () => OnOff(_pending.BiomeAnnouncementsEnabled)));
+		entries.Add(new(
 			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneEnabled))}: {OnOff(_pending.WallToneEnabled)}",
 			ToggleWallToneEnabled,
 			previousValue: ToggleWallToneEnabled,
@@ -253,7 +261,7 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 		entries.Add(new(
 			() => "Restore defaults",
 			RestoreDefaults,
-			description: () => WithStatus("Set all pending Terrarium audio options back to their defaults. Use Save changes to keep them.")));
+			description: () => WithStatus("Set all pending Terrarium accessibility options back to their defaults. Use Save changes to keep them.")));
 	}
 
 	protected override void GoBack()
@@ -274,6 +282,12 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	private void ToggleWallToneEnabled()
 	{
 		_pending.WallToneEnabled = !_pending.WallToneEnabled;
+		MarkChanged();
+	}
+
+	private void ToggleBiomeAnnouncementsEnabled()
+	{
+		_pending.BiomeAnnouncementsEnabled = !_pending.BiomeAnnouncementsEnabled;
 		MarkChanged();
 	}
 
@@ -414,6 +428,7 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	private void RestoreDefaults()
 	{
 		TerrariumClientConfig defaults = new();
+		_pending.BiomeAnnouncementsEnabled = defaults.BiomeAnnouncementsEnabled;
 		_pending.WallToneEnabled = defaults.WallToneEnabled;
 		_pending.WallToneVolumePercent = defaults.WallToneVolumePercent;
 		_pending.WallToneRangeTiles = defaults.WallToneRangeTiles;
@@ -441,7 +456,8 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 
 	private bool HasChanges()
 	{
-		return _pending.WallToneEnabled != _active.WallToneEnabled ||
+		return _pending.BiomeAnnouncementsEnabled != _active.BiomeAnnouncementsEnabled ||
+			_pending.WallToneEnabled != _active.WallToneEnabled ||
 			_pending.WallToneVolumePercent != _active.WallToneVolumePercent ||
 			_pending.WallToneRangeTiles != _active.WallToneRangeTiles ||
 			_pending.WallToneSpatialization != _active.WallToneSpatialization ||

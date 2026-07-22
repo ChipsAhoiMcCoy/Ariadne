@@ -26,7 +26,7 @@ internal sealed class AccessibleMapMenuState : AccessibleMenuState
 	{
 		Player player = Main.LocalPlayer;
 		entries.Add(new(
-			() => $"Current location: {DescribeBiome(player)}",
+			() => $"Current location: {BiomeStatusFormatter.Capture(player, includeElevation: true).Description}",
 			description: () => WorldPositionFormatter.DescribeCoordinates(player.Center),
 			role: "status"));
 
@@ -152,30 +152,6 @@ internal sealed class AccessibleMapMenuState : AccessibleMenuState
 
 		int itemType = TETeleportationPylon.GetPylonItemTypeFromTileStyle((int)pylon.TypeOfPylon);
 		return itemType > ItemID.None ? Lang.GetItemNameValue(itemType) : Humanize(pylon.TypeOfPylon.ToString()) + " pylon";
-	}
-
-	private static string DescribeBiome(Player player)
-	{
-		List<string> parts = [];
-		if (player.ZoneDungeon) parts.Add("Dungeon");
-		if (player.ZoneLihzhardTemple) parts.Add("Lihzahrd Temple");
-		if (player.ZoneShimmer) parts.Add("Shimmer");
-		if (player.ZoneBeach) parts.Add("Ocean");
-		if (player.ZoneJungle) parts.Add("Jungle");
-		if (player.ZoneSnow) parts.Add("Snow");
-		if (player.ZoneDesert) parts.Add(player.ZoneUndergroundDesert ? "Underground Desert" : "Desert");
-		if (player.ZoneGlowshroom) parts.Add("Glowing Mushroom");
-		if (player.ZoneHallow) parts.Add("Hallow");
-		if (player.ZoneCorrupt) parts.Add("Corruption");
-		if (player.ZoneCrimson) parts.Add("Crimson");
-		if (player.ZoneGraveyard) parts.Add("Graveyard");
-		if (parts.Count == 0) parts.Add(player.ZoneForest ? "Forest" : "Purity");
-
-		parts.Add(player.ZoneSkyHeight ? "Space" :
-			player.ZoneOverworldHeight ? "Surface" :
-			player.ZoneDirtLayerHeight ? "Underground" :
-			player.ZoneRockLayerHeight ? "Caverns" : "Underworld");
-		return string.Join(", ", parts);
 	}
 
 	private static string Humanize(string value)

@@ -9,15 +9,17 @@ namespace Terrarium.Ingame.WallTones;
 internal static class WallToneTerrainProbe
 {
 	private const int ProbeCount = 7;
+	// Four aligned body-height samples distinguish a movement-blocking side from
+	// one-tile step-up terrain without requiring the surface to rise above the player.
 	private const int MinimumAlignedProbeCount = 4;
-	// Require a side surface to continue through three tile-spaced samples above the player.
-	private const int JumpClearanceProbeCount = 3;
 	private const float TileSize = 16f;
 	private const float MarchStepPixels = 2f;
 	private const float FirstProbeOffsetPixels = 0.25f;
 	private const int RefinementSteps = 6;
 	private const float BodyProbeSpan = 0.85f;
-	private const float SurfaceAlignmentTolerancePixels = TileSize * 1.25f;
+	// Adjacent body probes are roughly six pixels apart for a normal player. Keeping
+	// this below that spacing rejects diagonal ramps while tolerating ray refinement.
+	private const float SurfaceAlignmentTolerancePixels = 2f;
 
 	internal static WallToneSnapshot Sample(Player player, int rangeTiles)
 	{
@@ -27,8 +29,8 @@ internal static class WallToneTerrainProbe
 		float gravityDirection = player.gravDir < 0f ? -1f : 1f;
 
 		return new(
-			SampleSideRegion(center, halfSize, -1f, gravityDirection, maximumDistance),
-			SampleSideRegion(center, halfSize, 1f, gravityDirection, maximumDistance),
+			SampleSideRegion(center, halfSize, -1f, maximumDistance),
+			SampleSideRegion(center, halfSize, 1f, maximumDistance),
 			SampleCeilingRegion(center, halfSize, gravityDirection, maximumDistance));
 	}
 
@@ -36,7 +38,6 @@ internal static class WallToneTerrainProbe
 		Vector2 playerCenter,
 		Vector2 playerHalfSize,
 		float horizontalDirection,
-		float gravityDirection,
 		float maximumDistance)
 	{
 		Span<float> distances = stackalloc float[ProbeCount];
@@ -63,14 +64,7 @@ internal static class WallToneTerrainProbe
 		}
 
 		Span<bool> alignedHits = stackalloc bool[ProbeCount];
-		if (!TrySelectAlignedSurface(hits, distances, alignedHits, out float surfaceDistance) ||
-			!BlocksJumpClearance(
-				playerCenter,
-				playerHalfSize,
-				horizontalDirection,
-				gravityDirection,
-				maximumDistance,
-				surfaceDistance))
+		if (!TrySelectAlignedSurface(hits, distances, alignedHits, out _))
 		{
 			return WallToneRegionSnapshot.Empty(maximumDistance);
 		}
@@ -183,44 +177,6 @@ internal static class WallToneTerrainProbe
 		}
 
 		surfaceDistance = alignedDistanceTotal / selectedCount;
-		return true;
-	}
-
-	private static bool BlocksJumpClearance(
-		Vector2 playerCenter,
-		Vector2 playerHalfSize,
-		float horizontalDirection,
-		float gravityDirection,
-		float maximumDistance,
-		float surfaceDistance)
-	{
-		Vector2 direction = new(horizontalDirection, 0f);
-		for (int probeIndex = 1; probeIndex <= JumpClearanceProbeCount; probeIndex++)
-		{
-			Vector2 origin = playerCenter + new Vector2(
-				horizontalDirection * playerHalfSize.X,
-				-gravityDirection * (playerHalfSize.Y + probeIndex * TileSize));
-			if (IsBlockingPoint(origin))
-			{
-				return true;
-			}
-
-			if (!TryRaycast(origin, direction, maximumDistance, out float distance, out _))
-			{
-				return false;
-			}
-
-			if (distance <= MarchStepPixels)
-			{
-				return true;
-			}
-
-			if (MathF.Abs(distance - surfaceDistance) > SurfaceAlignmentTolerancePixels)
-			{
-				return false;
-			}
-		}
-
 		return true;
 	}
 

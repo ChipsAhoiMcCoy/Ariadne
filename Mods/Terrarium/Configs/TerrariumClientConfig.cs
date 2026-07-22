@@ -16,6 +16,9 @@ public sealed class TerrariumClientConfig : ModConfig
 	public override ConfigScope Mode => ConfigScope.ClientSide;
 
 	[DefaultValue(true)]
+	public bool BiomeAnnouncementsEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
 	public bool WallToneEnabled { get; set; } = true;
 
 	[DefaultValue(35)]

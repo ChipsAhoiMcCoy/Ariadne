@@ -10,7 +10,12 @@ Announcements: {
 
 Configs: {
 	TerrariumClientConfig: {
-		DisplayName: Terrarium Audio Settings
+		DisplayName: Terrarium Accessibility Settings
+
+		BiomeAnnouncementsEnabled: {
+			Label: Biome announcements
+			Tooltip: Announce a biome after the player has remained in it long enough to avoid rapid announcements at biome boundaries.
+		}
 
 		WallToneEnabled: {
 			Label: Wall tones
@@ -39,17 +44,17 @@ Configs: {
 
 		HostileMobTonesEnabled: {
 			Label: Hostile mob tones
-			Tooltip: Play short spatial pulses for a prioritized set of hostile NPCs whose hitboxes are currently on screen.
+			Tooltip: Play filtered-noise vectors that travel from the player to a prioritized set of hostile NPCs whose hitboxes are currently on screen.
 		}
 
 		HostileMobToneVolumePercent: {
 			Label: Hostile mob tone volume
-			Tooltip: Set hostile-mob pulse loudness as a percentage of the game's Sound volume.
+			Tooltip: Set hostile-mob vector loudness as a percentage of the game's Sound volume.
 		}
 
 		HostileMobMaximumEmitters: {
 			Label: Maximum hostile mob emitters
-			Tooltip: Set how many on-screen enemies can receive staggered pulses. Bosses have priority, followed by enemies nearest the player.
+			Tooltip: Set how many on-screen enemies can receive sequential flying vectors. Bosses have priority, followed by enemies nearest the player.
 		}
 
 		HostileMobToneSpatialization: {
@@ -59,7 +64,7 @@ Configs: {
 
 		HostileMobToneItdMilliseconds: {
 			Label: Hostile mob tone ITD amount
-			Tooltip: Set the maximum hostile-pulse interaural time difference in milliseconds. This applies only in Binaural mode; Stereo pan always uses zero delay.
+			Tooltip: Set the maximum hostile-vector interaural time difference in milliseconds. This applies only in Binaural mode; Stereo pan always uses zero delay.
 		}
 	}
 

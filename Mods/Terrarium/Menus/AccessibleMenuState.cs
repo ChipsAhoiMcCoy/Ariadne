@@ -151,8 +151,8 @@ internal abstract class AccessibleMenuState : UIState
 			: "Use Up and Down Arrow keys to move, letter keys to jump by name, Left and Right Arrow keys to change values, Enter to select" +
 				(CanGoBack ? ", Escape to go back" : string.Empty) +
 				", and F1 for contextual help.";
-		string hierarchy = HierarchyLevel is int level ? $"Level {level}. " : string.Empty;
-		TerrariumMod.ScreenReader.Output($"{hierarchy}{Title}. {DescribeSelection()} {controls}{AdditionalNavigationInstructions}{availability}");
+		string hierarchy = HierarchyLevel is int level ? $" Level {level}." : string.Empty;
+		TerrariumMod.ScreenReader.Output($"{Title}. {DescribeSelection()}{hierarchy} {controls}{AdditionalNavigationInstructions}{availability}");
 	}
 
 	public override void Update(GameTime gameTime)

@@ -266,18 +266,18 @@ internal sealed class AccessibleExternalUIController
 		_lastStatus = DescribeStatus(state);
 
 		string title = DescribeScreenTitle(state);
-		string hierarchy = _hierarchyLevel is int level ? $"Level {level}. " : string.Empty;
+		string hierarchy = _hierarchyLevel is int level ? $" Level {level}." : string.Empty;
 		if (_controls.Count == 0)
 		{
 			string status = string.IsNullOrWhiteSpace(_lastStatus) ? "No actionable controls were discovered." : _lastStatus;
-			TerrariumMod.ScreenReader.Output($"{hierarchy}{title}. {status} Escape uses this screen's normal back or cancel action. F1 reads accessible screen controls.");
+			TerrariumMod.ScreenReader.Output($"{title}. {status}{hierarchy} Escape uses this screen's normal back or cancel action. F1 reads accessible screen controls.");
 			return;
 		}
 
 		FocusSelectedControl();
 		_lastSelectionState = GetSelectionState();
 		TerrariumMod.ScreenReader.Output(
-			$"{hierarchy}{title}. {DescribeSelection()} " +
+			$"{title}. {DescribeSelection()}{hierarchy} " +
 			"Use Up and Down Arrow keys to move, Left and Right Arrow keys to adjust sliders or navigate the menu tree, Enter to activate, Shift Enter for the alternate action, letter keys to jump by name, Control R for details, Escape for the screen's normal back action, and F1 for help.");
 	}
 

@@ -184,12 +184,12 @@ internal sealed class AccessibleInventoryController
 		_lastSemanticState = GetSemanticState();
 		if (resumingPreviousFocus)
 		{
-			TerrariumMod.ScreenReader.Output($"{DescribeCurrentLevel()} {DescribeSelection()}");
+			TerrariumMod.ScreenReader.Output($"{DescribeSelection()} {DescribeCurrentLevel()}");
 		}
 		else
 		{
 			TerrariumMod.ScreenReader.Output(
-				$"Inventory tree, level 0. {DescribeSelection()} " +
+				$"{DescribeSelection()} {DescribeCurrentLevel()} " +
 				"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Left and Right Arrow keys to change adjustable entries or navigate into and out of the tree, Enter to open or activate the focused entry, Home and End to move to the first and last category, Tab for actions on a focused item, and F1 for help.");
 		}
 	}
@@ -202,11 +202,11 @@ internal sealed class AccessibleInventoryController
 		_rootNodes.Clear();
 		Player player = Main.LocalPlayer;
 		AddPlayerInventoryCategories(player);
-		AddCraftingCategories();
+		AddEquipmentCategories(player);
 		AddJourneyEntry(player);
 		AddContextCategories(player);
 		AddInterfaceCategories();
-		AddEquipmentCategories(player);
+		AddWorldPlayerStatusEntry();
 		AddSettingsEntry();
 		AddSaveAndExitEntry();
 
@@ -274,7 +274,8 @@ internal sealed class AccessibleInventoryController
 			() => "Consolidate and sort the ammo slots.",
 			ItemSorting.SortAmmo)));
 
-		AddBranch(_rootNodes, "inventory", "Inventory", sections);
+		AddCraftingCategory(sections);
+		AddBranch(_rootNodes, "inventory", "Inventory and Crafting", sections);
 	}
 
 	internal void RequestSemanticFocusPath(IReadOnlyList<string> focusPath)
@@ -671,18 +672,20 @@ internal sealed class AccessibleInventoryController
 	private void AddEquipmentCategories(Player player)
 	{
 		Func<int, bool> slotEnabled = index => player.IsItemSlotUnlockedAndUsable(index) || Main.mouseItem.IsAir;
+		List<AccessibleInventoryNode> combinedSections = [];
+
 		List<AccessibleInventoryNode> armorSections = [];
 		AddItemCategory(armorSections, "equipped-armor", "Equipped Armor", player.armor, ItemSlot.Context.EquipArmor, 0, 3, ArmorSlotName, enabled: slotEnabled);
 		AddItemCategory(armorSections, "vanity-armor", "Vanity Armor", player.armor, ItemSlot.Context.EquipArmorVanity, 10, 3, VanityArmorSlotName, enabled: slotEnabled);
 		AddItemCategory(armorSections, "armor-dyes", "Armor Dyes", player.dye, ItemSlot.Context.EquipDye, 0, 3, DyeSlotName, enabled: slotEnabled);
-		AddBranch(_rootNodes, "armor", "Armor", armorSections);
+		AddBranch(combinedSections, "armor", "Armor", armorSections);
 
 		List<AccessibleInventoryNode> accessorySections = [];
 		AddItemCategory(accessorySections, "equipped-accessories", "Equipped Accessories", player.armor, ItemSlot.Context.EquipAccessory, 3, 7, index => $"Accessory slot {index - 2}", enabled: slotEnabled);
 		AddItemCategory(accessorySections, "vanity-accessories", "Vanity Accessories", player.armor, ItemSlot.Context.EquipAccessoryVanity, 13, 7, index => $"Vanity accessory slot {index - 12}", enabled: slotEnabled);
 		AddItemCategory(accessorySections, "accessory-dyes", "Accessory Dyes", player.dye, ItemSlot.Context.EquipDye, 3, Math.Max(0, player.dye.Length - 3), DyeSlotName, enabled: slotEnabled);
 		AddModAccessoryCategories(player, accessorySections);
-		AddBranch(_rootNodes, "accessories", "Accessories", accessorySections);
+		AddBranch(combinedSections, "accessories", "Accessories", accessorySections);
 
 		string[] miscNames = ["Pet", "Light pet", "Minecart", "Mount", "Grappling hook"];
 		int[] miscContexts = [ItemSlot.Context.EquipPet, ItemSlot.Context.EquipLight, ItemSlot.Context.EquipMinecart, ItemSlot.Context.EquipMount, ItemSlot.Context.EquipGrapple];
@@ -696,7 +699,9 @@ internal sealed class AccessibleInventoryController
 		AddCategory(equipmentSections, "misc-equipment", "Pets, Mounts, and Hooks", miscEntries);
 		AddItemCategory(equipmentSections, "misc-dyes", "Equipment Dyes", player.miscDyes, ItemSlot.Context.EquipMiscDye, 0, player.miscDyes.Length, index => $"Dye for {miscNames[index]}");
 		AddLoadoutAndVisibilityCategories(player, equipmentSections);
-		AddBranch(_rootNodes, "equipment", "Equipment", equipmentSections);
+		AddBranch(combinedSections, "equipment", "Equipment", equipmentSections);
+
+		AddBranch(_rootNodes, "armor-accessories-equipment", "Armor, Accessories, and Equipment", combinedSections);
 	}
 
 	private void AddModAccessoryCategories(Player player, List<AccessibleInventoryNode> destination)
@@ -804,7 +809,7 @@ internal sealed class AccessibleInventoryController
 		AddCategory(destination, "equipment-visibility", "Visibility", visibilityEntries);
 	}
 
-	private void AddCraftingCategories()
+	private static void AddCraftingCategory(List<AccessibleInventoryNode> destination)
 	{
 		if (Main.numAvailableRecipes <= 0)
 		{
@@ -822,7 +827,7 @@ internal sealed class AccessibleInventoryController
 				() => SelectOrCraftRecipe(captured),
 				firstLetterName: () => Main.recipe[Main.availableRecipe[captured]].createItem.AffixName()));
 		}
-		AddCategory(_rootNodes, "crafting", Main.InGuideCraftMenu ? "Guide Recipes" : "Crafting", entries);
+		AddCategory(destination, "crafting", Main.InGuideCraftMenu ? "Guide Recipes" : "Crafting", entries);
 	}
 
 	private void AddSettingsEntry()
@@ -1053,6 +1058,16 @@ internal sealed class AccessibleInventoryController
 		return true;
 	}
 
+	private void AddWorldPlayerStatusEntry()
+	{
+		_rootNodes.Add(AccessibleInventoryNode.FromEntry(new AccessibleInventoryEntry(
+			"world-player-status",
+			() => "World and Player Status",
+			() => "Review current world conditions, player resources, buffs, summons, biome, bosses, and information granted by active informational accessories.",
+			OpenWorldPlayerStatus,
+			opensSubmenu: true)));
+	}
+
 	private void AdjustCurrentEntry(bool forward)
 	{
 		AccessibleInventoryEntry entry = CurrentEntry;
@@ -1152,7 +1167,7 @@ internal sealed class AccessibleInventoryController
 		_selectionPath.Add(0);
 		SoundEngine.PlaySound(SoundID.MenuOpen);
 		_lastSemanticState = GetSemanticState();
-		TerrariumMod.ScreenReader.Output($"{DescribeCurrentLevel()} {DescribeSelection()}");
+		TerrariumMod.ScreenReader.Output($"{DescribeSelection()} {DescribeCurrentLevel()}");
 	}
 
 	private void CloseSubmenu()
@@ -1165,7 +1180,7 @@ internal sealed class AccessibleInventoryController
 		_selectionPath.RemoveAt(_selectionPath.Count - 1);
 		SoundEngine.PlaySound(SoundID.MenuClose);
 		_lastSemanticState = GetSemanticState();
-		TerrariumMod.ScreenReader.Output($"{DescribeCurrentLevel()} {DescribeSelection()}");
+		TerrariumMod.ScreenReader.Output($"{DescribeSelection()} {DescribeCurrentLevel()}");
 	}
 
 	private void MoveVertical(int direction)
@@ -1593,15 +1608,15 @@ internal sealed class AccessibleInventoryController
 		}
 
 		TerrariumMod.ScreenReader.Output(
-			$"Inventory tree help. {DescribeCurrentLevel()} {DescribeSelection()} " +
+			$"Inventory tree help. {DescribeSelection()} {DescribeCurrentLevel()} " +
 			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Left and Right change an adjustable entry or navigate into and out of the tree. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions and Shift Enter takes one item from a stack. Enter performs the primary or normal left click action. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
 	private void AnnounceSelection(bool includeLevel = false)
 	{
 		_lastSemanticState = GetSemanticState();
-		string level = includeLevel ? $"{DescribeCurrentLevel()} " : string.Empty;
-		TerrariumMod.ScreenReader.Output($"{level}{DescribeSelection()}");
+		string level = includeLevel ? $" {DescribeCurrentLevel()}" : string.Empty;
+		TerrariumMod.ScreenReader.Output($"{DescribeSelection()}{level}");
 	}
 
 	private void AnnounceExternalStateChange()
@@ -1620,8 +1635,8 @@ internal sealed class AccessibleInventoryController
 
 		bool levelChanged = !_lastSemanticState.StartsWith($"tree|{CurrentLevel}|", StringComparison.Ordinal);
 		_lastSemanticState = state;
-		string level = levelChanged ? $"{DescribeCurrentLevel()} " : string.Empty;
-		TerrariumMod.ScreenReader.Output($"{level}{DescribeSelection()}");
+		string level = levelChanged ? $" {DescribeCurrentLevel()}" : string.Empty;
+		TerrariumMod.ScreenReader.Output($"{DescribeSelection()}{level}");
 	}
 
 	private string DescribeSelection()
@@ -2291,6 +2306,12 @@ internal sealed class AccessibleInventoryController
 	{
 		RememberFocusForResume();
 		_menuController.ShowRoot(new AccessibleSettingsMenuState(_menuController));
+	}
+
+	private void OpenWorldPlayerStatus()
+	{
+		RememberFocusForResume();
+		_menuController.ShowRoot(new AccessibleWorldPlayerStatusMenuState(_menuController));
 	}
 
 	private void OpenJourneyDuplication()
