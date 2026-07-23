@@ -27,14 +27,14 @@ internal sealed class HostileMobTracker
 	private readonly Dictionary<HostileMobIdentity, VisibleBoundsBuilder> _builders = [];
 	private readonly List<HostileMobCandidate> _candidates = [];
 
-	internal IReadOnlyList<HostileMobCandidate> Capture(Player player)
+	internal IReadOnlyList<HostileMobCandidate> Capture(SpatialObserverSnapshot observer)
 	{
 		UpdateSlotGenerations();
 		_builders.Clear();
 		_candidates.Clear();
 
-		Vector2 viewportPosition = Main.Camera.ScaledPosition;
-		Vector2 viewportSize = Main.Camera.ScaledSize;
+		Vector2 viewportPosition = observer.ViewportPosition;
+		Vector2 viewportSize = observer.ViewportSize;
 		if (viewportSize.X <= 0f || viewportSize.Y <= 0f)
 		{
 			return _candidates;
@@ -89,8 +89,14 @@ internal sealed class HostileMobTracker
 			_candidates.Add(new(
 				identity,
 				builder.IsBoss,
-				Vector2.DistanceSquared(player.Center, center),
-				CalculateViewportEdgeFraction(player.Center, center, viewportLeft, viewportTop, viewportRight, viewportBottom),
+				Vector2.DistanceSquared(observer.Center, center),
+				CalculateViewportEdgeFraction(
+					observer.Center,
+					center,
+					viewportLeft,
+					viewportTop,
+					viewportRight,
+					viewportBottom),
 				normalizedPosition));
 		}
 

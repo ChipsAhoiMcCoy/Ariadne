@@ -21,6 +21,8 @@ internal sealed class HostileMobToneSystem : ModSystem
 	private readonly Dictionary<HostileMobIdentity, HostileMobCandidate> _candidatesByIdentity = [];
 	private readonly List<HostileMobCandidate> _orderedCandidates = [];
 	private HostileMobToneAudioStream? _audio;
+	private uint _observerRevision;
+	private bool _hasObserverRevision;
 	private bool _isReset = true;
 
 	public override void Load()
@@ -30,12 +32,16 @@ internal sealed class HostileMobToneSystem : ModSystem
 
 	public override void OnWorldLoad()
 	{
+		_hasObserverRevision = false;
+		_observerRevision = 0;
 		ResetAwareness();
 		_audio?.StopAndReset();
 	}
 
 	public override void OnWorldUnload()
 	{
+		_hasObserverRevision = false;
+		_observerRevision = 0;
 		ResetAwareness();
 		_audio?.StopAndReset();
 	}
@@ -43,13 +49,15 @@ internal sealed class HostileMobToneSystem : ModSystem
 	public override void PostUpdatePlayers()
 	{
 		TerrariumClientConfig config = ModContent.GetInstance<TerrariumClientConfig>();
+		SynchronizeObserverRevision();
 		if (!ShouldRun(config))
 		{
 			ResetAwareness();
 			return;
 		}
 
-		IReadOnlyList<HostileMobCandidate> candidates = _tracker.Capture(Main.LocalPlayer);
+		IReadOnlyList<HostileMobCandidate> candidates =
+			_tracker.Capture(SpatialObserverContext.Current);
 		int maximumEmitters = Math.Clamp(config.HostileMobMaximumEmitters, 1, MaximumEmitterCount);
 		ReconcileAssignments(candidates, maximumEmitters);
 		for (int index = 0; index < MaximumEmitterCount; index++)
@@ -75,6 +83,7 @@ internal sealed class HostileMobToneSystem : ModSystem
 	public override void PostUpdateInput()
 	{
 		TerrariumClientConfig config = ModContent.GetInstance<TerrariumClientConfig>();
+		SynchronizeObserverRevision();
 		if (!ShouldRun(config))
 		{
 			_audio?.StopAndReset();
@@ -89,6 +98,8 @@ internal sealed class HostileMobToneSystem : ModSystem
 	{
 		_audio?.Dispose();
 		_audio = null;
+		_observerRevision = 0;
+		_hasObserverRevision = false;
 		ResetAwareness();
 	}
 
@@ -255,6 +266,19 @@ internal sealed class HostileMobToneSystem : ModSystem
 		_candidatesByIdentity.Clear();
 		_orderedCandidates.Clear();
 		_isReset = true;
+	}
+
+	private void SynchronizeObserverRevision()
+	{
+		uint revision = SpatialObserverContext.Revision;
+		if (_hasObserverRevision && revision != _observerRevision)
+		{
+			_audio?.StopAndReset();
+			ResetAwareness();
+		}
+
+		_observerRevision = revision;
+		_hasObserverRevision = true;
 	}
 
 	private sealed class EmitterAssignment

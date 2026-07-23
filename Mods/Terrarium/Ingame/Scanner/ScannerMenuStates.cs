@@ -55,15 +55,16 @@ internal sealed class ScannerRootMenuState : AccessibleMenuState
 
 	internal static string DescribeTarget(ScannerTarget target)
 	{
-		string position = WorldPositionFormatter.DescribeRelativePosition(target.WorldPosition);
+		return $"{DescribeTargetIdentity(target)}, {DescribeTargetContext(target)}";
+	}
+
+	internal static string DescribeTargetIdentity(ScannerTarget target)
+	{
 		return target.Kind switch
 		{
-			ScannerTargetKind.Resource => $"{target.Name}, {position}, {VisibleTiles(target.VisibleTileCount)}",
-			ScannerTargetKind.Liquid => $"{target.Name} pool, {position}, {VisibleTiles(target.VisibleTileCount)}",
-			ScannerTargetKind.Npc or ScannerTargetKind.Enemy or ScannerTargetKind.PassiveCreature =>
-				$"{target.Name}, {position}, {HealthDescription(target)}{(target.IsBoss ? ", boss" : string.Empty)}",
-			ScannerTargetKind.DroppedItem => $"{target.Stack} {target.Name}, {position}",
-			_ => $"{target.Name}, {position}",
+			ScannerTargetKind.Liquid => $"{target.Name} pool",
+			ScannerTargetKind.DroppedItem => $"{target.Stack} {target.Name}",
+			_ => target.Name,
 		};
 	}
 
@@ -81,14 +82,13 @@ internal sealed class ScannerRootMenuState : AccessibleMenuState
 			ScannerTargetKind.Tree => "Tree or large plant",
 			_ => "Placed object",
 		};
-		string action = target.Interaction switch
-		{
-			ScannerInteractionKind.TalkToNpc => " Enter moves to a safe nearby position and opens normal conversation.",
-			ScannerInteractionKind.PickupItem => " Enter moves within ordinary pickup range.",
-			ScannerInteractionKind.RightClickTile => " Enter moves to a safe nearby position and performs one normal right-click interaction.",
-			_ => " Enter moves to a safe nearby position.",
-		};
+		string action = InteractionAction(target);
 		return $"{kind}. {DescribeTarget(target)}. {WorldPositionFormatter.DescribeCoordinates(target.WorldPosition)}{action}";
+	}
+
+	internal static string DescribeTargetSelectionDetails(ScannerTarget target)
+	{
+		return $"{DescribeTargetContext(target)}. {WorldPositionFormatter.DescribeCoordinates(target.WorldPosition)}{InteractionAction(target)}";
 	}
 
 	internal static string ScannerHelpText() =>
@@ -100,6 +100,25 @@ internal sealed class ScannerRootMenuState : AccessibleMenuState
 
 	internal static string ResultWord(int count) => count == 1 ? "result" : "results";
 	private static string VisibleTiles(int count) => count == 1 ? "1 visible tile" : $"{count} visible tiles";
+	private static string DescribeTargetContext(ScannerTarget target)
+	{
+		string position = WorldPositionFormatter.DescribeRelativePosition(target.WorldPosition);
+		return target.Kind switch
+		{
+			ScannerTargetKind.Resource or ScannerTargetKind.Liquid =>
+				$"{position}, {VisibleTiles(target.VisibleTileCount)}",
+			ScannerTargetKind.Npc or ScannerTargetKind.Enemy or ScannerTargetKind.PassiveCreature =>
+				$"{position}, {HealthDescription(target)}{(target.IsBoss ? ", boss" : string.Empty)}",
+			_ => position,
+		};
+	}
+	private static string InteractionAction(ScannerTarget target) => target.Interaction switch
+	{
+		ScannerInteractionKind.TalkToNpc => " Enter moves to a safe nearby position and opens normal conversation.",
+		ScannerInteractionKind.PickupItem => " Enter moves within ordinary pickup range.",
+		ScannerInteractionKind.RightClickTile => " Enter moves to a safe nearby position and performs one normal right-click interaction.",
+		_ => " Enter moves to a safe nearby position.",
+	};
 	private static string HealthDescription(ScannerTarget target) => target.MaxHealth > 0
 		? $"health {Math.Max(0, target.Health)} of {target.MaxHealth}"
 		: "health unavailable";
@@ -133,7 +152,7 @@ internal sealed class ScannerCategoryMenuState : AccessibleMenuState
 		{
 			ScannerTarget captured = target;
 			entries.Add(new AccessibleMenuEntry(
-				() => ScannerRootMenuState.DescribeTarget(captured),
+				() => ScannerRootMenuState.DescribeTargetIdentity(captured),
 				() => Activate(captured),
 				description: () => DescribeWithFailure(captured),
 				role: TargetRole(captured)));
@@ -170,7 +189,7 @@ internal sealed class ScannerCategoryMenuState : AccessibleMenuState
 		string failure = _failedTargetId == target.Id && !string.IsNullOrWhiteSpace(_activationFailure)
 			? $"{_activationFailure} "
 			: string.Empty;
-		return failure + ScannerRootMenuState.DescribeTargetDetails(target);
+		return failure + ScannerRootMenuState.DescribeTargetSelectionDetails(target);
 	}
 
 	private static string TargetRole(ScannerTarget target) => target.Kind switch

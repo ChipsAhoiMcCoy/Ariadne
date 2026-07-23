@@ -12,6 +12,7 @@ using Terraria.Localization;
 using Terraria.ModLoader;
 using Terrarium.Audio;
 using Terrarium.Configs;
+using Terrarium.Ingame.Freecam;
 
 namespace Terrarium.Ingame.Controls;
 
@@ -53,6 +54,10 @@ internal sealed class WorldCursorSystem : ModSystem
 		_gameplayOwnedThisUpdate = false;
 		if (!WorldInputContext.CanOwnWorldCursor())
 		{
+			if (FreecamSystem.IsActive)
+			{
+				_combatTargets.Clear();
+			}
 			_precisionRepeater.Reset();
 			ClearSmartFeedbackTarget();
 			_cursorEarcon?.StopAndReset();
@@ -179,7 +184,10 @@ internal sealed class WorldCursorSystem : ModSystem
 
 		// Another PostUpdateInput system may have opened a scanner or dialog after
 		// this system ran. Yield before the player-control copy in that same tick.
-		RestoreNativeActionTriggers();
+		if (!FreecamSystem.IsActive)
+		{
+			RestoreNativeActionTriggers();
+		}
 		_coordinates.RestorePhysicalPointerIfOwned();
 		_precisionRepeater.Reset();
 		ClearSmartFeedbackTarget();

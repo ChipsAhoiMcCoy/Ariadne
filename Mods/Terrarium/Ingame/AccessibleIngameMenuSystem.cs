@@ -4,6 +4,7 @@ using Terraria;
 using Terraria.GameInput;
 using Terraria.ModLoader;
 using Terrarium.Ingame.Scanner;
+using Terrarium.Ingame.Freecam;
 using Terrarium.Menus;
 
 namespace Terrarium.Ingame;
@@ -136,6 +137,7 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 	{
 		Player player = Main.LocalPlayer;
 		return TerrariumMod.OpenScannerKeybind?.JustPressed == true &&
+			!FreecamSystem.IsActive &&
 			player.active &&
 			!player.dead &&
 			!player.ghost &&

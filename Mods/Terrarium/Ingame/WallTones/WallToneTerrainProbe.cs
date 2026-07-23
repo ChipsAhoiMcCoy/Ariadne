@@ -21,12 +21,12 @@ internal static class WallToneTerrainProbe
 	// this below that spacing rejects diagonal ramps while tolerating ray refinement.
 	private const float SurfaceAlignmentTolerancePixels = 2f;
 
-	internal static WallToneSnapshot Sample(Player player, int rangeTiles)
+	internal static WallToneSnapshot Sample(SpatialObserverSnapshot observer, int rangeTiles)
 	{
 		float maximumDistance = Math.Clamp(rangeTiles, 4, 30) * TileSize;
-		Vector2 center = player.Center;
-		Vector2 halfSize = new(player.width * 0.5f, player.height * 0.5f);
-		float gravityDirection = player.gravDir < 0f ? -1f : 1f;
+		Vector2 center = observer.Center;
+		Vector2 halfSize = new(observer.Width * 0.5f, observer.Height * 0.5f);
+		float gravityDirection = observer.GravityDirection;
 
 		return new(
 			SampleSideRegion(center, halfSize, -1f, maximumDistance),

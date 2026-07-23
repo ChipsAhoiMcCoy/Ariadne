@@ -5,12 +5,18 @@ using Terraria.GameContent.Creative;
 using Terraria.GameContent.UI;
 using Terraria.GameInput;
 using Terraria.Graphics.Capture;
+using Terrarium.Ingame.Freecam;
 
 namespace Terrarium.Ingame.Controls;
 
 internal static class WorldInputContext
 {
 	internal static bool CanOwnWorldCursor()
+	{
+		return !FreecamSystem.IsActive && IsUnobstructedGameplay();
+	}
+
+	internal static bool IsUnobstructedGameplay()
 	{
 		if (Main.dedServ ||
 			Main.gameMenu ||

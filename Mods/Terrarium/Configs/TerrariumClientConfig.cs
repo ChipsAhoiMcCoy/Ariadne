@@ -56,6 +56,12 @@ public sealed class TerrariumClientConfig : ModConfig
 	[Slider]
 	public int HostileMobMaximumEmitters { get; set; } = 3;
 
+	[DefaultValue(35)]
+	[Range(0, 100)]
+	[Increment(5)]
+	[Slider]
+	public int FreecamBeaconVolumePercent { get; set; } = 35;
+
 	[DefaultValue(true)]
 	public bool SpatialAudioItdEnabled { get; set; } = true;
 

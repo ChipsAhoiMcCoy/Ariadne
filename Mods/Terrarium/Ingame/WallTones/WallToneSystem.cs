@@ -17,9 +17,11 @@ internal sealed class WallToneSystem : ModSystem
 
 	private WallToneAudioStream? _audio;
 	private WallToneSnapshot _snapshot;
-	private Vector2 _previousPlayerCenter;
+	private Vector2 _previousObserverCenter;
+	private uint _observerRevision;
 	private bool? _sessionEnabledOverride;
-	private bool _hasPreviousPlayerCenter;
+	private bool _hasPreviousObserverCenter;
+	private bool _hasObserverRevision;
 	private bool _hasConfiguredEnabledState;
 	private bool _lastConfiguredEnabled;
 
@@ -53,27 +55,30 @@ internal sealed class WallToneSystem : ModSystem
 			return;
 		}
 
-		Player player = Main.LocalPlayer;
-		Vector2 playerCenter = player.Center;
-		if (_hasPreviousPlayerCenter)
+		SpatialObserverSnapshot observer = SpatialObserverContext.Current;
+		SynchronizeObserverRevision();
+		Vector2 observerCenter = observer.Center;
+		if (_hasPreviousObserverCenter)
 		{
 			float teleportThreshold = MathF.Max(
 				MinimumTeleportThresholdPixels,
-				MathF.Max(player.width, player.height) * 4f);
-			if (Vector2.DistanceSquared(playerCenter, _previousPlayerCenter) > teleportThreshold * teleportThreshold)
+				MathF.Max(observer.Width, observer.Height) * 4f);
+			if (Vector2.DistanceSquared(observerCenter, _previousObserverCenter) >
+				teleportThreshold * teleportThreshold)
 			{
 				_audio?.ResetForDiscontinuity();
 			}
 		}
 
-		_previousPlayerCenter = playerCenter;
-		_hasPreviousPlayerCenter = true;
-		_snapshot = WallToneTerrainProbe.Sample(player, config.WallToneRangeTiles);
+		_previousObserverCenter = observerCenter;
+		_hasPreviousObserverCenter = true;
+		_snapshot = WallToneTerrainProbe.Sample(observer, config.WallToneRangeTiles);
 	}
 
 	public override void PostUpdateInput()
 	{
 		TerrariumClientConfig config = ModContent.GetInstance<TerrariumClientConfig>();
+		SynchronizeObserverRevision();
 		SynchronizeConfiguredEnabledState(config);
 		if (CanUseSessionToggle() && TerrariumMod.ToggleWallTonesKeybind?.JustPressed == true)
 		{
@@ -136,7 +141,24 @@ internal sealed class WallToneSystem : ModSystem
 	private void ResetTerrainHistory()
 	{
 		_snapshot = default;
-		_previousPlayerCenter = Vector2.Zero;
-		_hasPreviousPlayerCenter = false;
+		_previousObserverCenter = Vector2.Zero;
+		_hasPreviousObserverCenter = false;
+		_hasObserverRevision = false;
+		_observerRevision = 0;
+	}
+
+	private void SynchronizeObserverRevision()
+	{
+		uint revision = SpatialObserverContext.Revision;
+		if (_hasObserverRevision && revision != _observerRevision)
+		{
+			_audio?.ResetForDiscontinuity();
+			_snapshot = default;
+			_previousObserverCenter = Vector2.Zero;
+			_hasPreviousObserverCenter = false;
+		}
+
+		_observerRevision = revision;
+		_hasObserverRevision = true;
 	}
 }

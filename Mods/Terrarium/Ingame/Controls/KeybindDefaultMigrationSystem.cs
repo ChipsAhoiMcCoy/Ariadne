@@ -16,8 +16,9 @@ namespace Terrarium.Ingame.Controls;
 [Autoload(Side = ModSide.Client)]
 internal sealed class KeybindDefaultMigrationSystem : ModSystem
 {
-	private const int CurrentMigrationVersion = 1;
-	private const string MigrationMarkerFileName = "default-bindings-v1.applied";
+	private const int CurrentMigrationVersion = 2;
+	private const string MigrationMarkerFileName = "default-bindings.version";
+	private const string LegacyVersionOneMarkerFileName = "default-bindings-v1.applied";
 
 	private bool _attemptedThisSession;
 
@@ -28,7 +29,8 @@ internal sealed class KeybindDefaultMigrationSystem : ModSystem
 			return;
 		}
 
-		if (File.Exists(MigrationMarkerPath))
+		int appliedVersion = ReadAppliedVersion();
+		if (appliedVersion >= CurrentMigrationVersion)
 		{
 			_attemptedThisSession = true;
 			return;
@@ -59,7 +61,7 @@ internal sealed class KeybindDefaultMigrationSystem : ModSystem
 			}
 		}
 
-		int assignedCount = AssignMissingDefaults(defaults);
+		int assignedCount = AssignIntroducedDefaults(defaults, appliedVersion);
 		if (assignedCount > 0 && !PlayerInput.Save())
 		{
 			Mod.Logger.Warn(
@@ -97,7 +99,9 @@ internal sealed class KeybindDefaultMigrationSystem : ModSystem
 		_attemptedThisSession = false;
 	}
 
-	private static int AssignMissingDefaults(IReadOnlyList<RegisteredKeybindDefault> defaults)
+	private static int AssignIntroducedDefaults(
+		IReadOnlyList<RegisteredKeybindDefault> defaults,
+		int appliedVersion)
 	{
 		int assignedCount = 0;
 		foreach (PlayerInputProfile profile in PlayerInput.Profiles.Values)
@@ -105,6 +109,11 @@ internal sealed class KeybindDefaultMigrationSystem : ModSystem
 			KeyConfiguration keyboard = profile.InputModes[InputMode.Keyboard];
 			foreach (RegisteredKeybindDefault binding in defaults)
 			{
+				if (binding.IntroducedVersion <= appliedVersion)
+				{
+					continue;
+				}
+
 				List<string> assignedKeys = keyboard.KeyStatus[binding.FullName];
 				if (assignedKeys.Count != 0)
 				{
@@ -124,6 +133,34 @@ internal sealed class KeybindDefaultMigrationSystem : ModSystem
 		"Controls",
 		MigrationMarkerFileName);
 
+	private int ReadAppliedVersion()
+	{
+		string markerPath = MigrationMarkerPath;
+		if (!File.Exists(markerPath) && File.Exists(LegacyVersionOneMarkerPath))
+		{
+			markerPath = LegacyVersionOneMarkerPath;
+		}
+		if (!File.Exists(markerPath))
+		{
+			return 0;
+		}
+
+		try
+		{
+			string marker = File.ReadAllText(markerPath).Trim();
+			return int.TryParse(marker, out int version)
+				? Math.Max(0, version)
+				: 1;
+		}
+		catch (Exception exception)
+		{
+			Mod.Logger.Warn(
+				$"Terrarium could not read the default-control migration marker: " +
+				$"{exception.GetBaseException().Message}");
+			return CurrentMigrationVersion;
+		}
+	}
+
 	private static void WriteMigrationMarker()
 	{
 		string markerPath = MigrationMarkerPath;
@@ -134,4 +171,10 @@ internal sealed class KeybindDefaultMigrationSystem : ModSystem
 		}
 		File.WriteAllText(markerPath, CurrentMigrationVersion.ToString());
 	}
+
+	private static string LegacyVersionOneMarkerPath => Path.Combine(
+		Main.SavePath,
+		"Terrarium",
+		"Controls",
+		LegacyVersionOneMarkerFileName);
 }

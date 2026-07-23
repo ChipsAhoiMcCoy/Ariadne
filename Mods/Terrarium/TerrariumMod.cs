@@ -21,21 +21,23 @@ public sealed class TerrariumMod : Mod
 	internal static ModKeybind? UseHeldItemKeybind { get; private set; }
 	internal static ModKeybind? SecondaryUseKeybind { get; private set; }
 	internal static ModKeybind? CombatTargetModifierKeybind { get; private set; }
+	internal static ModKeybind? FreecamModifierKeybind { get; private set; }
 	internal static IReadOnlyList<RegisteredKeybindDefault> KeybindDefaults => RegisteredDefaults;
 
 	public override void Load()
 	{
 		ScreenReader.Initialize(this);
 		RegisteredDefaults.Clear();
-		OpenScannerKeybind = RegisterKeybind("OpenScanner", Keys.End);
-		ToggleWallTonesKeybind = RegisterKeybind("ToggleWallTones", Keys.Home);
-		AimUpKeybind = RegisterKeybind("AimUp", Keys.O);
-		AimLeftKeybind = RegisterKeybind("AimLeft", Keys.K);
-		AimDownKeybind = RegisterKeybind("AimDown", Keys.L);
-		AimRightKeybind = RegisterKeybind("AimRight", Keys.OemSemicolon);
-		UseHeldItemKeybind = RegisterKeybind("UseHeldItem", Keys.I);
-		SecondaryUseKeybind = RegisterKeybind("SecondaryUse", Keys.P);
-		CombatTargetModifierKeybind = RegisterKeybind("CombatTargetModifier", Keys.LeftAlt);
+		OpenScannerKeybind = RegisterKeybind("OpenScanner", Keys.End, introducedVersion: 1);
+		ToggleWallTonesKeybind = RegisterKeybind("ToggleWallTones", Keys.Home, introducedVersion: 1);
+		AimUpKeybind = RegisterKeybind("AimUp", Keys.O, introducedVersion: 1);
+		AimLeftKeybind = RegisterKeybind("AimLeft", Keys.K, introducedVersion: 1);
+		AimDownKeybind = RegisterKeybind("AimDown", Keys.L, introducedVersion: 1);
+		AimRightKeybind = RegisterKeybind("AimRight", Keys.OemSemicolon, introducedVersion: 1);
+		UseHeldItemKeybind = RegisterKeybind("UseHeldItem", Keys.I, introducedVersion: 1);
+		SecondaryUseKeybind = RegisterKeybind("SecondaryUse", Keys.P, introducedVersion: 1);
+		CombatTargetModifierKeybind = RegisterKeybind("CombatTargetModifier", Keys.LeftAlt, introducedVersion: 1);
+		FreecamModifierKeybind = RegisterKeybind("FreecamModifier", Keys.RightShift, introducedVersion: 2);
 	}
 
 	public override void Unload()
@@ -51,15 +53,19 @@ public sealed class TerrariumMod : Mod
 		UseHeldItemKeybind = null;
 		SecondaryUseKeybind = null;
 		CombatTargetModifierKeybind = null;
+		FreecamModifierKeybind = null;
 		RegisteredDefaults.Clear();
 	}
 
-	private ModKeybind RegisterKeybind(string name, Keys defaultBinding)
+	private ModKeybind RegisterKeybind(string name, Keys defaultBinding, int introducedVersion)
 	{
 		ModKeybind keybind = KeybindLoader.RegisterKeybind(this, name, defaultBinding);
-		RegisteredDefaults.Add(new($"{Name}/{name}", defaultBinding.ToString()));
+		RegisteredDefaults.Add(new($"{Name}/{name}", defaultBinding.ToString(), introducedVersion));
 		return keybind;
 	}
 }
 
-internal readonly record struct RegisteredKeybindDefault(string FullName, string Key);
+internal readonly record struct RegisteredKeybindDefault(
+	string FullName,
+	string Key,
+	int IntroducedVersion);
