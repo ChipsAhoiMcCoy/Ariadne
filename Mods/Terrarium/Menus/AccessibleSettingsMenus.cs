@@ -547,6 +547,13 @@ internal sealed class AccessibleKeyBindingsMenuState : AccessibleSettingsPageSta
 
 	private static string FriendlyTriggerName(string trigger)
 	{
+		const string terrariumPrefix = "Terrarium/";
+		if (trigger.StartsWith(terrariumPrefix, StringComparison.Ordinal))
+		{
+			string keybindName = trigger[terrariumPrefix.Length..];
+			return Language.GetTextValue($"Mods.Terrarium.Keybinds.{keybindName}.DisplayName");
+		}
+
 		return string.Concat(trigger.Select((character, index) => index > 0 && char.IsUpper(character) ? $" {character}" : character.ToString()));
 	}
 }

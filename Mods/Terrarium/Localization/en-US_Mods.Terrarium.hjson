@@ -1,11 +1,20 @@
 Keybinds: {
 	OpenScanner.DisplayName: Open Scanner
 	ToggleWallTones.DisplayName: Toggle Wall Tones
+	AimUp.DisplayName: Aim Up
+	AimLeft.DisplayName: Aim Left
+	AimDown.DisplayName: Aim Down
+	AimRight.DisplayName: Aim Right
+	UseHeldItem.DisplayName: Use Held Item
+	SecondaryUse.DisplayName: Secondary Use or Interact
+	CombatTargetModifier.DisplayName: Combat Target Modifier
 }
 
 Announcements: {
 	WallTonesOn: Wall tones on
 	WallTonesOff: Wall tones off
+	SmartCursor: Smart cursor
+	UnlockedCursor: Unlocked cursor
 }
 
 Configs: {
@@ -48,8 +57,8 @@ Configs: {
 		}
 
 		HostileMobToneVolumePercent: {
-			Label: Hostile mob tone volume
-			Tooltip: Set hostile-mob tone loudness as a percentage of the game's Sound volume.
+			Label: Hostile and target cue volume
+			Tooltip: Set hostile-mob tone and combat-target lock cue loudness as a percentage of the game's Sound volume.
 		}
 
 		HostileMobMaximumEmitters: {
@@ -58,13 +67,13 @@ Configs: {
 		}
 
 		HostileMobToneSpatialization: {
-			Label: Hostile mob tone spatialization
-			Tooltip: Binaural adds a small far-ear timing difference. Stereo pan retains only ear-level differences for devices where timing cues are unsuitable.
+			Label: Hostile and target cue spatialization
+			Tooltip: Control spatialization for hostile-mob tones and combat-target lock cues. Binaural adds a small far-ear timing difference. Stereo pan retains only ear-level differences for devices where timing cues are unsuitable.
 		}
 
 		HostileMobToneItdMilliseconds: {
-			Label: Hostile mob tone ITD amount
-			Tooltip: Set the maximum hostile-tone interaural time difference in milliseconds. The full amount occurs at either screen edge in Binaural mode; Stereo pan always uses zero delay.
+			Label: Hostile and target cue ITD amount
+			Tooltip: Set the maximum hostile-tone and combat-target cue interaural time difference in milliseconds. The full amount occurs at either screen edge in Binaural mode; Stereo pan always uses zero delay.
 		}
 	}
 
