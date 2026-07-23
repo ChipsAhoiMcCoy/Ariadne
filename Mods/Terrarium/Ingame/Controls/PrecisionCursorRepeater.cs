@@ -1,10 +1,8 @@
 #nullable enable
 
+using System;
 using System.Diagnostics;
 using Microsoft.Xna.Framework;
-using Terraria;
-using Terraria.Audio;
-using Terraria.ID;
 
 namespace Terrarium.Ingame.Controls;
 
@@ -18,10 +16,10 @@ internal sealed class PrecisionCursorRepeater
 
 	internal void Update(
 		WorldCursorState state,
-		Player player,
 		Point currentDirection,
 		bool anyJustPressed,
-		bool interruptInitialAnnouncement)
+		bool interruptInitialAnnouncement,
+		Action<Point, bool> reportStep)
 	{
 		long now = Stopwatch.GetTimestamp();
 		if (currentDirection == Point.Zero)
@@ -33,7 +31,7 @@ internal sealed class PrecisionCursorRepeater
 		if (anyJustPressed || _heldDirection != currentDirection)
 		{
 			state.MovePrecision(currentDirection);
-			Announce(state, player, interruptInitialAnnouncement);
+			reportStep(state.PrecisionTile, interruptInitialAnnouncement);
 			_heldDirection = currentDirection;
 			_nextRepeatTimestamp = now + InitialDelayTicks;
 			return;
@@ -48,31 +46,17 @@ internal sealed class PrecisionCursorRepeater
 		do
 		{
 			state.MovePrecision(currentDirection);
-			Announce(state, player, interrupt: false);
+			reportStep(state.PrecisionTile, false);
 			_nextRepeatTimestamp += RepeatIntervalTicks;
 			steps++;
 		}
 		while (now >= _nextRepeatTimestamp && steps < 4);
-
-		SoundStyle quietStep = SoundID.MenuTick;
-		quietStep.Volume *= 0.25f;
-		for (int index = 0; index < steps; index++)
-		{
-			SoundEngine.PlaySound(quietStep);
-		}
-
 	}
 
 	internal void Reset()
 	{
 		_heldDirection = Point.Zero;
 		_nextRepeatTimestamp = 0;
-	}
-
-	private static void Announce(WorldCursorState state, Player player, bool interrupt)
-	{
-		WorldTargetDescription description = WorldTargetDescriber.Describe(state.PrecisionTile, player);
-		TerrariumMod.ScreenReader.Output(description.DetailedText, interrupt);
 	}
 
 	private static long MillisecondsToStopwatchTicks(int milliseconds)

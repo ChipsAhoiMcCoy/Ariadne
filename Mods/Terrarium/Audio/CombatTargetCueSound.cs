@@ -51,20 +51,22 @@ internal sealed class CombatTargetCueSound : IDisposable
 		float volume = configuredVolume * Math.Clamp(Main.soundVolume, 0f, 1f);
 		if (_disposed ||
 			_disabledAfterFailure ||
+			!config.HostileMobTonesEnabled ||
 			volume <= 0f ||
 			!GameplayAudioGate.CanListen())
 		{
+			StopCurrent();
 			return;
 		}
 
 		try
 		{
 			StopCurrent();
-			Vector2 normalizedPosition = NormalizeToViewport(worldPosition);
+			Vector2 normalizedPosition = ViewportSpatialPosition.Normalize(worldPosition);
 			byte[] pcm = CreatePcm(
 				normalizedPosition,
-				config.HostileMobToneSpatialization,
-				config.HostileMobToneItdMilliseconds);
+				config.SpatialAudioItdEnabled,
+				config.SpatialAudioItdStrengthMilliseconds);
 			_soundEffect = new SoundEffect(
 				pcm,
 				SpatialAudioTransformCalculator.SampleRate,
@@ -79,7 +81,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 		}
 	}
 
-	internal void Update()
+	internal void Update(TerrariumClientConfig config)
 	{
 		if (_disposed || _instance is null)
 		{
@@ -88,13 +90,21 @@ internal sealed class CombatTargetCueSound : IDisposable
 
 		try
 		{
-			if (!GameplayAudioGate.CanListen())
+			float configuredVolume = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
+			float volume = configuredVolume * Math.Clamp(Main.soundVolume, 0f, 1f);
+			if (!config.HostileMobTonesEnabled ||
+				volume <= 0f ||
+				!GameplayAudioGate.CanListen())
 			{
 				StopCurrent();
 			}
 			else if (_instance.State == SoundState.Stopped)
 			{
 				DisposeCurrent();
+			}
+			else
+			{
+				_instance.Volume = volume;
 			}
 		}
 		catch (Exception exception)
@@ -125,7 +135,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 
 	private static byte[] CreatePcm(
 		Vector2 normalizedPosition,
-		WallToneSpatializationMode spatialization,
+		bool itdEnabled,
 		float maximumItdMilliseconds)
 	{
 		int cueFrames = Math.Max(
@@ -142,7 +152,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 			DistanceGain: 1f));
 		emitter.Render(
 			voice,
-			spatialization,
+			itdEnabled,
 			maximumItdMilliseconds,
 			left,
 			right);
@@ -159,20 +169,6 @@ internal sealed class CombatTargetCueSound : IDisposable
 			pcm[byteIndex + 3] = (byte)(rightSample >> 8);
 		}
 		return pcm;
-	}
-
-	private static Vector2 NormalizeToViewport(Vector2 worldPosition)
-	{
-		Vector2 viewportPosition = Main.Camera.ScaledPosition;
-		Vector2 viewportSize = Main.Camera.ScaledSize;
-		if (viewportSize.X <= 0f || viewportSize.Y <= 0f)
-		{
-			return Vector2.Zero;
-		}
-
-		return new(
-			MathHelper.Clamp((worldPosition.X - viewportPosition.X) / viewportSize.X * 2f - 1f, -1f, 1f),
-			MathHelper.Clamp((worldPosition.Y - viewportPosition.Y) / viewportSize.Y * 2f - 1f, -1f, 1f));
 	}
 
 	private void StopCurrent()

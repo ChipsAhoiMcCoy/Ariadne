@@ -18,13 +18,7 @@ internal sealed class WorldCursorState
 
 	internal Vector2 PrecisionWorld => TileCenter(_precisionTile);
 
-	internal void Initialize(Player player)
-	{
-		int facing = player.direction == 0 ? 1 : player.direction;
-		_precisionTile = ClampTile((player.Center + new Vector2(facing * 16f, 0f)).ToTileCoordinates());
-		AimDirection = new Vector2(facing, 0f);
-		IsInitialized = true;
-	}
+	internal void Initialize(Player player) => Recenter(player);
 
 	internal void MovePrecision(Point offset)
 	{

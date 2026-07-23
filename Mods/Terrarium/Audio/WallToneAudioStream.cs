@@ -29,7 +29,7 @@ internal sealed class WallToneAudioStream : IDisposable
 	private readonly float[] _rightMix = new float[FramesPerBuffer];
 	private readonly byte[] _pcmBuffer = new byte[FramesPerBuffer * 2 * sizeof(short)];
 	private DynamicSoundEffectInstance? _stream;
-	private WallToneSpatializationMode _spatialization;
+	private bool _itdEnabled = true;
 	private float _maximumItdMilliseconds = 0.65f;
 	private bool _isRunning;
 	private bool _isReset = true;
@@ -75,8 +75,8 @@ internal sealed class WallToneAudioStream : IDisposable
 			return;
 		}
 
-		_spatialization = config.WallToneSpatialization;
-		_maximumItdMilliseconds = config.WallToneItdMilliseconds;
+		_itdEnabled = config.SpatialAudioItdEnabled;
+		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
 		float configuredGain = Math.Clamp(config.WallToneVolumePercent / 100f, 0f, 1f);
 		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceHeadroomGain;
 		SetVoiceTarget(_leftVoice, _leftEmitter, snapshot.Left, masterGain);
@@ -189,9 +189,9 @@ internal sealed class WallToneAudioStream : IDisposable
 	{
 		Array.Clear(_leftMix);
 		Array.Clear(_rightMix);
-		_leftEmitter.Render(_leftVoice, _spatialization, _maximumItdMilliseconds, _leftMix, _rightMix);
-		_rightEmitter.Render(_rightVoice, _spatialization, _maximumItdMilliseconds, _leftMix, _rightMix);
-		_ceilingEmitter.Render(_ceilingVoice, _spatialization, _maximumItdMilliseconds, _leftMix, _rightMix);
+		_leftEmitter.Render(_leftVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
+		_rightEmitter.Render(_rightVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
+		_ceilingEmitter.Render(_ceilingVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
 
 		for (int frame = 0; frame < FramesPerBuffer; frame++)
 		{

@@ -24,12 +24,13 @@ internal sealed class WorldCursorSystem : ModSystem
 	private readonly CombatTargetTracker _combatTargets = new();
 
 	private CombatTargetCueSound? _targetCue;
+	private CursorEarconSound? _cursorEarcon;
 	private KeyboardState _previousKeyboard;
 	private bool _gameplayOwnedThisUpdate;
 	private bool _smartModeInitialized;
 	private bool _wasSmartEnabled;
-	private Point _lastNativeSmartTarget;
-	private bool _hasLastNativeSmartTarget;
+	private Point _lastSmartTarget;
+	private bool _hasLastSmartTarget;
 	private string _lastSmartSemanticKey = string.Empty;
 	private bool _targetLeftWasHeld;
 	private bool _targetRightWasHeld;
@@ -40,16 +41,22 @@ internal sealed class WorldCursorSystem : ModSystem
 	public override void Load()
 	{
 		_targetCue = CombatTargetCueSound.Create(Mod);
+		_cursorEarcon = CursorEarconSound.Create(Mod);
 	}
 
 	public override void PostUpdateInput()
 	{
-		_targetCue?.Update();
+		TerrariumClientConfig config = ModContent.GetInstance<TerrariumClientConfig>();
+		_targetCue?.Update(config);
+		_cursorEarcon?.Update(config);
 		KeyboardState keyboard = Keyboard.GetState();
 		_gameplayOwnedThisUpdate = false;
 		if (!WorldInputContext.CanOwnWorldCursor())
 		{
 			_precisionRepeater.Reset();
+			ClearSmartFeedbackTarget();
+			_cursorEarcon?.StopAndReset();
+			_targetCue?.StopAndReset();
 			ResetTargetChordLatches();
 			_coordinates.RestorePhysicalPointerIfOwned();
 			_previousKeyboard = keyboard;
@@ -75,7 +82,7 @@ internal sealed class WorldCursorSystem : ModSystem
 			: priorSmartEnabled
 				? ProjectToViewportEdge(player.Center, _cursorState.AimDirection)
 				: _cursorState.PrecisionWorld;
-		bool cursorModeChanged = HandleSmartModeTransition(smartEnabled, player, priorAimPoint);
+		bool cursorModeChanged = HandleSmartModeTransition(smartEnabled, player);
 
 		Point manualDirection = GetManualAimDirection(current: true);
 		bool manualAimActive = manualDirection != Point.Zero;
@@ -111,7 +118,6 @@ internal sealed class WorldCursorSystem : ModSystem
 		}
 		if (_combatTargets.TryTakeSelectionCue(out Vector2 targetCuePosition))
 		{
-			TerrariumClientConfig config = ModContent.GetInstance<TerrariumClientConfig>();
 			_targetCue?.Play(targetCuePosition, config);
 		}
 
@@ -137,10 +143,10 @@ internal sealed class WorldCursorSystem : ModSystem
 		{
 			_precisionRepeater.Update(
 				_cursorState,
-				player,
 				manualDirection,
 				manualJustPressed,
-				interruptInitialAnnouncement: !cursorModeChanged);
+				interruptInitialAnnouncement: !cursorModeChanged,
+				HandlePrecisionStep);
 			_cursorState.RecoverIntoViewport();
 		}
 
@@ -176,6 +182,9 @@ internal sealed class WorldCursorSystem : ModSystem
 		RestoreNativeActionTriggers();
 		_coordinates.RestorePhysicalPointerIfOwned();
 		_precisionRepeater.Reset();
+		ClearSmartFeedbackTarget();
+		_cursorEarcon?.StopAndReset();
+		_targetCue?.StopAndReset();
 		_gameplayOwnedThisUpdate = false;
 	}
 
@@ -183,6 +192,7 @@ internal sealed class WorldCursorSystem : ModSystem
 	{
 		if (!_gameplayOwnedThisUpdate)
 		{
+			ClearSmartFeedbackTarget();
 			return;
 		}
 
@@ -197,33 +207,46 @@ internal sealed class WorldCursorSystem : ModSystem
 
 		if (!_wasSmartEnabled)
 		{
+			ClearSmartFeedbackTarget();
 			return;
 		}
 
 		if (!Main.SmartCursorShowing)
 		{
+			ClearSmartFeedbackTarget();
+			_cursorEarcon?.StopAndReset();
 			return;
 		}
 
 		Point target = new(Main.SmartCursorX, Main.SmartCursorY);
 		if (!WorldGen.InWorld(target.X, target.Y, 1))
 		{
+			ClearSmartFeedbackTarget();
+			_cursorEarcon?.StopAndReset();
 			return;
 		}
 
-		_lastNativeSmartTarget = target;
-		_hasLastNativeSmartTarget = true;
 		WorldTargetDescription description = WorldTargetDescriber.Describe(target, Main.LocalPlayer);
-		if (description.SemanticKey.Equals(_lastSmartSemanticKey, StringComparison.Ordinal))
+		if (_hasLastSmartTarget &&
+			target == _lastSmartTarget &&
+			description.SemanticKey.Equals(_lastSmartSemanticKey, StringComparison.Ordinal))
 		{
 			return;
 		}
 
+		_lastSmartTarget = target;
+		_hasLastSmartTarget = true;
 		_lastSmartSemanticKey = description.SemanticKey;
 		if (description.IsEmptySpace)
 		{
+			_cursorEarcon?.StopAndReset();
 			return;
 		}
+
+		TerrariumClientConfig config = ModContent.GetInstance<TerrariumClientConfig>();
+		_cursorEarcon?.Play(
+			target,
+			config);
 		TerrariumMod.ScreenReader.Output(description.TargetText, interrupt: false);
 	}
 
@@ -236,17 +259,14 @@ internal sealed class WorldCursorSystem : ModSystem
 		ResetState();
 		_targetCue?.Dispose();
 		_targetCue = null;
+		_cursorEarcon?.Dispose();
+		_cursorEarcon = null;
 	}
 
-	private bool HandleSmartModeTransition(bool smartEnabled, Player player, Vector2 currentAimPoint)
+	private bool HandleSmartModeTransition(bool smartEnabled, Player player)
 	{
 		if (!_smartModeInitialized)
 		{
-			if (smartEnabled)
-			{
-				_cursorState.UpdateDirectionFromPrecision(player);
-				_hasLastNativeSmartTarget = false;
-			}
 			_wasSmartEnabled = smartEnabled;
 			_smartModeInitialized = true;
 			return false;
@@ -258,7 +278,8 @@ internal sealed class WorldCursorSystem : ModSystem
 		}
 
 		_precisionRepeater.Reset();
-		_lastSmartSemanticKey = string.Empty;
+		ClearSmartFeedbackTarget();
+		_cursorEarcon?.StopAndReset();
 		string announcementKey = smartEnabled
 			? "Mods.Terrarium.Announcements.SmartCursor"
 			: "Mods.Terrarium.Announcements.UnlockedCursor";
@@ -266,21 +287,26 @@ internal sealed class WorldCursorSystem : ModSystem
 		if (smartEnabled)
 		{
 			_cursorState.UpdateDirectionFromPrecision(player);
-			_hasLastNativeSmartTarget = false;
 			return true;
 		}
 
-		if (_hasLastNativeSmartTarget)
-		{
-			_cursorState.SetPrecision(_lastNativeSmartTarget, player);
-		}
-		else
-		{
-			_cursorState.SetPrecision(currentAimPoint, player);
-		}
+		_cursorState.Recenter(player);
 		_cursorState.RecoverIntoViewport();
-		_hasLastNativeSmartTarget = false;
 		return true;
+	}
+
+	private void HandlePrecisionStep(Point tilePosition, bool interrupt)
+	{
+		Player player = Main.LocalPlayer;
+		WorldTargetDescription description = WorldTargetDescriber.Describe(tilePosition, player);
+		TerrariumClientConfig config = ModContent.GetInstance<TerrariumClientConfig>();
+		_cursorEarcon?.Play(
+			tilePosition,
+			config);
+		string announcement = config.CursorCoordinateAnnouncementsEnabled
+			? description.CoordinateDetailedText
+			: description.DetailedText;
+		TerrariumMod.ScreenReader.Output(announcement, interrupt);
 	}
 
 	private bool HandleCombatTargetCommands(
@@ -560,16 +586,22 @@ internal sealed class WorldCursorSystem : ModSystem
 		_precisionRepeater.Reset();
 		_combatTargets.Reset();
 		_targetCue?.StopAndReset();
+		_cursorEarcon?.StopAndReset();
 		_previousKeyboard = default;
 		_gameplayOwnedThisUpdate = false;
 		_smartModeInitialized = false;
 		_wasSmartEnabled = false;
-		_lastNativeSmartTarget = Point.Zero;
-		_hasLastNativeSmartTarget = false;
-		_lastSmartSemanticKey = string.Empty;
+		ClearSmartFeedbackTarget();
 		ResetTargetChordLatches();
 		_nativePrimaryTrigger = default;
 		_nativeSecondaryTrigger = default;
+	}
+
+	private void ClearSmartFeedbackTarget()
+	{
+		_lastSmartTarget = Point.Zero;
+		_hasLastSmartTarget = false;
+		_lastSmartSemanticKey = string.Empty;
 	}
 
 	private void ResetTargetChordLatches()

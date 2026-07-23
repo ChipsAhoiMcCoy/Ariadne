@@ -169,6 +169,30 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 			role: "toggle",
 			adjustmentAnnouncement: () => OnOff(_pending.BiomeAnnouncementsEnabled)));
 		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.CursorEarconsEnabled))}: {OnOff(_pending.CursorEarconsEnabled)}",
+			ToggleCursorEarconsEnabled,
+			previousValue: ToggleCursorEarconsEnabled,
+			nextValue: ToggleCursorEarconsEnabled,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.CursorEarconsEnabled)),
+			role: "toggle",
+			adjustmentAnnouncement: () => OnOff(_pending.CursorEarconsEnabled)));
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.CursorEarconVolumePercent))}: {_pending.CursorEarconVolumePercent} percent",
+			IncreaseCursorEarconVolume,
+			previousValue: DecreaseCursorEarconVolume,
+			nextValue: IncreaseCursorEarconVolume,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.CursorEarconVolumePercent)),
+			role: "slider",
+			adjustmentAnnouncement: () => $"{_pending.CursorEarconVolumePercent} percent"));
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.CursorCoordinateAnnouncementsEnabled))}: {OnOff(_pending.CursorCoordinateAnnouncementsEnabled)}",
+			ToggleCursorCoordinateAnnouncementsEnabled,
+			previousValue: ToggleCursorCoordinateAnnouncementsEnabled,
+			nextValue: ToggleCursorCoordinateAnnouncementsEnabled,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.CursorCoordinateAnnouncementsEnabled)),
+			role: "toggle",
+			adjustmentAnnouncement: () => OnOff(_pending.CursorCoordinateAnnouncementsEnabled)));
+		entries.Add(new(
 			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneEnabled))}: {OnOff(_pending.WallToneEnabled)}",
 			ToggleWallToneEnabled,
 			previousValue: ToggleWallToneEnabled,
@@ -192,22 +216,6 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.WallToneRangeTiles)),
 			role: "slider",
 			adjustmentAnnouncement: () => $"{_pending.WallToneRangeTiles} tiles"));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneSpatialization))}: {SpatializationName(_pending.WallToneSpatialization)}",
-			NextSpatialization,
-			previousValue: PreviousSpatialization,
-			nextValue: NextSpatialization,
-			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.WallToneSpatialization)),
-			role: "choice",
-			adjustmentAnnouncement: () => SpatializationName(_pending.WallToneSpatialization)));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.WallToneItdMilliseconds))}: {ItdAmount(_pending.WallToneItdMilliseconds)}",
-			IncreaseWallToneItd,
-			previousValue: DecreaseWallToneItd,
-			nextValue: IncreaseWallToneItd,
-			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.WallToneItdMilliseconds)),
-			role: "slider",
-			adjustmentAnnouncement: () => ItdAmount(_pending.WallToneItdMilliseconds)));
 		entries.Add(new(
 			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.HostileMobTonesEnabled))}: {OnOff(_pending.HostileMobTonesEnabled)}",
 			ToggleHostileMobTonesEnabled,
@@ -233,21 +241,21 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 			role: "slider",
 			adjustmentAnnouncement: () => $"{_pending.HostileMobMaximumEmitters} enemies"));
 		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.HostileMobToneSpatialization))}: {SpatializationName(_pending.HostileMobToneSpatialization)}",
-			NextHostileMobSpatialization,
-			previousValue: PreviousHostileMobSpatialization,
-			nextValue: NextHostileMobSpatialization,
-			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.HostileMobToneSpatialization)),
-			role: "choice",
-			adjustmentAnnouncement: () => SpatializationName(_pending.HostileMobToneSpatialization)));
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.SpatialAudioItdEnabled))}: {OnOff(_pending.SpatialAudioItdEnabled)}",
+			ToggleSpatialAudioItdEnabled,
+			previousValue: ToggleSpatialAudioItdEnabled,
+			nextValue: ToggleSpatialAudioItdEnabled,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.SpatialAudioItdEnabled)),
+			role: "toggle",
+			adjustmentAnnouncement: () => OnOff(_pending.SpatialAudioItdEnabled)));
 		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.HostileMobToneItdMilliseconds))}: {ItdAmount(_pending.HostileMobToneItdMilliseconds)}",
-			IncreaseHostileMobToneItd,
-			previousValue: DecreaseHostileMobToneItd,
-			nextValue: IncreaseHostileMobToneItd,
-			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.HostileMobToneItdMilliseconds)),
+			() => $"{ConfigFieldLabel(nameof(TerrariumClientConfig.SpatialAudioItdStrengthMilliseconds))}: {ItdAmount(_pending.SpatialAudioItdStrengthMilliseconds)}",
+			IncreaseSpatialAudioItdStrength,
+			previousValue: DecreaseSpatialAudioItdStrength,
+			nextValue: IncreaseSpatialAudioItdStrength,
+			description: () => ConfigFieldTooltip(nameof(TerrariumClientConfig.SpatialAudioItdStrengthMilliseconds)),
 			role: "slider",
-			adjustmentAnnouncement: () => ItdAmount(_pending.HostileMobToneItdMilliseconds)));
+			adjustmentAnnouncement: () => ItdAmount(_pending.SpatialAudioItdStrengthMilliseconds)));
 		entries.Add(new(
 			() => "Save changes",
 			Save,
@@ -291,6 +299,30 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 		MarkChanged();
 	}
 
+	private void ToggleCursorEarconsEnabled()
+	{
+		_pending.CursorEarconsEnabled = !_pending.CursorEarconsEnabled;
+		MarkChanged();
+	}
+
+	private void IncreaseCursorEarconVolume()
+	{
+		_pending.CursorEarconVolumePercent = Math.Min(100, _pending.CursorEarconVolumePercent + 5);
+		MarkChanged();
+	}
+
+	private void DecreaseCursorEarconVolume()
+	{
+		_pending.CursorEarconVolumePercent = Math.Max(0, _pending.CursorEarconVolumePercent - 5);
+		MarkChanged();
+	}
+
+	private void ToggleCursorCoordinateAnnouncementsEnabled()
+	{
+		_pending.CursorCoordinateAnnouncementsEnabled = !_pending.CursorCoordinateAnnouncementsEnabled;
+		MarkChanged();
+	}
+
 	private void IncreaseWallToneVolume()
 	{
 		_pending.WallToneVolumePercent = Math.Min(100, _pending.WallToneVolumePercent + 5);
@@ -312,36 +344,6 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	private void DecreaseWallToneRange()
 	{
 		_pending.WallToneRangeTiles = Math.Max(4, _pending.WallToneRangeTiles - 1);
-		MarkChanged();
-	}
-
-	private void NextSpatialization()
-	{
-		_pending.WallToneSpatialization = _pending.WallToneSpatialization == WallToneSpatializationMode.Binaural
-			? WallToneSpatializationMode.StereoPan
-			: WallToneSpatializationMode.Binaural;
-		MarkChanged();
-	}
-
-	private void PreviousSpatialization()
-	{
-		NextSpatialization();
-	}
-
-	private void IncreaseWallToneItd()
-	{
-		AdjustWallToneItd(0.05f);
-	}
-
-	private void DecreaseWallToneItd()
-	{
-		AdjustWallToneItd(-0.05f);
-	}
-
-	private void AdjustWallToneItd(float adjustment)
-	{
-		float adjusted = Math.Clamp(_pending.WallToneItdMilliseconds + adjustment, 0f, 1f);
-		_pending.WallToneItdMilliseconds = MathF.Round(adjusted * 20f) / 20f;
 		MarkChanged();
 	}
 
@@ -375,33 +377,26 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 		MarkChanged();
 	}
 
-	private void NextHostileMobSpatialization()
+	private void ToggleSpatialAudioItdEnabled()
 	{
-		_pending.HostileMobToneSpatialization = _pending.HostileMobToneSpatialization == WallToneSpatializationMode.Binaural
-			? WallToneSpatializationMode.StereoPan
-			: WallToneSpatializationMode.Binaural;
+		_pending.SpatialAudioItdEnabled = !_pending.SpatialAudioItdEnabled;
 		MarkChanged();
 	}
 
-	private void PreviousHostileMobSpatialization()
+	private void IncreaseSpatialAudioItdStrength()
 	{
-		NextHostileMobSpatialization();
+		AdjustSpatialAudioItdStrength(0.05f);
 	}
 
-	private void IncreaseHostileMobToneItd()
+	private void DecreaseSpatialAudioItdStrength()
 	{
-		AdjustHostileMobToneItd(0.05f);
+		AdjustSpatialAudioItdStrength(-0.05f);
 	}
 
-	private void DecreaseHostileMobToneItd()
+	private void AdjustSpatialAudioItdStrength(float adjustment)
 	{
-		AdjustHostileMobToneItd(-0.05f);
-	}
-
-	private void AdjustHostileMobToneItd(float adjustment)
-	{
-		float adjusted = Math.Clamp(_pending.HostileMobToneItdMilliseconds + adjustment, 0f, 1f);
-		_pending.HostileMobToneItdMilliseconds = MathF.Round(adjusted * 20f) / 20f;
+		float adjusted = Math.Clamp(_pending.SpatialAudioItdStrengthMilliseconds + adjustment, 0f, 1f);
+		_pending.SpatialAudioItdStrengthMilliseconds = MathF.Round(adjusted * 20f) / 20f;
 		MarkChanged();
 	}
 
@@ -429,16 +424,17 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	{
 		TerrariumClientConfig defaults = new();
 		_pending.BiomeAnnouncementsEnabled = defaults.BiomeAnnouncementsEnabled;
+		_pending.CursorEarconsEnabled = defaults.CursorEarconsEnabled;
+		_pending.CursorEarconVolumePercent = defaults.CursorEarconVolumePercent;
+		_pending.CursorCoordinateAnnouncementsEnabled = defaults.CursorCoordinateAnnouncementsEnabled;
 		_pending.WallToneEnabled = defaults.WallToneEnabled;
 		_pending.WallToneVolumePercent = defaults.WallToneVolumePercent;
 		_pending.WallToneRangeTiles = defaults.WallToneRangeTiles;
-		_pending.WallToneSpatialization = defaults.WallToneSpatialization;
-		_pending.WallToneItdMilliseconds = defaults.WallToneItdMilliseconds;
 		_pending.HostileMobTonesEnabled = defaults.HostileMobTonesEnabled;
 		_pending.HostileMobToneVolumePercent = defaults.HostileMobToneVolumePercent;
 		_pending.HostileMobMaximumEmitters = defaults.HostileMobMaximumEmitters;
-		_pending.HostileMobToneSpatialization = defaults.HostileMobToneSpatialization;
-		_pending.HostileMobToneItdMilliseconds = defaults.HostileMobToneItdMilliseconds;
+		_pending.SpatialAudioItdEnabled = defaults.SpatialAudioItdEnabled;
+		_pending.SpatialAudioItdStrengthMilliseconds = defaults.SpatialAudioItdStrengthMilliseconds;
 		_lastStatus = "Defaults restored as pending values.";
 	}
 
@@ -457,16 +453,17 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	private bool HasChanges()
 	{
 		return _pending.BiomeAnnouncementsEnabled != _active.BiomeAnnouncementsEnabled ||
+			_pending.CursorEarconsEnabled != _active.CursorEarconsEnabled ||
+			_pending.CursorEarconVolumePercent != _active.CursorEarconVolumePercent ||
+			_pending.CursorCoordinateAnnouncementsEnabled != _active.CursorCoordinateAnnouncementsEnabled ||
 			_pending.WallToneEnabled != _active.WallToneEnabled ||
 			_pending.WallToneVolumePercent != _active.WallToneVolumePercent ||
 			_pending.WallToneRangeTiles != _active.WallToneRangeTiles ||
-			_pending.WallToneSpatialization != _active.WallToneSpatialization ||
-			_pending.WallToneItdMilliseconds != _active.WallToneItdMilliseconds ||
 			_pending.HostileMobTonesEnabled != _active.HostileMobTonesEnabled ||
 			_pending.HostileMobToneVolumePercent != _active.HostileMobToneVolumePercent ||
 			_pending.HostileMobMaximumEmitters != _active.HostileMobMaximumEmitters ||
-			_pending.HostileMobToneSpatialization != _active.HostileMobToneSpatialization ||
-			_pending.HostileMobToneItdMilliseconds != _active.HostileMobToneItdMilliseconds;
+			_pending.SpatialAudioItdEnabled != _active.SpatialAudioItdEnabled ||
+			_pending.SpatialAudioItdStrengthMilliseconds != _active.SpatialAudioItdStrengthMilliseconds;
 	}
 
 	private string SaveDescription()
@@ -487,12 +484,6 @@ internal sealed class AccessibleTerrariumConfigMenuState : AccessibleMenuState
 	private static string OnOff(bool value)
 	{
 		return value ? "On" : "Off";
-	}
-
-	private static string SpatializationName(WallToneSpatializationMode mode)
-	{
-		return Language.GetTextValue(
-			$"Mods.Terrarium.Configs.WallToneSpatializationMode.{mode}.Label");
 	}
 
 	private static string ItdAmount(float milliseconds)

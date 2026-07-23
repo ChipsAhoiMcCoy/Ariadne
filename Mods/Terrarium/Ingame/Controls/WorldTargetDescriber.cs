@@ -8,6 +8,7 @@ using Terraria;
 using Terraria.DataStructures;
 using Terraria.Enums;
 using Terraria.ID;
+using Terraria.Localization;
 using Terraria.Map;
 using Terraria.ModLoader;
 using Terraria.ObjectData;
@@ -18,6 +19,7 @@ internal readonly record struct WorldTargetDescription(
 	string SemanticKey,
 	string TargetText,
 	string DetailedText,
+	string CoordinateDetailedText,
 	bool IsEmptySpace);
 
 internal static class WorldTargetDescriber
@@ -36,7 +38,7 @@ internal static class WorldTargetDescriber
 		if (tile.HasTile && objectData is not null && root != Point16.NegativeOne)
 		{
 			target = GetTileName(x, y, tile.TileType);
-			semanticKey = $"object:{tile.TileType}:{root.X}:{root.Y}";
+			semanticKey = $"object:{tile.TileType}:{root.X}:{root.Y}:{target}";
 		}
 		else if (tile.HasTile)
 		{
@@ -80,12 +82,23 @@ internal static class WorldTargetDescriber
 			isEmptySpace = false;
 		}
 
-		string reach = IsWithinHeldItemReach(player, x, y) ? "in reach" : "out of reach";
+		bool isInReach = IsWithinHeldItemReach(player, x, y);
+		string reach = isInReach ? "in reach" : "out of reach";
+		string coordinateReach = Language.GetTextValue(
+			isInReach
+				? "Mods.Terrarium.Announcements.CursorInReach"
+				: "Mods.Terrarium.Announcements.CursorOutOfReach");
 		Vector2 worldPosition = new(x * 16f + 8f, y * 16f + 8f);
 		return new(
 			semanticKey,
 			target,
 			$"{target}, {reach}, {WorldPositionFormatter.DescribeRelativePosition(worldPosition)}.",
+			Language.GetTextValue(
+				"Mods.Terrarium.Announcements.CursorCoordinates",
+				target,
+				tilePosition.X,
+				tilePosition.Y,
+				coordinateReach),
 			isEmptySpace);
 	}
 

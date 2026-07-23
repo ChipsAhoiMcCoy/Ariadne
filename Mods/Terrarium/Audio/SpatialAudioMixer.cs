@@ -1,7 +1,8 @@
 #nullable enable
 
 using System;
-using Terrarium.Configs;
+using Microsoft.Xna.Framework;
+using Terraria;
 
 namespace Terrarium.Audio;
 
@@ -38,6 +39,23 @@ internal readonly record struct SpatialAudioTransform(
 	float RightDelaySamples,
 	float PitchRatio);
 
+internal static class ViewportSpatialPosition
+{
+	internal static Vector2 Normalize(Vector2 worldPosition)
+	{
+		Vector2 viewportPosition = Main.Camera.ScaledPosition;
+		Vector2 viewportSize = Main.Camera.ScaledSize;
+		if (viewportSize.X <= 0f || viewportSize.Y <= 0f)
+		{
+			return Vector2.Zero;
+		}
+
+		return new(
+			MathHelper.Clamp((worldPosition.X - viewportPosition.X) / viewportSize.X * 2f - 1f, -1f, 1f),
+			MathHelper.Clamp((worldPosition.Y - viewportPosition.Y) / viewportSize.Y * 2f - 1f, -1f, 1f));
+	}
+}
+
 internal static class SpatialAudioDistanceGain
 {
 	internal static float FromProximity(float proximity)
@@ -55,7 +73,7 @@ internal static class SpatialAudioTransformCalculator
 	internal static SpatialAudioTransform Calculate(
 		float normalizedX,
 		float normalizedY,
-		WallToneSpatializationMode spatialization,
+		bool itdEnabled,
 		float maximumItdMilliseconds)
 	{
 		float x = Math.Clamp(normalizedX, -1f, 1f);
@@ -68,7 +86,7 @@ internal static class SpatialAudioTransformCalculator
 		leftGain *= powerNormalizer;
 		rightGain *= powerNormalizer;
 
-		float delaySamples = spatialization == WallToneSpatializationMode.Binaural
+		float delaySamples = itdEnabled
 			? directionAmount * Math.Clamp(maximumItdMilliseconds, 0f, 1f) / 1_000f * SampleRate
 			: 0f;
 		float leftDelay = x > 0f ? delaySamples : 0f;
@@ -118,7 +136,7 @@ internal sealed class SpatialAudioEmitter
 
 	internal void Render(
 		ISpatialMonoSource source,
-		WallToneSpatializationMode spatialization,
+		bool itdEnabled,
 		float maximumItdMilliseconds,
 		Span<float> left,
 		Span<float> right)
@@ -134,7 +152,7 @@ internal sealed class SpatialAudioEmitter
 			SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
 				_currentX,
 				_currentY,
-				spatialization,
+				itdEnabled,
 				maximumItdMilliseconds);
 			float monoSample = source.ReadSample(transform.PitchRatio);
 			_delayBuffer[_writeIndex] = monoSample;
@@ -148,7 +166,7 @@ internal sealed class SpatialAudioEmitter
 
 	internal void RenderMoving(
 		IMovingSpatialMonoSource source,
-		WallToneSpatializationMode spatialization,
+		bool itdEnabled,
 		float maximumItdMilliseconds,
 		Span<float> left,
 		Span<float> right)
@@ -162,7 +180,7 @@ internal sealed class SpatialAudioEmitter
 			SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
 				x,
 				y,
-				spatialization,
+				itdEnabled,
 				maximumItdMilliseconds);
 			float monoSample = source.ReadSample(transform.PitchRatio);
 			_delayBuffer[_writeIndex] = monoSample;

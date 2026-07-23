@@ -24,21 +24,28 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	private const float CarrierFrequency = 320f;
 	private const float MinimumModulationRate = 1.5f;
 	private const float MaximumModulationRate = 12f;
+	private const float EmitterGainAttackSeconds = 0.003f;
 
 	private readonly Mod _owner;
-	private readonly ModulatedSquareToneVoice[] _voices =
+	private readonly ModulatedTriangleToneVoice[] _voices =
 	[
 		new(0.00f, 0.00f),
 		new(0.19f, 0.25f),
 		new(0.41f, 0.50f),
 		new(0.67f, 0.75f),
 	];
-	private readonly SpatialAudioEmitter[] _emitters = [new(), new(), new(), new()];
+	private readonly SpatialAudioEmitter[] _emitters =
+	[
+		new(EmitterGainAttackSeconds),
+		new(EmitterGainAttackSeconds),
+		new(EmitterGainAttackSeconds),
+		new(EmitterGainAttackSeconds),
+	];
 	private readonly float[] _leftMix = new float[FramesPerBuffer];
 	private readonly float[] _rightMix = new float[FramesPerBuffer];
 	private readonly byte[] _pcmBuffer = new byte[FramesPerBuffer * 2 * sizeof(short)];
 	private DynamicSoundEffectInstance? _stream;
-	private WallToneSpatializationMode _spatialization;
+	private bool _itdEnabled = true;
 	private float _maximumItdMilliseconds = 0.65f;
 	private bool _isRunning;
 	private bool _isReset = true;
@@ -86,8 +93,8 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 			return;
 		}
 
-		_spatialization = config.HostileMobToneSpatialization;
-		_maximumItdMilliseconds = config.HostileMobToneItdMilliseconds;
+		_itdEnabled = config.SpatialAudioItdEnabled;
+		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
 		float configuredGain = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
 		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceHeadroomGain;
 		for (int index = 0; index < MaximumEmitterCount; index++)
@@ -184,7 +191,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	}
 
 	private static void SetVoiceTarget(
-		ModulatedSquareToneVoice voice,
+		ModulatedTriangleToneVoice voice,
 		SpatialAudioEmitter emitter,
 		in HostileMobToneTarget target,
 		float masterGain)
@@ -208,7 +215,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		{
 			_emitters[index].Render(
 				_voices[index],
-				_spatialization,
+				_itdEnabled,
 				_maximumItdMilliseconds,
 				_leftMix,
 				_rightMix);
@@ -277,12 +284,16 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	}
 }
 
-internal sealed class ModulatedSquareToneVoice : ISpatialMonoSource
+internal sealed class ModulatedTriangleToneVoice : ISpatialMonoSource
 {
-	private const float MinimumModulationGain = 0.16f;
+	private const float MinimumModulationGain = 0.04f;
+	private const float PerceptualCompensationGain = 2.1f;
+	private const float TickAttackSeconds = 0.002f;
+	private const float TickDecaySeconds = 0.030f;
 	private static readonly float FrequencySmoothing = SmoothingCoefficient(0.035f);
 	private static readonly float ModulationSmoothing = SmoothingCoefficient(0.060f);
-	private static readonly float GainSmoothing = SmoothingCoefficient(0.020f);
+	private static readonly float GainAttackSmoothing = SmoothingCoefficient(0.003f);
+	private static readonly float GainReleaseSmoothing = SmoothingCoefficient(0.020f);
 
 	private readonly float _initialCarrierPhase;
 	private readonly float _initialModulationPhase;
@@ -295,7 +306,7 @@ internal sealed class ModulatedSquareToneVoice : ISpatialMonoSource
 	private float _carrierPhase;
 	private float _modulationPhase;
 
-	internal ModulatedSquareToneVoice(float carrierPhase, float modulationPhase)
+	internal ModulatedTriangleToneVoice(float carrierPhase, float modulationPhase)
 	{
 		_initialCarrierPhase = WrapPhase(carrierPhase);
 		_initialModulationPhase = WrapPhase(modulationPhase);
@@ -314,20 +325,24 @@ internal sealed class ModulatedSquareToneVoice : ISpatialMonoSource
 	{
 		_currentFrequency += (_targetFrequency - _currentFrequency) * FrequencySmoothing;
 		_currentModulationRate += (_targetModulationRate - _currentModulationRate) * ModulationSmoothing;
-		_currentGain += (_targetGain - _currentGain) * GainSmoothing;
+		float gainSmoothing = _targetGain > _currentGain
+			? GainAttackSmoothing
+			: GainReleaseSmoothing;
+		_currentGain += (_targetGain - _currentGain) * gainSmoothing;
 
 		float carrierFrequency = Math.Clamp(_currentFrequency * pitchRatio, 120f, 6_000f);
 		float carrierIncrement = carrierFrequency / SpatialAudioTransformCalculator.SampleRate;
-		float square = _carrierPhase < 0.5f ? 1f : -1f;
-		square += PolyBlep(_carrierPhase, carrierIncrement);
-		square -= PolyBlep(WrapPhase(_carrierPhase + 0.5f), carrierIncrement);
+		float triangle = 4f * MathF.Abs(_carrierPhase - 0.5f) - 1f;
 
-		float modulationAmount = 0.5f + 0.5f * MathF.Sin(_modulationPhase * MathF.Tau);
-		float modulationGain = MinimumModulationGain + modulationAmount * (1f - MinimumModulationGain);
+		float secondsIntoTick = _modulationPhase / _currentModulationRate;
+		float tickAmount = secondsIntoTick < TickAttackSeconds
+			? secondsIntoTick / TickAttackSeconds
+			: MathF.Exp(-(secondsIntoTick - TickAttackSeconds) / TickDecaySeconds);
+		float modulationGain = MinimumModulationGain + tickAmount * (1f - MinimumModulationGain);
 		_carrierPhase = WrapPhase(_carrierPhase + carrierIncrement);
 		_modulationPhase = WrapPhase(
 			_modulationPhase + _currentModulationRate / SpatialAudioTransformCalculator.SampleRate);
-		return square * modulationGain * _currentGain;
+		return triangle * PerceptualCompensationGain * modulationGain * _currentGain;
 	}
 
 	public void Reset()
@@ -340,21 +355,6 @@ internal sealed class ModulatedSquareToneVoice : ISpatialMonoSource
 		_currentGain = 0f;
 		_carrierPhase = _initialCarrierPhase;
 		_modulationPhase = _initialModulationPhase;
-	}
-
-	private static float PolyBlep(float phase, float phaseIncrement)
-	{
-		if (phase < phaseIncrement)
-		{
-			float normalized = phase / phaseIncrement;
-			return normalized + normalized - normalized * normalized - 1f;
-		}
-		if (phase > 1f - phaseIncrement)
-		{
-			float normalized = (phase - 1f) / phaseIncrement;
-			return normalized * normalized + normalized + normalized + 1f;
-		}
-		return 0f;
 	}
 
 	private static float WrapPhase(float phase)
