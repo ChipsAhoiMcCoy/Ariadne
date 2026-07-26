@@ -16,7 +16,7 @@ namespace Ariadne.Ingame.Controls;
 [Autoload(Side = ModSide.Client)]
 internal sealed class KeybindDefaultMigrationSystem : ModSystem
 {
-	private const int CurrentMigrationVersion = 2;
+	private const int CurrentMigrationVersion = 3;
 	private const string MigrationMarkerFileName = "default-bindings.version";
 	private const string LegacyVersionOneMarkerFileName = "default-bindings-v1.applied";
 

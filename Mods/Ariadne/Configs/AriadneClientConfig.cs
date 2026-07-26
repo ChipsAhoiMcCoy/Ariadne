@@ -27,6 +27,21 @@ public sealed class AriadneClientConfig : ModConfig
 	public bool CursorCoordinateAnnouncementsEnabled { get; set; } = true;
 
 	[DefaultValue(true)]
+	public bool LowHealthHeartbeatEnabled { get; set; } = true;
+
+	[DefaultValue(45)]
+	[Range(0, 100)]
+	[Increment(5)]
+	[Slider]
+	public int LowHealthHeartbeatVolumePercent { get; set; } = 45;
+
+	[DefaultValue(true)]
+	public bool LowHealthAnnouncementsEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
+	public bool BreathAnnouncementsEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
 	public bool WallToneEnabled { get; set; } = true;
 
 	[DefaultValue(35)]

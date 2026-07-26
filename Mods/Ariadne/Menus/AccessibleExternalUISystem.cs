@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -164,8 +163,6 @@ internal sealed class AccessibleExternalUIController
 		"OptionValue", "ModName", "Author",
 	];
 	private static readonly Dictionary<Type, MemberInfo[]> SemanticMembersByType = [];
-	private static readonly Regex ColorTagPattern = new(@"\[c/[0-9A-Fa-f]{6}:(.*?)\]", RegexOptions.Compiled);
-	private static readonly Regex ChatTagPattern = new(@"\[[^\]]+:[^\]]*\]", RegexOptions.Compiled);
 
 	private readonly List<AccessibleExternalControl> _controls = [];
 	private UIState? _state;
@@ -1609,12 +1606,7 @@ internal sealed class AccessibleExternalUIController
 			return;
 		}
 
-		string clean = ColorTagPattern.Replace(value, "$1");
-		clean = ChatTagPattern.Replace(clean, string.Empty).Replace('\r', ' ').Replace('\n', ' ').Trim();
-		while (clean.Contains("  ", StringComparison.Ordinal))
-		{
-			clean = clean.Replace("  ", " ", StringComparison.Ordinal);
-		}
+		string clean = SpeechTextFormatter.Flatten(value);
 		if (!string.IsNullOrWhiteSpace(clean))
 		{
 			destination.Add(clean);

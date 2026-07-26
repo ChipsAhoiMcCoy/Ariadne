@@ -1,6 +1,7 @@
 #nullable enable
 
 using Terraria;
+using Terraria.Localization;
 using Terraria.ModLoader;
 using Ariadne.Audio;
 using Ariadne.Configs;
@@ -58,8 +59,9 @@ internal sealed class BiomeAnnouncementSystem : ModSystem
 			return;
 		}
 
-		string prefix = _announcedIdentity.Length == 0 ? "Current biome" : "Entered";
-		AriadneMod.ScreenReader.Output($"{prefix}: {_pendingDescription}.");
+		AriadneMod.ScreenReader.Output(Language.GetTextValue(
+			"Mods.Ariadne.Announcements.BiomeEntered",
+			_pendingDescription));
 		_announcedIdentity = _pendingIdentity;
 		ClearPending();
 	}

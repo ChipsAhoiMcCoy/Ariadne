@@ -75,6 +75,48 @@ internal static class InformationAccessoryStatusProvider
 		return statuses;
 	}
 
+	/// <summary>
+	/// Returns the clock reading at whatever precision the player's watch tier,
+	/// nearby clock, or team sharing currently grants, or null when no reading is
+	/// available.
+	/// </summary>
+	internal static string? TryGetWatchTime()
+	{
+		try
+		{
+			// Availability passes through every mod's GlobalInfoDisplay hooks, so a
+			// third-party failure must degrade to the rough phase of day instead of
+			// breaking the caller.
+			return InfoDisplayLoader.Active(InfoDisplay.Watches) ? Time(Main.LocalPlayer) : null;
+		}
+		catch (Exception exception)
+		{
+			if (ReportedFailures.Add(InfoDisplay.Watches.FullName))
+			{
+				ModContent.GetInstance<AriadneMod>().Logger.Warn(
+					$"Could not read the watch information display: {exception.Message}");
+			}
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// The in-world hour of day as a value in the range zero to twenty-four,
+	/// independent of any watch. Terraria measures day and night separately from
+	/// a 4:30 AM dawn.
+	/// </summary>
+	internal static double CurrentHourOfDay()
+	{
+		double clockTime = Main.time;
+		if (!Main.dayTime)
+		{
+			clockTime += 54000d;
+		}
+
+		clockTime = clockTime / 86400d * 24d - 19.5d;
+		return clockTime < 0d ? clockTime + 24d : clockTime;
+	}
+
 	private static string? VanillaValue(InfoDisplay display)
 	{
 		Player player = Main.LocalPlayer;
@@ -102,17 +144,7 @@ internal static class InformationAccessoryStatusProvider
 
 	private static string Time(Player player)
 	{
-		double clockTime = Main.time;
-		if (!Main.dayTime)
-		{
-			clockTime += 54000d;
-		}
-		clockTime = clockTime / 86400d * 24d - 19.5d;
-		if (clockTime < 0d)
-		{
-			clockTime += 24d;
-		}
-
+		double clockTime = CurrentHourOfDay();
 		bool afternoon = clockTime >= 12d;
 		int hour = (int)clockTime;
 		int minute = (int)((clockTime - hour) * 60d);
@@ -166,7 +198,12 @@ internal static class InformationAccessoryStatusProvider
 			: condition;
 	}
 
-	private static string MoonPhase() => Main.moonPhase switch
+	/// <summary>
+	/// The moon's current phase. Unlike the other readings here this one is not
+	/// gated behind its Sextant, because the moon is plainly visible in the night
+	/// sky to any player who can see it.
+	/// </summary>
+	internal static string MoonPhase() => Main.moonPhase switch
 	{
 		0 => Language.GetTextValue("GameUI.FullMoon"),
 		1 => Language.GetTextValue("GameUI.WaningGibbous"),

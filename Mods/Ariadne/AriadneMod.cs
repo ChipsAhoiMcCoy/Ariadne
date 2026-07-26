@@ -22,6 +22,7 @@ public sealed class AriadneMod : Mod
 	internal static ModKeybind? SecondaryUseKeybind { get; private set; }
 	internal static ModKeybind? CombatTargetModifierKeybind { get; private set; }
 	internal static ModKeybind? FreecamModifierKeybind { get; private set; }
+	internal static ModKeybind? PlayerStatusKeybind { get; private set; }
 	internal static IReadOnlyList<RegisteredKeybindDefault> KeybindDefaults => RegisteredDefaults;
 
 	public override void Load()
@@ -38,6 +39,7 @@ public sealed class AriadneMod : Mod
 		SecondaryUseKeybind = RegisterKeybind("SecondaryUse", Keys.P, introducedVersion: 1);
 		CombatTargetModifierKeybind = RegisterKeybind("CombatTargetModifier", Keys.LeftAlt, introducedVersion: 1);
 		FreecamModifierKeybind = RegisterKeybind("FreecamModifier", Keys.RightShift, introducedVersion: 2);
+		PlayerStatusKeybind = RegisterKeybind("PlayerStatus", Keys.Back, introducedVersion: 3);
 	}
 
 	public override void Unload()
@@ -54,6 +56,7 @@ public sealed class AriadneMod : Mod
 		SecondaryUseKeybind = null;
 		CombatTargetModifierKeybind = null;
 		FreecamModifierKeybind = null;
+		PlayerStatusKeybind = null;
 		RegisteredDefaults.Clear();
 	}
 

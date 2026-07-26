@@ -6,6 +6,7 @@ using System.Linq;
 using Terraria;
 using Terraria.ID;
 using Terraria.ModLoader;
+using Ariadne.Ingame.Status;
 using Ariadne.Menus;
 
 namespace Ariadne.Ingame;
@@ -33,6 +34,9 @@ internal sealed class AccessibleWorldPlayerStatusMenuState : AccessibleMenuState
 			() => $"World events: {WorldEvents()}",
 			() => "Reports conspicuous active world events that Terraria ordinarily announces or displays."));
 		entries.Add(Status(
+			() => PlayerStatusReadout.MoonPhaseLine(),
+			() => "The moon's current phase, which any player can see in the night sky. Unlike the other clock and sky readings this one does not require its Sextant."));
+		entries.Add(Status(
 			() => $"Biome: {BiomeStatusFormatter.Capture(player).Description}",
 			() => "The current environmental biome. Exact horizontal position, depth, time, weather, and similar readings remain restricted to their informational accessories."));
 		entries.Add(Status(
@@ -44,6 +48,9 @@ internal sealed class AccessibleWorldPlayerStatusMenuState : AccessibleMenuState
 		entries.Add(Status(
 			() => $"Defense: {(int)player.statDefense}",
 			() => $"Damage reduction from endurance: {Math.Round(player.endurance * 100f)} percent."));
+		entries.Add(Status(
+			() => PlayerStatusReadout.SetBonusLine(player),
+			() => "The bonus granted by the currently equipped armor set, including modded sets."));
 
 		if (player.breath < player.breathMax)
 		{

@@ -9,6 +9,7 @@ Keybinds: {
 	SecondaryUse.DisplayName: Secondary Use or Interact
 	CombatTargetModifier.DisplayName: Combat Target Modifier
 	FreecamModifier.DisplayName: Freecam Modifier
+	PlayerStatus.DisplayName: Character Status Readout
 }
 
 Announcements: {
@@ -23,6 +24,43 @@ Announcements: {
 	FreecamReturned: Returned to body
 	FreecamBlocked: Blocked {0}
 	FreecamRangeLimit: Freecam range limit
+	BiomeEntered: "{0} Biome"
+	HealthLow: Health low, {0} percent
+	HealthCritical: Health critical, {0} percent
+	HealthRecovered: Health recovered
+	Underwater: Underwater
+	SubmergedInHoney: Submerged in honey
+	Surfaced: Surfaced
+	BreathRemaining: Breath {0} percent
+	BreathEmpty: Out of breath, drowning
+}
+
+Status: {
+	Health: Health: {0} of {1}, {2} percent
+	Mana: Mana: {0} of {1}, {2} percent
+	Defense: Defense: {0}, damage reduction {1} percent
+	SetBonus: Set bonus: {0}
+	NoSetBonus: Set bonus: none
+	Moon: Moon: {0}
+	Summons: Minions: {0} active, {1} of {2} slots used. Sentries: {3} of {4}
+	Buffs: Buffs: {0}, no debuffs
+	BuffsAndDebuffs: Buffs: {0}. Debuffs: {1}. {2}
+	NoBuffs: No buffs or debuffs
+	Breath: Breath: {0} of {1}, {2} percent
+	TimeRough: Time: roughly {0}, {1}
+	TimeWatch: Time: {0}, {1}, {2}
+	Location: Location: {0}
+	Bosses: Bosses: {0}
+	BossHealth: "{0} at {1} percent health"
+	Daytime: daytime
+	Nighttime: nighttime
+	PhaseDawn: dawn
+	PhaseMorning: morning
+	PhaseAfternoon: afternoon
+	PhaseEvening: evening
+	PhaseNight: night
+	PhaseMidnight: midnight
+	PhaseLateNight: late night
 }
 
 Configs: {
@@ -47,6 +85,26 @@ Configs: {
 		CursorCoordinateAnnouncementsEnabled: {
 			Label: Cursor coordinate announcements
 			Tooltip: Include exact raw tile X and Y coordinates in unlocked-cursor movement announcements. Smart Cursor never announces coordinates.
+		}
+
+		LowHealthHeartbeatEnabled: {
+			Label: Low health heartbeat
+			Tooltip: Pulse a synthesized heartbeat once health falls to half, quickening it at each lower threshold down to five percent.
+		}
+
+		LowHealthHeartbeatVolumePercent: {
+			Label: Low health heartbeat volume
+			Tooltip: Set heartbeat loudness as a percentage of the game's Sound volume. The beat still grows louder as health falls.
+		}
+
+		LowHealthAnnouncementsEnabled: {
+			Label: Low health announcements
+			Tooltip: Speak the remaining health percentage each time health crosses into a lower threshold, and confirm once health has recovered.
+		}
+
+		BreathAnnouncementsEnabled: {
+			Label: Breath announcements
+			Tooltip: Announce submersion and each ten percent of remaining breath, paired with Terraria's own splash sound.
 		}
 
 		WallToneEnabled: {
