@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Terraria;
+using Terraria.Audio;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Ariadne.Ingame.Status;
@@ -62,7 +63,7 @@ internal sealed class AccessibleWorldPlayerStatusMenuState : AccessibleMenuState
 		entries.Add(new(
 			() => $"Current buffs: {ActiveBuffCount(player)}",
 			() => Controller.Navigate(new AccessibleBuffStatusMenuState(Controller)),
-			description: () => "Review every active buff and debuff, including its description and displayed remaining duration.",
+			description: () => "Review every active buff and debuff, including its description and displayed remaining duration, and cancel the ones Terraria allows you to cancel.",
 			role: "submenu"));
 		entries.Add(new(
 			() => $"Minions and sentries: {SummonSummary(player)}",
@@ -178,7 +179,9 @@ internal sealed class AccessibleWorldPlayerStatusMenuState : AccessibleMenuState
 
 internal sealed class AccessibleBuffStatusMenuState : AccessibleMenuState
 {
-	private readonly record struct BuffStatus(string Name, string Description, string Duration, bool IsDebuff);
+	private readonly record struct BuffStatus(int Type, string Name, string Description, string Duration, bool IsDebuff);
+
+	private string _cancelAnnouncement = string.Empty;
 
 	internal AccessibleBuffStatusMenuState(AccessibleMenuController controller)
 		: base(controller)
@@ -186,6 +189,8 @@ internal sealed class AccessibleBuffStatusMenuState : AccessibleMenuState
 	}
 
 	protected override string Title => "Current Player Buffs";
+
+	protected override string AdditionalControlHint => "    Enter: cancel buff";
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
@@ -206,9 +211,28 @@ internal sealed class AccessibleBuffStatusMenuState : AccessibleMenuState
 				() => captured.Duration.Length == 0
 					? captured.Name
 					: $"{captured.Name}, {captured.Duration} remaining",
-				description: () => captured.Description,
-				role: captured.IsDebuff ? "debuff" : "buff"));
+				activate: () => Cancel(captured),
+				description: () => Describe(captured),
+				enabled: () => IsCancellable(captured.Type),
+				role: captured.IsDebuff ? "debuff" : "buff",
+				adjustmentAnnouncement: () => _cancelAnnouncement));
 		}
+	}
+
+	// Cancelling reports its own outcome instead of re-reading the focused entry,
+	// and Terraria's own removal already plays the buff-cancel sound.
+	protected override bool ActivationAdjustsValue(AccessibleMenuEntry entry) => entry.Activate is not null;
+
+	protected override bool PlaysActivationTick(AccessibleMenuEntry entry) => false;
+
+	protected override void AddContextHelpTopics(List<AccessibleHelpTopic> topics)
+	{
+		topics.Add(new(
+			"Cancelling buffs",
+			"Enter cancels the focused buff, matching the result of right-clicking its icon in Terraria. Buffs granted by equipment, a held item, a mount, or the surrounding biome are reapplied on the next frame unless their source is removed as well."));
+		topics.Add(new(
+			"Buffs that cannot be cancelled",
+			"Terraria never allows a debuff to be cancelled by hand; a debuff has to expire or be removed by the Nurse. Leaf Crystal and Soul Drain are also protected, and a mod may refuse a cancellation of its own buff."));
 	}
 
 	private static List<BuffStatus> CaptureBuffs(Player player)
@@ -229,9 +253,87 @@ internal sealed class AccessibleBuffStatusMenuState : AccessibleMenuState
 			string duration = Main.TryGetBuffTime(slot, out int ticks) && ticks > 2
 				? FormatDuration(ticks)
 				: string.Empty;
-			result.Add(new BuffStatus(name, description, duration, Main.debuff[type]));
+			result.Add(new BuffStatus(type, name, description, duration, Main.debuff[type]));
 		}
 		return result;
+	}
+
+	// Mirrors the guard in Main.TryRemovingBuff, which is the only path vanilla
+	// offers the player for cancelling a buff by hand.
+	private static bool IsCancellable(int type) =>
+		type > 0 &&
+		type < Main.debuff.Length &&
+		!Main.debuff[type] &&
+		type != BuffID.LeafCrystal &&
+		type != BuffID.SoulDrain;
+
+	private static string Describe(BuffStatus buff)
+	{
+		string reason = IsCancellable(buff.Type)
+			? "Press Enter to cancel this buff."
+			: buff.IsDebuff
+				? "Debuffs cannot be cancelled by hand. Wait for it to expire or ask the Nurse to remove it."
+				: "Terraria does not allow this buff to be cancelled.";
+		return buff.Description.Length == 0 ? reason : $"{buff.Description.TrimEnd()} {reason}";
+	}
+
+	private void Cancel(BuffStatus buff)
+	{
+		Player player = Main.LocalPlayer;
+		int slot = FindSlot(player, buff.Type);
+		if (slot < 0)
+		{
+			Refuse($"{buff.Name} is no longer active.");
+			return;
+		}
+
+		// A mod that vetoes the hook may have cancelled its own buff instead, so
+		// report the resulting state rather than assuming the veto meant refusal.
+		if (!BuffLoader.RightClick(buff.Type, slot))
+		{
+			if (FindSlot(player, buff.Type) < 0)
+			{
+				_cancelAnnouncement = $"{buff.Name} cancelled.";
+				return;
+			}
+			Refuse($"{buff.Name} cannot be cancelled.");
+			return;
+		}
+
+		bool wasMounted = player.mount.Active;
+		Main.TryRemovingBuff(slot, buff.Type);
+		bool removed = FindSlot(player, buff.Type) < 0;
+		bool dismounted = wasMounted && !player.mount.Active;
+
+		_cancelAnnouncement = (removed, dismounted) switch
+		{
+			(true, true) => $"{buff.Name} cancelled, dismounted.",
+			(true, false) => $"{buff.Name} cancelled.",
+			(false, true) => $"Dismounted from {buff.Name}.",
+			_ => $"{buff.Name} cannot be cancelled.",
+		};
+		if (!removed && !dismounted)
+		{
+			SoundEngine.PlaySound(SoundID.MenuClose);
+		}
+	}
+
+	private void Refuse(string announcement)
+	{
+		_cancelAnnouncement = announcement;
+		SoundEngine.PlaySound(SoundID.MenuClose);
+	}
+
+	private static int FindSlot(Player player, int type)
+	{
+		for (int slot = 0; slot < player.buffType.Length; slot++)
+		{
+			if (player.buffType[slot] == type && player.buffTime[slot] > 0)
+			{
+				return slot;
+			}
+		}
+		return -1;
 	}
 
 	private static string FormatDuration(int ticks)
