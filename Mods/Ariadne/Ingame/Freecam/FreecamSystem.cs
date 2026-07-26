@@ -22,7 +22,7 @@ internal sealed class FreecamSystem : ModSystem
 	private static uint _observerRevision;
 
 	private readonly IFreecamContactFeedback _contactFeedback =
-		new SpokenFreecamContactFeedback();
+		new AudibleFreecamContactFeedback();
 	private FreecamBodyBeaconAudioStream? _beaconAudio;
 	private Vector2 _position;
 	private Vector2 _previousLivePlayerCenter;

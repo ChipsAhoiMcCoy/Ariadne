@@ -13,35 +13,29 @@ internal interface IFreecamContactFeedback
 }
 
 /// <summary>
-/// Keeps contact edge detection separate from movement so a future shared
-/// bump-tone service can replace speech without altering collision behavior.
+/// Keeps contact edge detection separate from movement so feedback can change
+/// without altering collision behavior. Terrain contact uses the same bump cue
+/// the live player gets, panned and pitched toward the blocked direction. The
+/// range limit stays spoken because it is a freecam boundary, not terrain.
 /// </summary>
-internal sealed class SpokenFreecamContactFeedback : IFreecamContactFeedback
+internal sealed class AudibleFreecamContactFeedback : IFreecamContactFeedback
 {
-	private bool _leftContact;
-	private bool _rightContact;
-	private bool _upContact;
-	private bool _downContact;
+	private readonly MovementBumpCadence _cadence =
+		new(onsetTicks: 1, MovementBumpCadence.DefaultRepeatTicks);
 	private bool _rangeContact;
 
 	public void Update(Vector2 inputDirection, in FreecamMovementResult movement)
 	{
-		UpdateDirection(
-			ref _leftContact,
-			inputDirection.X < 0f && movement.BlockedLeft,
-			"left");
-		UpdateDirection(
-			ref _rightContact,
-			inputDirection.X > 0f && movement.BlockedRight,
-			"right");
-		UpdateDirection(
-			ref _upContact,
-			inputDirection.Y < 0f && movement.BlockedUp,
-			"up");
-		UpdateDirection(
-			ref _downContact,
-			inputDirection.Y > 0f && movement.BlockedDown,
-			"down");
+		int horizontal =
+			(inputDirection.X > 0f && movement.BlockedRight ? 1 : 0) -
+			(inputDirection.X < 0f && movement.BlockedLeft ? 1 : 0);
+		int vertical =
+			(inputDirection.Y > 0f && movement.BlockedDown ? 1 : 0) -
+			(inputDirection.Y < 0f && movement.BlockedUp ? 1 : 0);
+		if (_cadence.Advance(DirectionKey(horizontal, vertical)))
+		{
+			MovementBumpSystem.Play(horizontal, vertical);
+		}
 
 		bool rangeContact = inputDirection.LengthSquared() > 0f && movement.RangeLimited;
 		if (rangeContact && !_rangeContact)
@@ -55,23 +49,14 @@ internal sealed class SpokenFreecamContactFeedback : IFreecamContactFeedback
 
 	public void Reset()
 	{
-		_leftContact = false;
-		_rightContact = false;
-		_upContact = false;
-		_downContact = false;
+		_cadence.Reset();
 		_rangeContact = false;
 	}
 
-	private static void UpdateDirection(ref bool previousContact, bool contact, string direction)
+	private static int DirectionKey(int horizontal, int vertical)
 	{
-		if (contact && !previousContact)
-		{
-			AriadneMod.ScreenReader.Output(
-				Language.GetTextValue(
-					"Mods.Ariadne.Announcements.FreecamBlocked",
-					direction),
-				interrupt: false);
-		}
-		previousContact = contact;
+		return horizontal == 0 && vertical == 0
+			? 0
+			: (horizontal + 2) * 8 + vertical + 2;
 	}
 }
