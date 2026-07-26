@@ -43,7 +43,7 @@ function Resolve-DotNetPath([string]$TModLoaderPath) {
 }
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$modSource = (Resolve-Path -LiteralPath (Join-Path $repoRoot "Mods\Terrarium")).Path
+$modSource = (Resolve-Path -LiteralPath (Join-Path $repoRoot "Mods\Ariadne")).Path
 $tmlPath = Resolve-TModLoaderPath
 $dotnetPath = Resolve-DotNetPath -TModLoaderPath $tmlPath
 
@@ -60,5 +60,5 @@ finally {
 }
 
 if ($exitCode -ne 0) {
-    throw "Terrarium build failed with exit code $exitCode."
+    throw "Ariadne build failed with exit code $exitCode."
 }

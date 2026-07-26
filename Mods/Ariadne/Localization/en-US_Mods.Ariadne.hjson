@@ -1,0 +1,97 @@
+Keybinds: {
+	OpenScanner.DisplayName: Open Scanner
+	ToggleWallTones.DisplayName: Toggle Wall Tones
+	AimUp.DisplayName: Aim Up
+	AimLeft.DisplayName: Aim Left
+	AimDown.DisplayName: Aim Down
+	AimRight.DisplayName: Aim Right
+	UseHeldItem.DisplayName: Use Held Item
+	SecondaryUse.DisplayName: Secondary Use or Interact
+	CombatTargetModifier.DisplayName: Combat Target Modifier
+	FreecamModifier.DisplayName: Freecam Modifier
+}
+
+Announcements: {
+	WallTonesOn: Wall tones on
+	WallTonesOff: Wall tones off
+	SmartCursor: Smart cursor
+	UnlockedCursor: Unlocked cursor
+	CursorCoordinates: "{0}. X {1}, Y {2}. {3}."
+	CursorInReach: In reach
+	CursorOutOfReach: Out of reach
+	FreecamActivated: Freecam active
+	FreecamReturned: Returned to body
+	FreecamBlocked: Blocked {0}
+	FreecamRangeLimit: Freecam range limit
+}
+
+Configs: {
+	AriadneClientConfig: {
+		DisplayName: Ariadne Accessibility Settings
+
+		BiomeAnnouncementsEnabled: {
+			Label: Biome announcements
+			Tooltip: Announce a biome after the player has remained in it long enough to avoid rapid announcements at biome boundaries.
+		}
+
+		CursorEarconsEnabled: {
+			Label: Cursor earcons
+			Tooltip: Play the targeted tile or liquid's native Terraria sound for each nonempty unlocked-cursor step and each changed nonempty Smart Cursor target.
+		}
+
+		CursorEarconVolumePercent: {
+			Label: Cursor earcon volume
+			Tooltip: Set cursor-earcon loudness as a percentage of the game's Sound volume.
+		}
+
+		CursorCoordinateAnnouncementsEnabled: {
+			Label: Cursor coordinate announcements
+			Tooltip: Include exact raw tile X and Y coordinates in unlocked-cursor movement announcements. Smart Cursor never announces coordinates.
+		}
+
+		WallToneEnabled: {
+			Label: Wall tones
+			Tooltip: Continuously indicate nearby left walls, right walls, and the gravity-relative ceiling with procedural audio.
+		}
+
+		WallToneVolumePercent: {
+			Label: Wall tone volume
+			Tooltip: Set wall-tone loudness as a percentage of the game's Sound volume.
+		}
+
+		WallToneRangeTiles: {
+			Label: Wall tone range
+			Tooltip: Set the maximum sensing distance in tiles. A larger range begins indicating terrain sooner.
+		}
+
+		HostileMobTonesEnabled: {
+			Label: Hostile and target cues
+			Tooltip: Play continuous modulated triangle tones for prioritized hostile NPCs on screen and a separate cue when selecting a combat target. Tones become louder and more rapidly modulated as an enemy approaches, while screen height alone controls pitch.
+		}
+
+		HostileMobToneVolumePercent: {
+			Label: Hostile and target cue volume
+			Tooltip: Set hostile-mob tone and combat-target lock cue loudness as a percentage of the game's Sound volume.
+		}
+
+		HostileMobMaximumEmitters: {
+			Label: Maximum hostile mob emitters
+			Tooltip: Set how many on-screen enemies can emit continuous proximity tones at once. Bosses have priority, followed by enemies nearest the player.
+		}
+
+		FreecamBeaconVolumePercent: {
+			Label: Freecam body beacon volume
+			Tooltip: Set the loudness of the periodic spatial pulse that points back to the live player while freecam is active.
+		}
+
+		SpatialAudioItdEnabled: {
+			Label: Interaural time difference
+			Tooltip: Add a small far-ear delay to wall tones, hostile and combat-target cues, the freecam body beacon, and cached native cursor earcons. Turning this off retains stereo level differences and vertical pitch.
+		}
+
+		SpatialAudioItdStrengthMilliseconds: {
+			Label: Interaural time difference strength
+			Tooltip: Set the global maximum far-ear delay in milliseconds. The full amount occurs at either horizontal viewport edge.
+		}
+	}
+}

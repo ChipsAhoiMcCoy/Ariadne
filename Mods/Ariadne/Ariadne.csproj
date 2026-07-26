@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Ariadne</AssemblyName>
+    <RootNamespace>Ariadne</RootNamespace>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Avoid packaging during editor design-time builds; use Tools/build.ps1. -->
+    <BuildMod>false</BuildMod>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+
+    <_TmlTargetsPath Condition="'$(TML_INSTALL_PATH)' != ''">$(TML_INSTALL_PATH)\tMLMod.targets</_TmlTargetsPath>
+    <_TmlTargetsPath Condition="'$(_TmlTargetsPath)' == '' and '$(tMLSteamPath)' != ''">$(tMLSteamPath)tMLMod.targets</_TmlTargetsPath>
+    <_TmlTargetsPath Condition="'$(_TmlTargetsPath)' == ''">C:\Program Files (x86)\Steam\steamapps\common\tModLoader\tMLMod.targets</_TmlTargetsPath>
+  </PropertyGroup>
+
+  <Import Project="$(_TmlTargetsPath)" Condition="Exists('$(_TmlTargetsPath)')" />
+
+  <Target Name="RequireTModLoader" BeforeTargets="PrepareForBuild" Condition="!Exists('$(_TmlTargetsPath)')">
+    <Error Text="Unable to find tMLMod.targets. Set TML_INSTALL_PATH to the tModLoader installation directory." />
+  </Target>
+
+</Project>

@@ -65,7 +65,7 @@ for ($index = 0; $index -lt $sampleCount; $index++) {
 }
 
 $repositoryRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$outputPath = Join-Path $repositoryRoot "Mods\Terrarium\Assets\Audio\HostileMobPulse.wav"
+$outputPath = Join-Path $repositoryRoot "Mods\Ariadne\Assets\Audio\HostileMobPulse.wav"
 $outputDirectory = Split-Path -Parent $outputPath
 if (-not (Test-Path -LiteralPath $outputDirectory)) {
     New-Item -ItemType Directory -Path $outputDirectory | Out-Null

@@ -1,4 +1,0 @@
-displayName = Terrarium
-author = Colton Meyer
-version = 0.1.0
-side = NoSync
