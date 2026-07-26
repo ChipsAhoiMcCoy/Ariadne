@@ -35,6 +35,18 @@ Announcements: {
 	BreathEmpty: Out of breath, drowning
 }
 
+Chat: {
+	Opened: Chat edit field. Type a message and press Enter to send, or Escape to cancel. Up and Down read received messages. F1 reads chat help.
+	Closed: Chat closed.
+	Help: Chat help. Type a message normally. Enter sends the current message. Escape closes chat without sending. Up reads the newest message and then each older one, Down moves back toward the newest and returns to the edit field. Received messages are announced as they arrive, even while chat is closed.
+	MessageFromPlayer: "{0}: {1}"
+	EditField: Edit field. {0}
+	EditFieldEmpty: Empty
+	CharacterDeleted: Deleted {0}
+	OldestMessage: Oldest message. {0}
+	NoMessages: No chat messages.
+}
+
 Status: {
 	Health: Health: {0} of {1}, {2} percent
 	Mana: Mana: {0} of {1}, {2} percent
