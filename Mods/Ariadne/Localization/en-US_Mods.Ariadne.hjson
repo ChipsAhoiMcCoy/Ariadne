@@ -32,6 +32,7 @@ Announcements: {
 	Surfaced: Surfaced
 	BreathRemaining: Breath {0} percent
 	BreathEmpty: Out of breath, drowning
+	ItemPickedUp: Picked up {0}
 }
 
 Chat: {
@@ -116,6 +117,16 @@ Configs: {
 		BreathAnnouncementsEnabled: {
 			Label: Breath announcements
 			Tooltip: Announce submersion and each ten percent of remaining breath, paired with Terraria's own splash sound.
+		}
+
+		HotbarAnnouncementsEnabled: {
+			Label: Hotbar selection announcements
+			Tooltip: Speak the item and slot number whenever the selected hotbar slot changes, and again when the selected slot's contents change, such as a stack running out.
+		}
+
+		ItemPickupAnnouncementsEnabled: {
+			Label: Item pickup announcements
+			Tooltip: Speak each item that reaches the inventory, including fishing catches. Repeated gains of the same item are collected for a moment and reported as one running total, and coins are merged into a single value.
 		}
 
 		MovementBumpTonesEnabled: {

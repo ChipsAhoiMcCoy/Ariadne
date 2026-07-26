@@ -4,12 +4,12 @@ namespace Ariadne.Ingame;
 
 /// <summary>
 /// Turns a sustained blocked direction into one cue on contact followed by a
-/// slow repeat, so leaning on a surface keeps reporting without sounding every
+/// steady repeat, so leaning on a surface keeps reporting without sounding every
 /// frame. A different blocked direction restarts the cadence immediately.
 /// </summary>
 internal sealed class MovementBumpCadence
 {
-	internal const int DefaultRepeatTicks = 30;
+	internal const int DefaultRepeatTicks = 12;
 
 	private readonly int _onsetTicks;
 	private readonly int _repeatTicks;

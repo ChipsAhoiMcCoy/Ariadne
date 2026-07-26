@@ -15,7 +15,7 @@ internal interface IFreecamContactFeedback
 /// <summary>
 /// Keeps contact edge detection separate from movement so feedback can change
 /// without altering collision behavior. Terrain contact uses the same bump cue
-/// the live player gets, panned and pitched toward the blocked direction. The
+/// the live player gets, pitched toward the blocked vertical direction. The
 /// range limit stays spoken because it is a freecam boundary, not terrain.
 /// </summary>
 internal sealed class AudibleFreecamContactFeedback : IFreecamContactFeedback
@@ -34,7 +34,7 @@ internal sealed class AudibleFreecamContactFeedback : IFreecamContactFeedback
 			(inputDirection.Y < 0f && movement.BlockedUp ? 1 : 0);
 		if (_cadence.Advance(DirectionKey(horizontal, vertical)))
 		{
-			MovementBumpSystem.Play(horizontal, vertical);
+			MovementBumpSystem.Play(vertical);
 		}
 
 		bool rangeContact = inputDirection.LengthSquared() > 0f && movement.RangeLimited;

@@ -1,8 +1,10 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.ID;
 using Terraria.ModLoader;
 using Ariadne.Audio;
 
@@ -15,6 +17,10 @@ internal sealed class FootstepSoundSystem : ModSystem
 	private const float FootstepVolume = 0.48f;
 	private const float GroundProbeDistance = 0.1f;
 	private const float TeleportThreshold = TileWidth * 1.5f;
+
+	// A perfect fourth above the solid-ground step: far enough to name without
+	// listening for the interval, and close enough to still read as a footstep.
+	private const float PlatformPitch = 0.4f;
 
 	private FootstepSoundBank? _sounds;
 	private int _previousTileX;
@@ -62,26 +68,48 @@ internal sealed class FootstepSoundSystem : ModSystem
 
 		bool isWalking = MathF.Abs(horizontalMovement) > 0.01f && !player.mount.Active;
 		bool teleported = MathF.Abs(horizontalMovement) > TeleportThreshold || crossedTileCount > 1;
-		if (crossedTileCount == 1 && isWalking && !teleported && IsTouchingGround(player))
+		if (crossedTileCount == 1 && isWalking && !teleported && IsTouchingGround(player, out bool onPlatform))
 		{
-			_sounds?.Play(FootstepVolume);
+			_sounds?.Play(FootstepVolume, onPlatform ? PlatformPitch : 0f);
 		}
 	}
 
-	private static bool IsTouchingGround(Player player)
+	private static bool IsTouchingGround(Player player, out bool onPlatform)
 	{
+		onPlatform = false;
+
 		int gravityDirection = Math.Sign(player.gravDir);
 		int collisionDirection = gravityDirection > 0 ? 2 : 3;
 		Vector2 probeOffset = Vector2.UnitY * (GroundProbeDistance * gravityDirection);
 
-		return Collision.FindCollisionTile(
+		List<Point> footing = Collision.FindCollisionTile(
 			collisionDirection,
 			player.position + probeOffset,
 			GroundProbeDistance,
 			player.width,
 			player.height,
 			gravDir: gravityDirection,
-			checkSlopes: true).Count > 0;
+			checkSlopes: true);
+		if (footing.Count == 0)
+		{
+			return false;
+		}
+
+		// Every supporting tile has to be a platform, because one solid tile under
+		// the player is enough to stop a descent the raised pitch would promise.
+		onPlatform = footing.TrueForAll(IsPlatformTile);
+		return true;
+	}
+
+	private static bool IsPlatformTile(Point coordinates)
+	{
+		if (!WorldGen.InWorld(coordinates.X, coordinates.Y, 1))
+		{
+			return false;
+		}
+
+		Tile tile = Main.tile[coordinates.X, coordinates.Y];
+		return tile.HasTile && TileID.Sets.Platforms[tile.TileType];
 	}
 
 	public override void Unload()

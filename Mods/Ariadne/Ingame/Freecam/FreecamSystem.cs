@@ -60,6 +60,14 @@ internal sealed class FreecamSystem : ModSystem
 
 	public override void PostUpdateInput()
 	{
+		// Freecam only applies in world, and reading a mod keybind before
+		// PlayerInput has taken the mod's triggers into its key status throws, which
+		// costs the whole update that this hook runs inside.
+		if (Main.gameMenu)
+		{
+			return;
+		}
+
 		bool modifierHeld = AriadneMod.FreecamModifierKeybind?.Current == true;
 		if (!_active &&
 			_modifierReleaseRequired &&
@@ -273,7 +281,7 @@ internal sealed class FreecamSystem : ModSystem
 			return;
 		}
 
-		float speed = MathF.Max(0f, player.maxRunSpeed * 2f);
+		float speed = MathF.Max(0f, player.maxRunSpeed * 4f);
 		Vector2 displacement = inputDirection * speed;
 		bool fallThroughPlatforms = inputDirection.Y * _gravityDirection > 0f;
 		FreecamMovementResult movement = FreecamCollisionMover.Move(

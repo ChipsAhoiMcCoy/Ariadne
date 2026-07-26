@@ -35,7 +35,7 @@ internal sealed class FootstepSoundBank : IDisposable
 		return Main.dedServ || !SoundEngine.IsAudioSupported ? null : new FootstepSoundBank();
 	}
 
-	internal void Play(float volume)
+	internal void Play(float volume, float pitch)
 	{
 		float scaledVolume = Math.Clamp(volume * Main.soundVolume, 0f, 1f);
 		if (_disposed || scaledVolume <= 0f || SoundEngine.AreSoundsPaused)
@@ -50,7 +50,7 @@ internal sealed class FootstepSoundBank : IDisposable
 		}
 
 		_lastToneIndex = nextToneIndex;
-		_tones[nextToneIndex].Play(scaledVolume, pitch: 0f, pan: 0f);
+		_tones[nextToneIndex].Play(scaledVolume, Math.Clamp(pitch, -1f, 1f), pan: 0f);
 	}
 
 	public void Dispose()

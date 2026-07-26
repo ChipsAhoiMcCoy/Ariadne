@@ -17,8 +17,7 @@ namespace Ariadne.Ingame;
 [Autoload(Side = ModSide.Client)]
 internal sealed class MovementBumpSystem : ModSystem
 {
-	private const float BumpVolume = 0.55f;
-	private const float HorizontalPan = 0.85f;
+	private const float BumpVolume = 0.90f;
 	private const float VerticalPitch = 0.30f;
 	private const float ProgressThresholdPixels = 0.05f;
 	private const float RestingSpeedThreshold = 0.05f;
@@ -32,6 +31,7 @@ internal sealed class MovementBumpSystem : ModSystem
 	private WallBumpSoundBank? _sounds;
 	private float _previousPositionX;
 	private bool _isTracking;
+	private bool _wasGrappling;
 
 	public override void Load()
 	{
@@ -47,6 +47,14 @@ internal sealed class MovementBumpSystem : ModSystem
 	public override void OnWorldUnload()
 	{
 		ResetTracking();
+	}
+
+	public override void PreUpdatePlayers()
+	{
+		// Terraria clears the hook list at the end of every player update and the
+		// grapple projectiles refill it later in the frame, so this boundary is the
+		// only one where it still reads as attached.
+		_wasGrappling = Main.LocalPlayer.grappling[0] >= 0;
 	}
 
 	public override void PostUpdatePlayers()
@@ -83,7 +91,7 @@ internal sealed class MovementBumpSystem : ModSystem
 			progress * requested <= ProgressThresholdPixels;
 		if (_cadence.Advance(blocked ? requested : 0))
 		{
-			Play(requested, verticalDirection: 0);
+			Play(verticalDirection: 0);
 		}
 	}
 
@@ -99,12 +107,14 @@ internal sealed class MovementBumpSystem : ModSystem
 	}
 
 	/// <summary>
-	/// Plays one bump cue. Horizontal contact is panned toward the blocked side
-	/// and vertical contact is pitched, so a single tone still carries direction.
+	/// Plays one bump cue. The tone stays centered like a footstep so it is heard
+	/// from the player rather than from the surface; vertical contact is pitched so
+	/// a floor or ceiling still reads apart from a wall.
 	/// </summary>
-	internal static void Play(int horizontalDirection, int verticalDirection)
+	internal static void Play(int verticalDirection)
 	{
-		if (_instance?._sounds is not WallBumpSoundBank sounds)
+		if (_instance is not MovementBumpSystem instance ||
+			instance._sounds is not WallBumpSoundBank sounds)
 		{
 			return;
 		}
@@ -119,19 +129,18 @@ internal sealed class MovementBumpSystem : ModSystem
 
 		sounds.Play(
 			BumpVolume * config.MovementBumpVolumePercent / 100f,
-			Math.Sign(horizontalDirection) * HorizontalPan,
 			-Math.Sign(verticalDirection) * VerticalPitch);
 	}
 
-	private static bool CanTrackLocalPlayer()
+	private bool CanTrackLocalPlayer()
 	{
 		if (!GameplayAudioGate.CanListen())
 		{
 			return false;
 		}
 
-		// Mounts, ropes, grapples, and holds move the player under rules that do
-		// not answer to the walk controls, so contact there is not a wall bump.
+		// Mounts, ropes, grapples, seats, and holds move the player under rules that
+		// do not answer to the walk controls, so contact there is not a wall bump.
 		Player player = Main.LocalPlayer;
 		return !player.mount.Active &&
 			!player.pulley &&
@@ -140,13 +149,14 @@ internal sealed class MovementBumpSystem : ModSystem
 			!player.stoned &&
 			!player.webbed &&
 			!player.tongued &&
-			player.grappling[0] < 0;
+			!_wasGrappling;
 	}
 
 	private void ResetTracking()
 	{
 		_previousPositionX = 0f;
 		_isTracking = false;
+		_wasGrappling = false;
 		_cadence.Reset();
 	}
 }

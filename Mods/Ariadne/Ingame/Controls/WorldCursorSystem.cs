@@ -33,6 +33,7 @@ internal sealed class WorldCursorSystem : ModSystem
 	private Point _lastSmartTarget;
 	private bool _hasLastSmartTarget;
 	private string _lastSmartSemanticKey = string.Empty;
+	private string _spokenSmartSemanticKey = string.Empty;
 	private bool _targetLeftWasHeld;
 	private bool _targetRightWasHeld;
 	private bool _targetDownWasHeld;
@@ -221,7 +222,9 @@ internal sealed class WorldCursorSystem : ModSystem
 
 		if (!Main.SmartCursorShowing)
 		{
-			ClearSmartFeedbackTarget();
+			// Smart Cursor drops its target for a frame between some blocks. Keep the
+			// spoken material so that gap cannot restart the name mid-dig.
+			ClearSmartFeedbackTarget(keepSpokenTarget: true);
 			_cursorEarcon?.StopAndReset();
 			return;
 		}
@@ -255,6 +258,18 @@ internal sealed class WorldCursorSystem : ModSystem
 		_cursorEarcon?.Play(
 			target,
 			config);
+
+		// Smart Cursor walks itself from block to block, so the target coordinate
+		// changes on every break while the player is still working one material. The
+		// earcon above marks each block; the name is only worth speaking when the
+		// material itself changes, and the emptied tiles left behind deliberately do
+		// not clear it, so a long dig through one material stays quiet after the first.
+		if (description.SemanticKey.Equals(_spokenSmartSemanticKey, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		_spokenSmartSemanticKey = description.SemanticKey;
 		AriadneMod.ScreenReader.Output(description.TargetText, interrupt: false);
 	}
 
@@ -605,11 +620,19 @@ internal sealed class WorldCursorSystem : ModSystem
 		_nativeSecondaryTrigger = default;
 	}
 
-	private void ClearSmartFeedbackTarget()
+	/// <param name="keepSpokenTarget">
+	/// Retains the last spoken material so a momentary gap in Smart Cursor targeting
+	/// does not restart the name of a material the player is still working through.
+	/// </param>
+	private void ClearSmartFeedbackTarget(bool keepSpokenTarget = false)
 	{
 		_lastSmartTarget = Point.Zero;
 		_hasLastSmartTarget = false;
 		_lastSmartSemanticKey = string.Empty;
+		if (!keepSpokenTarget)
+		{
+			_spokenSmartSemanticKey = string.Empty;
+		}
 	}
 
 	private void ResetTargetChordLatches()

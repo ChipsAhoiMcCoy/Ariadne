@@ -26,6 +26,8 @@ namespace Ariadne.Ingame;
 
 internal sealed class AccessibleInventoryController
 {
+	internal const int HotbarSlotCount = 10;
+
 	private const int MenuPageSize = 10;
 	private const int JourneyTimeCategory = 3;
 	private const int JourneyWeatherCategory = 4;
@@ -227,7 +229,7 @@ internal sealed class AccessibleInventoryController
 	private void AddPlayerInventoryCategories(Player player)
 	{
 		List<AccessibleInventoryNode> sections = [];
-		AddItemCategory(sections, "hotbar", "Hotbar", player.inventory, ItemSlot.Context.InventoryItem, 0, 10, index => $"slot {index + 1}", canFavorite: true);
+		AddItemCategory(sections, "hotbar", "Hotbar", player.inventory, ItemSlot.Context.InventoryItem, 0, HotbarSlotCount, HotbarSlotName, canFavorite: true);
 		List<AccessibleInventoryEntry> mainInventoryEntries = CreateItemEntries(
 			"main-inventory",
 			player.inventory,
@@ -243,8 +245,10 @@ internal sealed class AccessibleInventoryController
 			() => LeftClickTrash(player),
 			() => RightClickTrash(player),
 			selectionDetails: () => DescribeItemDetails(player.trashItem, includeSummary: false),
-			firstLetterName: () => player.trashItem.IsAir ? null : player.trashItem.AffixName()));
+			firstLetterName: () => NavigationName(player.trashItem)));
 		AddCategory(sections, "main-inventory", "Main Inventory", mainInventoryEntries);
+
+		AddCraftingCategory(sections);
 
 		List<AccessibleInventoryEntry> currencyEntries = [];
 		for (int index = 50; index < 54; index++)
@@ -278,7 +282,6 @@ internal sealed class AccessibleInventoryController
 			() => "Consolidate and sort the ammo slots.",
 			ItemSorting.SortAmmo)));
 
-		AddCraftingCategory(sections);
 		AddBranch(_rootNodes, "inventory", "Inventory and Crafting", sections);
 	}
 
@@ -427,7 +430,7 @@ internal sealed class AccessibleInventoryController
 					LeftClickGuide,
 					RightClickGuide,
 					selectionDetails: () => DescribeItemDetails(Main.guideItem, includeSummary: false),
-					firstLetterName: () => Main.guideItem.IsAir ? null : Main.guideItem.AffixName())
+					firstLetterName: () => NavigationName(Main.guideItem))
 			]);
 		}
 
@@ -442,7 +445,7 @@ internal sealed class AccessibleInventoryController
 					LeftClickReforge,
 					RightClickReforge,
 					selectionDetails: () => DescribeItemDetails(Main.reforgeItem, includeSummary: false),
-					firstLetterName: () => Main.reforgeItem.IsAir ? null : Main.reforgeItem.AffixName()),
+					firstLetterName: () => NavigationName(Main.reforgeItem)),
 				new AccessibleInventoryEntry(
 					"reforge-action",
 					DescribeReforgeAction,
@@ -829,7 +832,7 @@ internal sealed class AccessibleInventoryController
 				() => DescribeRecipe(captured),
 				() => DescribeRecipeDetails(captured),
 				() => SelectOrCraftRecipe(captured),
-				firstLetterName: () => Main.recipe[Main.availableRecipe[captured]].createItem.AffixName()));
+				firstLetterName: () => NavigationName(Main.recipe[Main.availableRecipe[captured]].createItem)));
 		}
 		AddCategory(destination, "crafting", Main.InGuideCraftMenu ? "Guide Recipes" : "Crafting", entries);
 	}
@@ -941,7 +944,7 @@ internal sealed class AccessibleInventoryController
 			enabled,
 			() => CombineDetails(DescribeItemDetails(items[index], includeSummary: false), extraDetails?.Invoke()),
 			itemSlot: new AccessibleInventoryItemSlot(items, context, index, canFavorite),
-			firstLetterName: () => items[index].IsAir ? null : items[index].AffixName());
+			firstLetterName: () => NavigationName(items[index]));
 	}
 
 	private static void AddCategory(List<AccessibleInventoryNode> destination, string id, string name, List<AccessibleInventoryEntry> entries)
@@ -2117,9 +2120,22 @@ internal sealed class AccessibleInventoryController
 		}
 	}
 
-	private static string DescribeItem(string slotName, Item item)
+	internal static string DescribeItem(string slotName, Item item)
 	{
 		return item.IsAir ? $"Empty, {slotName}" : $"{DescribeItemBrief(item)}, {slotName}";
+	}
+
+	internal static string HotbarSlotName(int index) => $"slot {index + 1}";
+
+	/// <summary>
+	/// The name first-letter navigation matches against. Deliberately the base item
+	/// name rather than <see cref="Item.AffixName"/>, because a reforge would
+	/// otherwise move an item under its prefix's letter and hide it from the letter
+	/// the player knows it by.
+	/// </summary>
+	private static string? NavigationName(Item item)
+	{
+		return item.IsAir ? null : item.Name;
 	}
 
 	private static string DescribeItemBrief(Item item)

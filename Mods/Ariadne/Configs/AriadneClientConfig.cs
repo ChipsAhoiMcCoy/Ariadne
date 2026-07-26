@@ -42,13 +42,19 @@ public sealed class AriadneClientConfig : ModConfig
 	public bool BreathAnnouncementsEnabled { get; set; } = true;
 
 	[DefaultValue(true)]
+	public bool HotbarAnnouncementsEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
+	public bool ItemPickupAnnouncementsEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
 	public bool MovementBumpTonesEnabled { get; set; } = true;
 
-	[DefaultValue(45)]
+	[DefaultValue(60)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int MovementBumpVolumePercent { get; set; } = 45;
+	public int MovementBumpVolumePercent { get; set; } = 60;
 
 	[DefaultValue(true)]
 	public bool WallToneEnabled { get; set; } = true;
