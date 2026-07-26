@@ -4,6 +4,8 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.Audio;
+using Terraria.ID;
 using Terraria.Localization;
 using Terraria.ModLoader;
 
@@ -74,8 +76,22 @@ internal sealed class AccessibleChatSystem : ModSystem
 		}
 		else if (!Main.drawingPlayerChat && _wasChatOpen)
 		{
+			// Terraria clears this flag at the top of every GetInputText pass and only
+			// leaves it set on the frame the edit field received Enter, so it separates
+			// sending a message from cancelling out of the window with Escape.
+			bool submitted = Main.inputTextEnter;
 			ResetChatWindowState();
-			Speak("Closed");
+			if (!submitted)
+			{
+				// Escape only closes the window; text entry stops suppressing keyboard
+				// bindings on the next frame, so a still-held Escape reaches the
+				// Inventory binding and opens the inventory behind the closed chat.
+				AccessibleInputSuppression.BlockKeyUntilReleased(Keys.Escape);
+				// Sending a message plays MenuClose on the way out, but the Escape path
+				// only clears the flag, leaving the dismissal with no audible cue.
+				SoundEngine.PlaySound(SoundID.MenuClose);
+				Speak("Closed");
+			}
 			return;
 		}
 

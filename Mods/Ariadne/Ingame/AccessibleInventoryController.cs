@@ -92,6 +92,10 @@ internal sealed class AccessibleInventoryController
 		ConsumeSuppressedInventoryTrigger(keyboard);
 		if (!CanNavigateInventory())
 		{
+			if (!CanResumeInventoryFocus())
+			{
+				ClearResumeFocus();
+			}
 			Deactivate();
 			return;
 		}
@@ -2432,6 +2436,20 @@ internal sealed class AccessibleInventoryController
 	{
 		_resumeFocusPath = null;
 		_restoreFocusOnNextActivation = false;
+	}
+
+	// A remembered focus path is only worth resuming while the inventory or a screen
+	// opened from it is still up. Escape inside a screen Ariadne does not own, such as
+	// the vanilla Journey powers menu, reaches Player.ToggleInv and closes the
+	// inventory outright, so the path has to be dropped instead of resurfacing the
+	// submenu the next time the player opens the accessible menu.
+	private static bool CanResumeInventoryFocus()
+	{
+		return Main.playerInventory ||
+			Main.inFancyUI ||
+			Main.ingameOptionsWindow ||
+			Main.InGameUI.CurrentState is not null ||
+			(Main.CreativeMenu.Enabled && !Main.CreativeMenu.Blocked);
 	}
 
 	private void ConsumeSuppressedInventoryTrigger(KeyboardState keyboard)

@@ -2,12 +2,24 @@
 
 using System.Collections.Generic;
 using Microsoft.Xna.Framework.Input;
+using Terraria;
 using Terraria.GameInput;
 
 namespace Ariadne.Ingame;
 
 internal static class AccessibleInputSuppression
 {
+	/// <summary>
+	/// Applies Terraria's own held-key latch so a key that just dismissed one screen does
+	/// not go on to fire its normal binding. <c>PlayerInput.KeyboardInput</c> strips the
+	/// blocked key from the pressed set every frame and clears the latch once the key is
+	/// physically released. Vanilla uses this for sign-edit cancellation.
+	/// </summary>
+	internal static void BlockKeyUntilReleased(Keys key)
+	{
+		Main.blockKey = key.ToString();
+	}
+
 	internal static void ConsumeMenuNavigationAndLetterTriggers(KeyboardState keyboard)
 	{
 		TriggersSet current = PlayerInput.Triggers.Current;
