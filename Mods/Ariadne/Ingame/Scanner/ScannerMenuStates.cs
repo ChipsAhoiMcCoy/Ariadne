@@ -95,7 +95,7 @@ internal sealed class ScannerRootMenuState : AccessibleMenuState
 	internal static string ScannerHelpText() =>
 		"Visible surroundings scanner help. The root contains only nonempty categories and each category contains the lit targets captured when the scanner opened. " +
 		"Up and Down move, Home and End jump to the list edges, Page Up and Page Down move by a page, and letter keys jump by name. " +
-		"Right Arrow or Enter opens a category. Left Arrow or Escape returns or closes. Enter on a target searches for a safe landing, teleports, and performs its supported native interaction. " +
+		"Right Arrow or Enter opens a category. Left Arrow or Escape returns or closes. Enter on a target searches for a safe landing, closes the scanner, teleports, and performs its supported native interaction; if no landing is found the scanner stays open and reports why. " +
 		$"Control R rereads focused details and {ContextHelpChord.Name} repeats this help. Scanner navigation keys are consumed while this screen is open and do not also control the player. " +
 		"Close and press Open Scanner again to refresh the fixed snapshot.";
 

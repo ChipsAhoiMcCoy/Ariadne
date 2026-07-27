@@ -56,8 +56,9 @@ internal sealed class AccessibleMapMenuState : AccessibleMenuState
 	protected override void OpenContextHelp()
 	{
 		Announce(
-			"Accessible world map. Up and Down move through the current location, spawn, last death marker, discovered pylons, active players, bosses, and town NPCs. " +
-			"Each entry reports distance and direction from you. Enter on a pylon requests normal pylon travel; Terraria still applies proximity, town, biome, and danger requirements. " +
+			"Accessible world map. Up and Down move through your current location, world spawn, the last death marker when one is set, this world's pylons, other active players, bosses, town NPCs, and a Close map entry. " +
+			"Every landmark entry reports distance and direction from you, and its description gives world coordinates. " +
+			"Enter on a pylon requests normal pylon travel; Terraria still applies proximity, town, biome, and danger requirements. Other landmarks are readouts and do not act on Enter. " +
 			"This semantic map does not expose individual background tiles or arbitrary mouse coordinates. Escape closes the map.");
 	}
 

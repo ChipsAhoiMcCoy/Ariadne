@@ -1618,13 +1618,13 @@ internal sealed class AccessibleInventoryController
 		{
 			AriadneMod.ScreenReader.Output(
 				$"Item actions help. {DescribeActionSelection()} " +
-				"Up and Down move through the available actions, letter keys jump through matching actions in alphabetical order, Home and End move to the first and last action, Enter performs the focused action, Control R reads its description, and Tab returns to the inventory pane.");
+				"Up and Down move through the available actions, letter keys jump through matching actions in alphabetical order, Home and End move to the first and last action, Page Up and Page Down move by ten, Enter performs the focused action, Control R reads its description, and Tab returns to the inventory pane.");
 			return;
 		}
 
 		AriadneMod.ScreenReader.Output(
 			$"Inventory tree help. {DescribeSelection()} {DescribeCurrentLevel()} " +
-			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Left and Right change an adjustable entry or navigate into and out of the tree. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions and Shift Enter takes one item from a stack. Enter performs the primary or normal left click action. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
+			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Left and Right change an adjustable entry or navigate into and out of the tree. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions. Enter performs the primary or normal left click action, and Shift Enter takes one item from a stack of more than one, or performs the normal right click action when the slot cannot be split. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
 	private void AnnounceSelection(bool includeLevel = false)

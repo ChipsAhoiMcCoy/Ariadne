@@ -560,13 +560,21 @@ internal sealed class WorldCursorSystem : ModSystem
 		string use = DescribeModBinding(AriadneMod.UseHeldItemKeybind);
 		string secondary = DescribeModBinding(AriadneMod.SecondaryUseKeybind);
 		string targetModifier = DescribeModBinding(AriadneMod.CombatTargetModifierKeybind);
+		string status = DescribeModBinding(AriadneMod.PlayerStatusKeybind);
+		string scanner = DescribeModBinding(AriadneMod.OpenScannerKeybind);
+		string wallTones = DescribeModBinding(AriadneMod.ToggleWallTonesKeybind);
+		string waypoints = DescribeModBinding(AriadneMod.OpenWaypointsKeybind);
+		string freecam = DescribeModBinding(AriadneMod.FreecamModifierKeybind);
 		AriadneMod.ScreenReader.Output(
 			$"Gameplay controls. Move with {movement}. Aim with {aiming}. " +
 			$"Use the held item with {use}, and secondary use or interact with {secondary}. " +
 			$"Terraria's Smart Cursor binding keeps its configured toggle or hold behavior. " +
 			$"Hold {targetModifier} with move left or move right to cycle combat targets; " +
 			$"hold {targetModifier} with move down to clear the target and recenter. " +
-			$"Manual aim always cancels combat lock. Press {ContextHelpChord.Name} to repeat this help.");
+			$"Manual aim always cancels combat lock. " +
+			$"Press {status} for a character status readout, {scanner} to scan the visible surroundings, and {wallTones} to toggle wall tones. " +
+			$"Hold {targetModifier} with {waypoints} to open waypoints. Hold {freecam} to move a free camera, and release it to return to your body. " +
+			$"Press {ContextHelpChord.Name} to repeat this help.");
 	}
 
 	private static string DescribeNativeBindings(params string[] triggers)

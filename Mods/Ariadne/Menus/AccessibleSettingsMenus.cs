@@ -546,7 +546,7 @@ internal sealed class AccessibleKeyBindingsMenuState : AccessibleSettingsPageSta
 
 	private static string BindingText(List<string> bindings) => bindings.Count == 0 ? "unbound" : string.Join(", ", bindings);
 
-	private static string FriendlyTriggerName(string trigger)
+	internal static string FriendlyTriggerName(string trigger)
 	{
 		const string ariadnePrefix = "Ariadne/";
 		if (trigger.StartsWith(ariadnePrefix, StringComparison.Ordinal))
@@ -565,6 +565,7 @@ internal sealed class AccessibleKeyCaptureState : UIState
 	private readonly InputMode _inputMode;
 	private readonly string _trigger;
 	private KeyboardState _previousKeyboard;
+	private Keys? _pendingAlt;
 
 	internal AccessibleKeyCaptureState(AccessibleMenuController controller, InputMode inputMode, string trigger)
 	{
@@ -573,10 +574,13 @@ internal sealed class AccessibleKeyCaptureState : UIState
 		_trigger = trigger;
 	}
 
+	private string TriggerName => AccessibleKeyBindingsMenuState.FriendlyTriggerName(_trigger);
+
 	public override void OnActivate()
 	{
 		_previousKeyboard = Keyboard.GetState();
-		AriadneMod.ScreenReader.Output($"Press a key for {_trigger}. Press Escape to cancel, Delete to clear the binding, or {ContextHelpChord.Name} for contextual help.");
+		_pendingAlt = null;
+		AriadneMod.ScreenReader.Output($"Press a key for {TriggerName}. Press Escape to cancel, Delete to clear the binding, or {ContextHelpChord.Name} for contextual help.");
 	}
 
 	public override void Update(GameTime gameTime)
@@ -584,7 +588,26 @@ internal sealed class AccessibleKeyCaptureState : UIState
 		base.Update(gameTime);
 		KeyboardState keyboard = Keyboard.GetState();
 		Keys[] newlyPressed = keyboard.GetPressedKeys().Where(key => _previousKeyboard.IsKeyUp(key)).ToArray();
-		if (newlyPressed.Length == 0)
+
+		// Alt opens the help chord this screen advertises, so it goes down before H can
+		// arrive. Binding it on the way down would consume the chord and make that help
+		// unreachable, so a lone Alt is only committed once it is released.
+		if (_pendingAlt is Keys pendingAlt)
+		{
+			if (newlyPressed.Length == 0)
+			{
+				if (keyboard.IsKeyUp(pendingAlt))
+				{
+					_pendingAlt = null;
+					Bind(pendingAlt);
+					return;
+				}
+				_previousKeyboard = keyboard;
+				return;
+			}
+			_pendingAlt = null;
+		}
+		else if (newlyPressed.Length == 0)
 		{
 			_previousKeyboard = keyboard;
 			return;
@@ -593,16 +616,13 @@ internal sealed class AccessibleKeyCaptureState : UIState
 		Keys key = newlyPressed[0];
 		if (key == Keys.H && ContextHelpChord.ModifierHeld(keyboard))
 		{
-			SoundEngine.PlaySound(SoundID.MenuOpen);
-			_controller.Navigate(new AccessibleContextHelpMenuState(
-				_controller,
-				$"Bind {_trigger}",
-				[
-					new("Any key", $"Press a key to replace the current keyboard binding for {_trigger}."),
-					new("Delete or Backspace", "Clear the binding so this control is unbound."),
-					new("Escape", "Cancel and keep the existing binding."),
-					new(ContextHelpChord.Name, $"Open this help screen. {ContextHelpChord.Name} is reserved for contextual help while using Ariadne menus. Plain H still binds normally."),
-				]));
+			OpenHelp();
+			return;
+		}
+		if (key is Keys.LeftAlt or Keys.RightAlt)
+		{
+			_pendingAlt = key;
+			_previousKeyboard = keyboard;
 			return;
 		}
 		if (key == Keys.Escape)
@@ -611,16 +631,36 @@ internal sealed class AccessibleKeyCaptureState : UIState
 			return;
 		}
 
+		Bind(key);
+	}
+
+	private void OpenHelp()
+	{
+		SoundEngine.PlaySound(SoundID.MenuOpen);
+		_controller.Navigate(new AccessibleContextHelpMenuState(
+			_controller,
+			$"Bind {TriggerName}",
+			[
+				new("Any key", $"Press a key to replace the current keyboard binding for {TriggerName}."),
+				new("Delete or Backspace", "Clear the binding so this control is unbound."),
+				new("Escape", "Cancel and keep the existing binding."),
+				new("Alt on its own", $"{ContextHelpChord.Name} opens this help, so Alt is only bound once you release it without pressing H."),
+				new(ContextHelpChord.Name, $"Open this help screen. {ContextHelpChord.Name} is reserved for contextual help while using Ariadne menus. Plain H still binds normally."),
+			]));
+	}
+
+	private void Bind(Keys key)
+	{
 		List<string> bindings = PlayerInput.CurrentProfile.InputModes[_inputMode].KeyStatus[_trigger];
 		bindings.Clear();
 		if (key != Keys.Delete && key != Keys.Back)
 		{
 			bindings.Add(key.ToString());
-			AriadneMod.ScreenReader.Output($"{_trigger} bound to {key}.");
+			AriadneMod.ScreenReader.Output($"{TriggerName} bound to {key}.");
 		}
 		else
 		{
-			AriadneMod.ScreenReader.Output($"{_trigger} is now unbound.");
+			AriadneMod.ScreenReader.Output($"{TriggerName} is now unbound.");
 		}
 		PlayerInput.Save();
 		_controller.Back();
