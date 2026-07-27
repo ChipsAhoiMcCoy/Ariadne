@@ -114,10 +114,10 @@ internal abstract class AccessibleMenuState : UIState
 			CanGoBack
 				? UsesHierarchicalNavigation
 					? RightArrowOpensSubmenu
-						? "Up/Down: move    Letters: jump    Left/Right: adjust/tree    Enter: activate    Escape: back    F1: help"
-						: "Up/Down: move    Letters: jump    Enter: activate    Left/Escape: back    F1: help"
-					: "Up/Down: move    Letters: jump    Left/Right: change    Enter: select    Escape: back    F1: help"
-				: "Up/Down: move    Letters: jump    Left/Right: change    Enter: select    F1: help";
+						? $"Up/Down: move    Letters: jump    Left/Right: adjust/tree    Enter: activate    Escape: back    {ContextHelpChord.ShortName}: help"
+						: $"Up/Down: move    Letters: jump    Enter: activate    Left/Escape: back    {ContextHelpChord.ShortName}: help"
+					: $"Up/Down: move    Letters: jump    Left/Right: change    Enter: select    Escape: back    {ContextHelpChord.ShortName}: help"
+				: $"Up/Down: move    Letters: jump    Left/Right: change    Enter: select    {ContextHelpChord.ShortName}: help";
 		UIText help = new(
 			controlHint + AdditionalControlHint,
 			0.68f)
@@ -146,11 +146,11 @@ internal abstract class AccessibleMenuState : UIState
 			: " Speech output is unavailable; see the tModLoader client log.";
 		string controls = UsesHierarchicalNavigation
 			? RightArrowOpensSubmenu
-				? "Use Up and Down Arrow keys to move, letter keys to jump by name, Right Arrow to open submenus, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Enter to activate the focused option, Escape to go back, and F1 for contextual help."
-				: "Use Up and Down Arrow keys to move, letter keys to jump by name, Enter to activate options, Left Arrow or Escape to go back, and F1 for contextual help."
+				? $"Use Up and Down Arrow keys to move, letter keys to jump by name, Right Arrow to open submenus, Left Arrow to go back when the focused option is not adjustable, Left and Right Arrow keys to change adjustable values, Enter to activate the focused option, Escape to go back, and {ContextHelpChord.Name} for contextual help."
+				: $"Use Up and Down Arrow keys to move, letter keys to jump by name, Enter to activate options, Left Arrow or Escape to go back, and {ContextHelpChord.Name} for contextual help."
 			: "Use Up and Down Arrow keys to move, letter keys to jump by name, Left and Right Arrow keys to change values, Enter to select" +
 				(CanGoBack ? ", Escape to go back" : string.Empty) +
-				", and F1 for contextual help.";
+				$", and {ContextHelpChord.Name} for contextual help.";
 		string hierarchy = HierarchyLevel is int level ? $" Level {level}." : string.Empty;
 		AriadneMod.ScreenReader.Output($"{Title}. {DescribeSelection()}{hierarchy} {controls}{AdditionalNavigationInstructions}{availability}");
 	}
@@ -164,9 +164,16 @@ internal abstract class AccessibleMenuState : UIState
 		{
 			_repeatingNavigationKey = null;
 		}
-		if (Pressed(keyboard, Keys.F1))
+		if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
 		{
 			OpenContextHelp();
+			_previousKeyboard = keyboard;
+			return;
+		}
+		if (ContextHelpChord.ModifierHeld(keyboard))
+		{
+			// Alt is Ariadne's command prefix. Letting it fall through would jump the
+			// selection by first letter on the way to a chord.
 			_previousKeyboard = keyboard;
 			return;
 		}
@@ -320,7 +327,7 @@ internal abstract class AccessibleMenuState : UIState
 			topics.Add(new("Escape", "Return to the previous menu without activating an option."));
 		}
 		AddContextHelpTopics(topics);
-		topics.Add(new("F1", "Open this contextual help screen. Press F1 or Escape while reading help to return."));
+		topics.Add(new(ContextHelpChord.Name, $"Open this contextual help screen. Press {ContextHelpChord.Name} or Escape while reading help to return."));
 
 		SoundEngine.PlaySound(SoundID.MenuOpen);
 		Controller.Navigate(new AccessibleContextHelpMenuState(Controller, Title, topics, KeepsInventoryOpen));

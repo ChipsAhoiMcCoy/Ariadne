@@ -267,7 +267,7 @@ internal sealed class AccessibleExternalUIController
 		if (_controls.Count == 0)
 		{
 			string status = string.IsNullOrWhiteSpace(_lastStatus) ? "No actionable controls were discovered." : _lastStatus;
-			AriadneMod.ScreenReader.Output($"{title}. {status}{hierarchy} Escape uses this screen's normal back or cancel action. F1 reads accessible screen controls.");
+			AriadneMod.ScreenReader.Output($"{title}. {status}{hierarchy} Escape uses this screen's normal back or cancel action. {ContextHelpChord.Name} reads accessible screen controls.");
 			return;
 		}
 
@@ -275,14 +275,18 @@ internal sealed class AccessibleExternalUIController
 		_lastSelectionState = GetSelectionState();
 		AriadneMod.ScreenReader.Output(
 			$"{title}. {DescribeSelection()}{hierarchy} " +
-			"Use Up and Down Arrow keys to move, Left and Right Arrow keys to adjust sliders or navigate the menu tree, Enter to activate, Shift Enter for the alternate action, letter keys to jump by name, Control R for details, Escape for the screen's normal back action, and F1 for help.");
+			$"Use Up and Down Arrow keys to move, Left and Right Arrow keys to adjust sliders or navigate the menu tree, Enter to activate, Shift Enter for the alternate action, letter keys to jump by name, Control R for details, Escape for the screen's normal back action, and {ContextHelpChord.Name} for help.");
 	}
 
 	private bool HandleInput(KeyboardState keyboard, long now)
 	{
-		if (Pressed(keyboard, Keys.F1))
+		if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
 		{
 			ReadHelp();
+			return true;
+		}
+		if (ContextHelpChord.ModifierHeld(keyboard))
+		{
 			return true;
 		}
 

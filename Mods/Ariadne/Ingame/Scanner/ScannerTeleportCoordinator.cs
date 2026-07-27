@@ -8,6 +8,7 @@ using Terraria.DataStructures;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Terraria.ObjectData;
+using Ariadne.Ingame.Teleport;
 
 namespace Ariadne.Ingame.Scanner;
 
@@ -17,11 +18,7 @@ internal sealed class ScannerTeleportCoordinator
 {
 	private const int MaximumSearchDistanceInTiles = 40;
 	private const string TeleportContext = "Ariadne.VisibleSurroundingsScanner";
-	// This style retains teleport dust but Main.TeleportEffect does not play audio for it.
-	private const int TeleportStyle = TeleportationStyleID.TeleportationPotion;
-	private PendingTeleportVerification? _pendingVerification;
-
-	private sealed record PendingTeleportVerification(Vector2 ExpectedPosition, string TargetName, int TicksRemaining);
+	private readonly TeleportExecutor _executor = new();
 
 	private readonly record struct ResolvedTarget(
 		Rectangle Bounds,
@@ -70,57 +67,15 @@ internal sealed class ScannerTeleportCoordinator
 		}
 
 		closeScanner();
-		player.velocity = Vector2.Zero;
-		player.Teleport(destination, TeleportStyle);
-		player.velocity = Vector2.Zero;
-		if (Main.netMode == NetmodeID.MultiplayerClient)
-		{
-			NetMessage.SendData(
-				MessageID.TeleportEntity,
-				remoteClient: -1,
-				ignoreClient: -1,
-				text: null,
-				number: 0,
-				number2: player.whoAmI,
-				number3: destination.X,
-				number4: destination.Y,
-				number5: TeleportStyle);
-			_pendingVerification = new PendingTeleportVerification(destination, target.Name, 30);
-		}
+		_executor.Execute(player, destination, $"scanner teleport near {target.Name}");
 
 		PerformInteraction(target, resolved, player, requestInventoryFocus);
 		return new ScannerActivationResult(true, $"Moved near {target.Name}.");
 	}
 
-	internal void UpdateVerification()
-	{
-		if (_pendingVerification is not PendingTeleportVerification pending)
-		{
-			return;
-		}
+	internal void UpdateVerification() => _executor.UpdateVerification();
 
-		if (Main.gameMenu || !Main.LocalPlayer.active || Main.LocalPlayer.dead)
-		{
-			_pendingVerification = null;
-			return;
-		}
-
-		int elapsedTicks = 30 - pending.TicksRemaining;
-		if (elapsedTicks >= 4 && Vector2.DistanceSquared(Main.LocalPlayer.position, pending.ExpectedPosition) > 8f * 16f * 8f * 16f)
-		{
-			_pendingVerification = null;
-			AriadneMod.ScreenReader.Output($"The server rejected or corrected the scanner teleport near {pending.TargetName}.");
-			return;
-		}
-
-		int ticksRemaining = pending.TicksRemaining - 1;
-		_pendingVerification = ticksRemaining > 0 ? pending with { TicksRemaining = ticksRemaining } : null;
-	}
-
-	internal void Reset()
-	{
-		_pendingVerification = null;
-	}
+	internal void Reset() => _executor.Reset();
 
 	private static bool TryResolve(ScannerTarget target, out ResolvedTarget resolved)
 	{
@@ -298,11 +253,8 @@ internal sealed class ScannerTeleportCoordinator
 		{
 			for (int tileY = minimumY; tileY <= maximumY; tileY++)
 			{
-				float candidateY = player.gravDir < 0f
-					? (tileY + 1) * 16f
-					: tileY * 16f - player.height;
-				Vector2 candidate = new(tileX * 16f, candidateY);
-				if (!IsCollisionSafeLanding(player, candidate) || !IsCloseEnoughForInteraction(player, candidate, target, resolved))
+				Vector2 candidate = SafeLandingProbe.StandingPosition(player, tileX, tileY);
+				if (!SafeLandingProbe.IsSafeLanding(player, candidate) || !IsCloseEnoughForInteraction(player, candidate, target, resolved))
 				{
 					continue;
 				}
@@ -329,47 +281,6 @@ internal sealed class ScannerTeleportCoordinator
 			}
 		}
 		return false;
-	}
-
-	private static bool IsCollisionSafeLanding(Player player, Vector2 position)
-	{
-		float worldRight = Main.maxTilesX * 16f;
-		float worldBottom = Main.maxTilesY * 16f;
-		if (position.X < 16f || position.Y < 16f ||
-			position.X + player.width > worldRight - 16f || position.Y + player.height > worldBottom - 16f)
-		{
-			return false;
-		}
-
-		if (Collision.SolidCollision(position, player.width, player.height) ||
-			Collision.LavaCollision(position, player.width, player.height) ||
-			ContainsShimmer(position, player.width, player.height))
-		{
-			return false;
-		}
-
-		int gravityDirection = player.gravDir < 0f ? -1 : 1;
-		Vector2 supportVelocity = new(0f, gravityDirection * 3f);
-		Vector2 collisionVelocity = Collision.TileCollision(
-			position,
-			supportVelocity,
-			player.width,
-			player.height,
-			fallThrough: false,
-			fall2: false,
-			gravDir: gravityDirection);
-		if (MathF.Abs(collisionVelocity.Y) >= MathF.Abs(supportVelocity.Y))
-		{
-			return false;
-		}
-
-		Vector2 hazardProbe = gravityDirection > 0 ? position : position - new Vector2(0f, 2f);
-		if (Collision.AnyHurtingTiles(hazardProbe, player.width, player.height + 2))
-		{
-			return false;
-		}
-
-		return true;
 	}
 
 	private static bool IsCloseEnoughForInteraction(Player player, Vector2 position, ScannerTarget target, ResolvedTarget resolved)
@@ -400,26 +311,6 @@ internal sealed class ScannerTeleportCoordinator
 		{
 			player.position = originalPosition;
 		}
-	}
-
-	private static bool ContainsShimmer(Vector2 position, int width, int height)
-	{
-		int firstX = Math.Clamp((int)MathF.Floor(position.X / 16f), 0, Main.maxTilesX - 1);
-		int lastX = Math.Clamp((int)MathF.Floor((position.X + width - 1f) / 16f), 0, Main.maxTilesX - 1);
-		int firstY = Math.Clamp((int)MathF.Floor(position.Y / 16f), 0, Main.maxTilesY - 1);
-		int lastY = Math.Clamp((int)MathF.Floor((position.Y + height - 1f) / 16f), 0, Main.maxTilesY - 1);
-		for (int x = firstX; x <= lastX; x++)
-		{
-			for (int y = firstY; y <= lastY; y++)
-			{
-				Tile tile = Main.tile[x, y];
-				if (tile.LiquidAmount > 0 && tile.LiquidType == LiquidID.Shimmer)
-				{
-					return true;
-				}
-			}
-		}
-		return false;
 	}
 
 	private static void PerformInteraction(

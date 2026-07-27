@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
+using Ariadne.Accessibility;
 using Ariadne.Menus;
 
 namespace Ariadne.Ingame.Scanner;
@@ -95,7 +96,7 @@ internal sealed class ScannerRootMenuState : AccessibleMenuState
 		"Visible surroundings scanner help. The root contains only nonempty categories and each category contains the lit targets captured when the scanner opened. " +
 		"Up and Down move, Home and End jump to the list edges, Page Up and Page Down move by a page, and letter keys jump by name. " +
 		"Right Arrow or Enter opens a category. Left Arrow or Escape returns or closes. Enter on a target searches for a safe landing, teleports, and performs its supported native interaction. " +
-		"Control R rereads focused details and F1 repeats this help. Scanner navigation keys are consumed while this screen is open and do not also control the player. " +
+		$"Control R rereads focused details and {ContextHelpChord.Name} repeats this help. Scanner navigation keys are consumed while this screen is open and do not also control the player. " +
 		"Close and press Open Scanner again to refresh the fixed snapshot.";
 
 	internal static string ResultWord(int count) => count == 1 ? "result" : "results";

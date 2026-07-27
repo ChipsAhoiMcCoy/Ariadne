@@ -9,6 +9,7 @@ using Terraria.GameContent.UI.Elements;
 using Terraria.GameInput;
 using Terraria.ID;
 using Terraria.UI;
+using Ariadne.Accessibility;
 
 namespace Ariadne.Menus;
 
@@ -64,7 +65,7 @@ internal sealed class AccessibleTextInputState : UIState
 		_valueLabel.Width.Set(-40f, 1f);
 		panel.Append(_valueLabel);
 
-		UIText help = new("Type text. Enter: accept    Escape: cancel    F1: help", 0.75f)
+		UIText help = new($"Type text. Enter: accept    Escape: cancel    {ContextHelpChord.ShortName}: help", 0.75f)
 		{
 			HAlign = 0.5f,
 			TextColor = new Color(180, 192, 222),
@@ -82,7 +83,7 @@ internal sealed class AccessibleTextInputState : UIState
 		PlayerInput.WritingText = true;
 		RefreshLabel();
 		string contents = _hideContents ? $"{_value.Length} characters" : _value;
-		AriadneMod.ScreenReader.Output($"{_prompt}. Edit field. {contents}. Press Enter to accept, Escape to cancel, or F1 for contextual help.");
+		AriadneMod.ScreenReader.Output($"{_prompt}. Edit field. {contents}. Press Enter to accept, Escape to cancel, or {ContextHelpChord.Name} for contextual help.");
 	}
 
 	public override void OnDeactivate()
@@ -95,7 +96,7 @@ internal sealed class AccessibleTextInputState : UIState
 	{
 		base.Update(gameTime);
 		KeyboardState keyboard = Keyboard.GetState();
-		if (Pressed(keyboard, Keys.F1))
+		if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
 		{
 			SoundEngine.PlaySound(SoundID.MenuOpen);
 			_controller.Navigate(new AccessibleContextHelpMenuState(
@@ -107,7 +108,7 @@ internal sealed class AccessibleTextInputState : UIState
 					new("Control C, Control X, and Control V", "Copy, cut, or paste the field contents using the clipboard."),
 					new("Enter", "Accept the current text and return when the value is valid."),
 					new("Escape", "Cancel editing and return without applying this edit."),
-					new("F1", "Open this help screen. Press F1 or Escape in help to return to the edit field."),
+					new(ContextHelpChord.Name, $"Open this help screen. Press {ContextHelpChord.Name} or Escape in help to return to the edit field."),
 				]));
 			_previousKeyboard = keyboard;
 			return;

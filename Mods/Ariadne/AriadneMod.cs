@@ -23,6 +23,7 @@ public sealed class AriadneMod : Mod
 	internal static ModKeybind? CombatTargetModifierKeybind { get; private set; }
 	internal static ModKeybind? FreecamModifierKeybind { get; private set; }
 	internal static ModKeybind? PlayerStatusKeybind { get; private set; }
+	internal static ModKeybind? OpenWaypointsKeybind { get; private set; }
 	internal static IReadOnlyList<RegisteredKeybindDefault> KeybindDefaults => RegisteredDefaults;
 
 	public override void Load()
@@ -40,6 +41,8 @@ public sealed class AriadneMod : Mod
 		CombatTargetModifierKeybind = RegisterKeybind("CombatTargetModifier", Keys.LeftAlt, introducedVersion: 1);
 		FreecamModifierKeybind = RegisterKeybind("FreecamModifier", Keys.RightShift, introducedVersion: 2);
 		PlayerStatusKeybind = RegisterKeybind("PlayerStatus", Keys.Back, introducedVersion: 3);
+		// Held with CombatTargetModifier, which doubles as Ariadne's command prefix.
+		OpenWaypointsKeybind = RegisterKeybind("OpenWaypoints", Keys.W, introducedVersion: 4);
 	}
 
 	public override void Unload()
@@ -57,6 +60,7 @@ public sealed class AriadneMod : Mod
 		CombatTargetModifierKeybind = null;
 		FreecamModifierKeybind = null;
 		PlayerStatusKeybind = null;
+		OpenWaypointsKeybind = null;
 		RegisteredDefaults.Clear();
 	}
 

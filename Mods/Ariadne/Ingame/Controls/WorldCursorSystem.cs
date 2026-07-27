@@ -10,6 +10,7 @@ using Terraria.GameContent.UI;
 using Terraria.GameInput;
 using Terraria.Localization;
 using Terraria.ModLoader;
+using Ariadne.Accessibility;
 using Ariadne.Audio;
 using Ariadne.Configs;
 using Ariadne.Ingame.Freecam;
@@ -165,7 +166,7 @@ internal sealed class WorldCursorSystem : ModSystem
 		MirrorActionKeybinds();
 		DisableNativeGamepadLockOn();
 
-		if (Pressed(keyboard, Keys.F1))
+		if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
 		{
 			AnnounceGameplayHelp();
 		}
@@ -565,7 +566,7 @@ internal sealed class WorldCursorSystem : ModSystem
 			$"Terraria's Smart Cursor binding keeps its configured toggle or hold behavior. " +
 			$"Hold {targetModifier} with move left or move right to cycle combat targets; " +
 			$"hold {targetModifier} with move down to clear the target and recenter. " +
-			"Manual aim always cancels combat lock. Press F1 to repeat this help.");
+			$"Manual aim always cancels combat lock. Press {ContextHelpChord.Name} to repeat this help.");
 	}
 
 	private static string DescribeNativeBindings(params string[] triggers)

@@ -15,6 +15,7 @@ using Terraria.ID;
 using Terraria.Localization;
 using Terraria.ModLoader;
 using Terraria.UI;
+using Ariadne.Accessibility;
 
 namespace Ariadne.Menus;
 
@@ -575,7 +576,7 @@ internal sealed class AccessibleKeyCaptureState : UIState
 	public override void OnActivate()
 	{
 		_previousKeyboard = Keyboard.GetState();
-		AriadneMod.ScreenReader.Output($"Press a key for {_trigger}. Press Escape to cancel, Delete to clear the binding, or F1 for contextual help.");
+		AriadneMod.ScreenReader.Output($"Press a key for {_trigger}. Press Escape to cancel, Delete to clear the binding, or {ContextHelpChord.Name} for contextual help.");
 	}
 
 	public override void Update(GameTime gameTime)
@@ -590,7 +591,7 @@ internal sealed class AccessibleKeyCaptureState : UIState
 		}
 
 		Keys key = newlyPressed[0];
-		if (key == Keys.F1)
+		if (key == Keys.H && ContextHelpChord.ModifierHeld(keyboard))
 		{
 			SoundEngine.PlaySound(SoundID.MenuOpen);
 			_controller.Navigate(new AccessibleContextHelpMenuState(
@@ -600,7 +601,7 @@ internal sealed class AccessibleKeyCaptureState : UIState
 					new("Any key", $"Press a key to replace the current keyboard binding for {_trigger}."),
 					new("Delete or Backspace", "Clear the binding so this control is unbound."),
 					new("Escape", "Cancel and keep the existing binding."),
-					new("F1", "Open this help screen. F1 is reserved for contextual help while using Ariadne menus."),
+					new(ContextHelpChord.Name, $"Open this help screen. {ContextHelpChord.Name} is reserved for contextual help while using Ariadne menus. Plain H still binds normally."),
 				]));
 			return;
 		}

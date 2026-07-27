@@ -20,6 +20,13 @@ internal static class AccessibleInputSuppression
 		Main.blockKey = key.ToString();
 	}
 
+	/// <summary>
+	/// Clears the triggers behind every key an Ariadne menu treats as its own. Menus read the
+	/// keyboard directly, but <c>Main.CanPauseGame</c> never pauses for a custom
+	/// <c>IngameFancyUI</c> state, so <c>Player.Update</c> keeps consuming triggers underneath
+	/// them. Letters cover menu navigation and Alt chords; function keys cover the loadout
+	/// swaps that would otherwise fire alongside a help request.
+	/// </summary>
 	internal static void ConsumeMenuNavigationAndLetterTriggers(KeyboardState keyboard)
 	{
 		TriggersSet current = PlayerInput.Triggers.Current;
@@ -34,7 +41,19 @@ internal static class AccessibleInputSuppression
 			return;
 		}
 
-		for (int value = (int)Keys.A; value <= (int)Keys.Z; value++)
+		ConsumeKeyRange(keyboard, bindings, current, justPressed, Keys.A, Keys.Z);
+		ConsumeKeyRange(keyboard, bindings, current, justPressed, Keys.F1, Keys.F12);
+	}
+
+	private static void ConsumeKeyRange(
+		KeyboardState keyboard,
+		KeyConfiguration bindings,
+		TriggersSet current,
+		TriggersSet justPressed,
+		Keys first,
+		Keys last)
+	{
+		for (int value = (int)first; value <= (int)last; value++)
 		{
 			Keys key = (Keys)value;
 			if (keyboard.IsKeyUp(key))

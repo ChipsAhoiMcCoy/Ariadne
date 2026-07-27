@@ -196,7 +196,7 @@ internal sealed class AccessibleInventoryController
 		{
 			AriadneMod.ScreenReader.Output(
 				$"{DescribeSelection()} {DescribeCurrentLevel()} " +
-				"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Left and Right Arrow keys to change adjustable entries or navigate into and out of the tree, Enter to open or activate the focused entry, Home and End to move to the first and last category, Tab for actions on a focused item, and F1 for help.");
+				$"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Left and Right Arrow keys to change adjustable entries or navigate into and out of the tree, Enter to open or activate the focused entry, Home and End to move to the first and last category, Tab for actions on a focused item, and {ContextHelpChord.Name} for help.");
 		}
 	}
 
@@ -1049,9 +1049,13 @@ internal sealed class AccessibleInventoryController
 		{
 			ReadDetails();
 		}
-		else if (Pressed(keyboard, Keys.F1))
+		else if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
 		{
 			ReadHelp();
+		}
+		else if (ContextHelpChord.ModifierHeld(keyboard))
+		{
+			return true;
 		}
 		else if (FirstLetterNavigator.TryGetPressedLetter(keyboard, _previousKeyboard, out _, out char letter))
 		{
@@ -1137,9 +1141,13 @@ internal sealed class AccessibleInventoryController
 		{
 			ReadActionDetails();
 		}
-		else if (Pressed(keyboard, Keys.F1))
+		else if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
 		{
 			ReadHelp();
+		}
+		else if (ContextHelpChord.ModifierHeld(keyboard))
+		{
+			return true;
 		}
 		else if (FirstLetterNavigator.TryGetPressedLetter(keyboard, _previousKeyboard, out _, out char letter))
 		{

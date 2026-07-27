@@ -8,6 +8,7 @@ using Terraria.Audio;
 using Terraria.ID;
 using Terraria.Localization;
 using Terraria.ModLoader;
+using Ariadne.Accessibility;
 
 namespace Ariadne.Ingame.Chat;
 
@@ -100,7 +101,7 @@ internal sealed class AccessibleChatSystem : ModSystem
 			return;
 		}
 
-		if (Pressed(keyboard, Keys.F1))
+		if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
 		{
 			Speak("Help");
 		}

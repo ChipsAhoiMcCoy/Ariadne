@@ -1,10 +1,12 @@
 #nullable enable
 
+using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.GameInput;
 using Terraria.ModLoader;
 using Ariadne.Ingame.Scanner;
 using Ariadne.Ingame.Freecam;
+using Ariadne.Ingame.Waypoints;
 using Ariadne.Menus;
 
 namespace Ariadne.Ingame;
@@ -15,6 +17,8 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 	private AccessibleMenuController? _menuController;
 	private AccessibleInventoryController? _inventoryController;
 	private ScannerSession? _scannerSession;
+	private WaypointStore? _waypointStore;
+	private WaypointSession? _waypointSession;
 	private bool _openingSettings;
 
 	public override void Load()
@@ -22,31 +26,52 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 		_menuController = new AccessibleMenuController(inGame: true);
 		_inventoryController = new AccessibleInventoryController(_menuController);
 		_scannerSession = new ScannerSession(_menuController, _inventoryController);
+		_waypointStore = new WaypointStore(Mod);
+		_waypointSession = new WaypointSession(_menuController, _inventoryController, _waypointStore);
 	}
 
 	public override void PostUpdateInput()
 	{
-		if (Main.gameMenu || _menuController is null || _inventoryController is null || _scannerSession is null)
+		if (Main.gameMenu || _menuController is null || _inventoryController is null ||
+			_scannerSession is null || _waypointSession is null)
 		{
 			_inventoryController?.Deactivate();
 			_scannerSession?.Reset();
+			_waypointSession?.Reset();
 			_openingSettings = false;
 			return;
 		}
 
 		_scannerSession.SynchronizeState();
-		if (_scannerSession.IsOpen && (!Main.LocalPlayer.active || Main.LocalPlayer.dead))
+		_waypointSession.SynchronizeState();
+		if ((_scannerSession.IsOpen || _waypointSession.IsOpen) && (!Main.LocalPlayer.active || Main.LocalPlayer.dead))
 		{
-			_scannerSession.Close();
+			if (_scannerSession.IsOpen)
+			{
+				_scannerSession.Close();
+			}
+			if (_waypointSession.IsOpen)
+			{
+				_waypointSession.Close();
+			}
 			_inventoryController.Deactivate();
 			return;
 		}
 		_scannerSession.ConsumeInput();
+		_waypointSession.ConsumeInput();
 		if (!_menuController.IsActive && ShouldOpenScanner())
 		{
 			_inventoryController.Deactivate();
 			_scannerSession.Open();
 			_scannerSession.ConsumeInput();
+			return;
+		}
+
+		if (!_menuController.IsActive && ShouldOpenWaypoints())
+		{
+			_inventoryController.Deactivate();
+			_waypointSession.Open();
+			_waypointSession.ConsumeInput();
 			return;
 		}
 
@@ -105,6 +130,9 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 		{
 			PlayerInput.Triggers.Current.Inventory = false;
 			PlayerInput.Triggers.JustPressed.Inventory = false;
+			// Every custom menu owns its keyboard, not just the scanner. Without this the
+			// player keeps acting on menu keys behind the screen.
+			AccessibleInputSuppression.ConsumeMenuNavigationAndLetterTriggers(Keyboard.GetState());
 		}
 
 		_inventoryController.Update();
@@ -113,21 +141,27 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 	public override void PostUpdateEverything()
 	{
 		_scannerSession?.UpdateVerification();
+		_waypointSession?.UpdateVerification();
 	}
 
 	public override void OnWorldLoad()
 	{
 		_scannerSession?.Reset();
+		_waypointSession?.Reset();
 	}
 
 	public override void OnWorldUnload()
 	{
 		_scannerSession?.Reset();
+		_waypointSession?.Reset();
+		_waypointStore?.Unload();
 	}
 
 	public override void Unload()
 	{
 		_scannerSession = null;
+		_waypointSession = null;
+		_waypointStore = null;
 		_inventoryController = null;
 		_menuController = null;
 		_openingSettings = false;
@@ -137,6 +171,27 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 	{
 		Player player = Main.LocalPlayer;
 		return AriadneMod.OpenScannerKeybind?.JustPressed == true &&
+			!FreecamSystem.IsActive &&
+			player.active &&
+			!player.dead &&
+			!player.ghost &&
+			!Main.playerInventory &&
+			!Main.drawingPlayerChat &&
+			!Main.editSign &&
+			!Main.editChest &&
+			!Main.mapFullscreen &&
+			!Main.ingameOptionsWindow &&
+			!Main.inFancyUI &&
+			Main.InGameUI.CurrentState is null &&
+			!(Main.CreativeMenu.Enabled && !Main.CreativeMenu.Blocked) &&
+			!PlayerInput.WritingText;
+	}
+
+	private static bool ShouldOpenWaypoints()
+	{
+		Player player = Main.LocalPlayer;
+		return AriadneMod.CombatTargetModifierKeybind?.Current == true &&
+			AriadneMod.OpenWaypointsKeybind?.JustPressed == true &&
 			!FreecamSystem.IsActive &&
 			player.active &&
 			!player.dead &&

@@ -7,9 +7,10 @@ Keybinds: {
 	AimRight.DisplayName: Aim Right
 	UseHeldItem.DisplayName: Use Held Item
 	SecondaryUse.DisplayName: Secondary Use or Interact
-	CombatTargetModifier.DisplayName: Combat Target Modifier
+	CombatTargetModifier.DisplayName: Ariadne Modifier (combat targeting and waypoints)
 	FreecamModifier.DisplayName: Freecam Modifier
 	PlayerStatus.DisplayName: Character Status Readout
+	OpenWaypoints.DisplayName: Open Waypoints (hold Ariadne Modifier)
 }
 
 Announcements: {
@@ -36,7 +37,7 @@ Announcements: {
 }
 
 Chat: {
-	Opened: Chat edit field. Type a message and press Enter to send, or Escape to cancel. Up and Down read received messages. F1 reads chat help.
+	Opened: Chat edit field. Type a message and press Enter to send, or Escape to cancel. Up and Down read received messages. Alt plus H reads chat help.
 	Closed: Chat closed.
 	Help: Chat help. Type a message normally. Enter sends the current message. Escape closes chat without sending. Up reads the newest message and then each older one, Down moves back toward the newest and returns to the edit field. Received messages are announced as they arrive, even while chat is closed.
 	MessageFromPlayer: "{0}: {1}"
