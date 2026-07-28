@@ -18,7 +18,7 @@ Announcements: {
 	WallTonesOff: Wall tones off
 	SmartCursor: Smart cursor
 	UnlockedCursor: Unlocked cursor
-	CursorCoordinates: "{0}. X {1}, Y {2}. {3}."
+	CursorCoordinates: "{0}. {1} {2}."
 	CursorInReach: In reach
 	CursorOutOfReach: Out of reach
 	FreecamActivated: Freecam active
@@ -76,6 +76,28 @@ Status: {
 	PhaseLateNight: late night
 }
 
+Position: {
+	AtPlayer: At your position.
+	TilesEast: "{0} tiles east"
+	TilesWest: "{0} tiles west"
+	TilesAbove: "{0} tiles above"
+	TilesBelow: "{0} tiles below"
+	SameEastWest: same east-west position
+	SameElevation: same elevation
+	RelativeSummary: about {0} tiles away, {1}, {2}
+	RawCoordinates: Tile {0}, {1}; {2}.
+	SpawnLongitude: at the world's spawn longitude
+	SpawnLevel: level with world spawn
+	EastOfSpawn: "{0} tiles east of world spawn"
+	WestOfSpawn: "{0} tiles west of world spawn"
+	SelfLocation: "{0}, {1}."
+}
+
+Settings: {
+	Zoom: Zoom: {0} percent
+	UIScale: UI Scale: {0} percent
+}
+
 Configs: {
 	AriadneClientConfig: {
 		DisplayName: Ariadne Accessibility Settings
@@ -97,7 +119,12 @@ Configs: {
 
 		CursorCoordinateAnnouncementsEnabled: {
 			Label: Cursor coordinate announcements
-			Tooltip: Include exact raw tile X and Y coordinates in unlocked-cursor movement announcements. Smart Cursor never announces coordinates.
+			Tooltip: Include tile coordinates in unlocked-cursor movement announcements. Smart Cursor never announces coordinates.
+		}
+
+		RelativeCoordinateReadoutEnabled: {
+			Label: Player-relative coordinates
+			Tooltip: Report positions as an offset from the player, who counts as zero, instead of as raw world tile numbers. Waypoint names always keep raw coordinates so they stay meaningful after you move.
 		}
 
 		LowHealthHeartbeatEnabled: {
@@ -130,9 +157,19 @@ Configs: {
 			Tooltip: Speak each item that reaches the inventory, including fishing catches. Repeated gains of the same item are collected for a moment and reported as one running total, and coins are merged into a single value.
 		}
 
+		FootstepSoundsEnabled: {
+			Label: Footstep sounds
+			Tooltip: Sound a step each time the player crosses a tile boundary on foot, raised in pitch while standing on a platform.
+		}
+
+		FootstepVolumePercent: {
+			Label: Footstep volume
+			Tooltip: Set footstep loudness as a percentage of the game's Sound volume.
+		}
+
 		MovementBumpTonesEnabled: {
 			Label: Blocked movement bumps
-			Tooltip: Thud once when a walk request stops making progress against terrain, repeating slowly while the direction stays blocked. Freecam uses the same cue, panned toward the blocked side and pitched up or down for vertical contact.
+			Tooltip: Thud once when a walk request stops making progress, repeating slowly while the direction stays blocked. A closed door answers higher and more hollow than terrain so it does not read as a dead end. The same cue reports landings, weighted by how far you fell, and contact with a ceiling overhead.
 		}
 
 		MovementBumpVolumePercent: {
@@ -142,7 +179,7 @@ Configs: {
 
 		WallToneEnabled: {
 			Label: Wall tones
-			Tooltip: Continuously indicate nearby left walls, right walls, and the gravity-relative ceiling with procedural audio.
+			Tooltip: Continuously indicate nearby left walls, right walls, and the gravity-relative ceiling with procedural audio. Walls pan to either side, while the ceiling stays centered and sits an octave above the ground below you.
 		}
 
 		WallToneVolumePercent: {
@@ -153,6 +190,16 @@ Configs: {
 		WallToneRangeTiles: {
 			Label: Wall tone range
 			Tooltip: Set the maximum sensing distance in tiles. A larger range begins indicating terrain sooner.
+		}
+
+		WallToneStereoWidthPercent: {
+			Label: Wall tone stereo width
+			Tooltip: Set how far left and right walls separate across the stereo field. Higher values push a wall further toward one ear, which makes it easier to tell a wall apart from the ceiling and floor.
+		}
+
+		FallTonesEnabled: {
+			Label: Falling tones
+			Tooltip: Sound the ground below while falling, rising in pitch and loudness as it approaches. Ordinary jumps and short step-downs stay silent.
 		}
 
 		HostileMobTonesEnabled: {

@@ -17,6 +17,19 @@ using Ariadne.Ingame.Freecam;
 
 namespace Ariadne.Ingame.Controls;
 
+/// <summary>
+/// Which combat-targeting command a modifier chord issued this tick. Naming the
+/// command lets the handler swallow only the direction it consumed, so the other
+/// walk directions survive the chord.
+/// </summary>
+internal enum CombatTargetCommand
+{
+	None,
+	Clear,
+	SelectPrevious,
+	SelectNext,
+}
+
 [Autoload(Side = ModSide.Client)]
 internal sealed class WorldCursorSystem : ModSystem
 {
@@ -104,21 +117,22 @@ internal sealed class WorldCursorSystem : ModSystem
 		bool targetLeftHeld = targetModifierHeld && PlayerInput.Triggers.Current.Left;
 		bool targetRightHeld = targetModifierHeld && PlayerInput.Triggers.Current.Right;
 		bool targetDownHeld = targetModifierHeld && PlayerInput.Triggers.Current.Down;
-		bool targetCommandHandled = !manualAimActive && HandleCombatTargetCommands(
-			player,
-			priorAimPoint,
-			leftPressed: targetLeftHeld && !_targetLeftWasHeld,
-			rightPressed: targetRightHeld && !_targetRightWasHeld,
-			downPressed: targetDownHeld && !_targetDownWasHeld);
-		bool targetMovementChordHeld = !manualAimActive &&
-			(targetLeftHeld || targetRightHeld || targetDownHeld);
+		CombatTargetCommand targetCommand = manualAimActive
+			? CombatTargetCommand.None
+			: HandleCombatTargetCommands(
+				player,
+				priorAimPoint,
+				leftPressed: targetLeftHeld && !_targetLeftWasHeld,
+				rightPressed: targetRightHeld && !_targetRightWasHeld,
+				downPressed: targetDownHeld && !_targetDownWasHeld);
+		bool targetCommandHandled = targetCommand != CombatTargetCommand.None;
 		_targetLeftWasHeld = targetLeftHeld;
 		_targetRightWasHeld = targetRightHeld;
 		_targetDownWasHeld = targetDownHeld;
-		if (targetCommandHandled || targetMovementChordHeld)
-		{
-			ConsumeTargetMovementChord();
-		}
+		// Only the direction that actually issued a command is swallowed, and only
+		// on its press edge. Consuming the whole hold stopped the player dead for as
+		// long as the chord was down, which is fatal during a boss fight.
+		ConsumeTargetMovementChord(targetCommand);
 		if (!targetCommandHandled)
 		{
 			_combatTargets.Update(player);
@@ -274,7 +288,16 @@ internal sealed class WorldCursorSystem : ModSystem
 		AriadneMod.ScreenReader.Output(description.TargetText, interrupt: false);
 	}
 
-	public override void OnWorldLoad() => ResetState();
+	public override void OnWorldLoad()
+	{
+		ResetState();
+		// Smart Cursor is the mode that resolves a target without a physical pointer, so it
+		// is the useful starting mode here even though vanilla always begins unlocked. Both
+		// device fields are set because Main.SmartCursorWanted picks between them by the
+		// cursor mode currently reported for the UI.
+		Main.SmartCursorWanted_Mouse = true;
+		Main.SmartCursorWanted_GamePad = true;
+	}
 
 	public override void OnWorldUnload() => ResetState();
 
@@ -333,7 +356,7 @@ internal sealed class WorldCursorSystem : ModSystem
 		AriadneMod.ScreenReader.Output(announcement, interrupt);
 	}
 
-	private bool HandleCombatTargetCommands(
+	private CombatTargetCommand HandleCombatTargetCommands(
 		Player player,
 		Vector2 currentAimPoint,
 		bool leftPressed,
@@ -346,40 +369,40 @@ internal sealed class WorldCursorSystem : ModSystem
 			_cursorState.Recenter(player);
 			WorldTargetDescription description = WorldTargetDescriber.Describe(_cursorState.PrecisionTile, player);
 			AriadneMod.ScreenReader.Output($"Combat target cleared. Cursor recentered. {description.DetailedText}");
-			return true;
+			return CombatTargetCommand.Clear;
 		}
 		if (leftPressed && !rightPressed)
 		{
 			_combatTargets.SelectPrevious(player, currentAimPoint);
-			return true;
+			return CombatTargetCommand.SelectPrevious;
 		}
 		if (rightPressed && !leftPressed)
 		{
 			_combatTargets.SelectNext(player, currentAimPoint);
-			return true;
+			return CombatTargetCommand.SelectNext;
 		}
-		return false;
+		return CombatTargetCommand.None;
 	}
 
-	private static void ConsumeTargetMovementChord()
+	private static void ConsumeTargetMovementChord(CombatTargetCommand command)
 	{
-		if (PlayerInput.Triggers.Current.Left)
+		switch (command)
 		{
-			PlayerInput.Triggers.Current.Left = false;
-			PlayerInput.Triggers.JustPressed.Left = false;
-			PlayerInput.Triggers.JustReleased.Left = false;
-		}
-		if (PlayerInput.Triggers.Current.Right)
-		{
-			PlayerInput.Triggers.Current.Right = false;
-			PlayerInput.Triggers.JustPressed.Right = false;
-			PlayerInput.Triggers.JustReleased.Right = false;
-		}
-		if (PlayerInput.Triggers.Current.Down)
-		{
-			PlayerInput.Triggers.Current.Down = false;
-			PlayerInput.Triggers.JustPressed.Down = false;
-			PlayerInput.Triggers.JustReleased.Down = false;
+			case CombatTargetCommand.SelectPrevious:
+				PlayerInput.Triggers.Current.Left = false;
+				PlayerInput.Triggers.JustPressed.Left = false;
+				PlayerInput.Triggers.JustReleased.Left = false;
+				break;
+			case CombatTargetCommand.SelectNext:
+				PlayerInput.Triggers.Current.Right = false;
+				PlayerInput.Triggers.JustPressed.Right = false;
+				PlayerInput.Triggers.JustReleased.Right = false;
+				break;
+			case CombatTargetCommand.Clear:
+				PlayerInput.Triggers.Current.Down = false;
+				PlayerInput.Triggers.JustPressed.Down = false;
+				PlayerInput.Triggers.JustReleased.Down = false;
+				break;
 		}
 	}
 
@@ -402,6 +425,13 @@ internal sealed class WorldCursorSystem : ModSystem
 	private static bool PredictSmartCursorState()
 	{
 		bool current = Main.SmartCursorIsUsed;
+		// Hook dispatch order between systems is not guaranteed, so this cannot rely on the
+		// menu system having already cleared the trigger on the frame a menu closes.
+		if (AccessibleInputSuppression.IsCursorModeSuppressed)
+		{
+			return current;
+		}
+
 		if (Main.cSmartCursorModeIsToggleAndNotHold)
 		{
 			return PlayerInput.Triggers.JustPressed.SmartCursor ? !current : current;

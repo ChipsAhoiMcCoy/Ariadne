@@ -20,6 +20,7 @@
 *.log
 *.tmp
 /.local-scratch/
+/Future Feature Requests.md
 
 # Local interactive experiments (not part of the shipped mod)
 /TestBenches/EnemyToneEmission/

@@ -23,11 +23,12 @@ internal readonly record struct WallToneRegionSnapshot(
 internal readonly record struct WallToneSnapshot(
 	WallToneRegionSnapshot Left,
 	WallToneRegionSnapshot Right,
-	WallToneRegionSnapshot Ceiling)
+	WallToneRegionSnapshot Ceiling,
+	WallToneRegionSnapshot Floor)
 {
 	internal static WallToneSnapshot Empty(float maximumDistancePixels)
 	{
 		WallToneRegionSnapshot empty = WallToneRegionSnapshot.Empty(maximumDistancePixels);
-		return new(empty, empty, empty);
+		return new(empty, empty, empty, empty);
 	}
 }

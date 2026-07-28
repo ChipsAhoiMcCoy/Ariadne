@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using Terraria;
 using Terraria.Audio;
@@ -15,22 +16,33 @@ internal sealed class WallToneAudioStream : IDisposable
 	private const int FramesPerBuffer = 512;
 	private const int TargetQueuedBuffers = 6;
 	private const float VoiceHeadroomGain = 0.28f;
-	private const float MinimumFrequency = 320f;
-	private const float MaximumFrequency = 2_400f;
+	private const float MinimumStereoWidthDecibels = 6f;
+	private const float MaximumStereoWidthDecibels = 24f;
+
+	// The sides are the neutral reference. The ceiling sits higher and narrower so it
+	// reads thin and focused, the floor lower and broader so it reads as a rumble.
+	// Timbre, the mixer's vertical pitch law and pan then all name the same surface
+	// instead of the distinction resting on any one of them.
+	private static readonly WallToneVoiceDesign SideDesign = new(320f, 2_400f, 1.4f);
+	private static readonly WallToneVoiceDesign CeilingDesign = new(480f, 3_200f, 2.2f);
+	private static readonly WallToneVoiceDesign FloorDesign = new(180f, 1_200f, 0.9f);
 
 	private readonly Mod _owner;
-	private readonly WallToneVoice _leftVoice = new(0x93A4_52E1u);
-	private readonly WallToneVoice _rightVoice = new(0xD17B_8305u);
-	private readonly WallToneVoice _ceilingVoice = new(0x6C8E_9CF3u);
+	private readonly WallToneVoice _leftVoice = new(0x93A4_52E1u, SideDesign);
+	private readonly WallToneVoice _rightVoice = new(0xD17B_8305u, SideDesign);
+	private readonly WallToneVoice _ceilingVoice = new(0x6C8E_9CF3u, CeilingDesign);
+	private readonly WallToneVoice _floorVoice = new(0x2B57_41ADu, FloorDesign);
 	private readonly SpatialAudioEmitter _leftEmitter = new();
 	private readonly SpatialAudioEmitter _rightEmitter = new();
 	private readonly SpatialAudioEmitter _ceilingEmitter = new();
+	private readonly SpatialAudioEmitter _floorEmitter = new();
 	private readonly float[] _leftMix = new float[FramesPerBuffer];
 	private readonly float[] _rightMix = new float[FramesPerBuffer];
 	private readonly byte[] _pcmBuffer = new byte[FramesPerBuffer * 2 * sizeof(short)];
 	private DynamicSoundEffectInstance? _stream;
 	private bool _itdEnabled = true;
 	private float _maximumItdMilliseconds = 0.65f;
+	private float _farEarAttenuationDecibels = MaximumStereoWidthDecibels;
 	private bool _isRunning;
 	private bool _isReset = true;
 	private bool _failureLogged;
@@ -77,11 +89,16 @@ internal sealed class WallToneAudioStream : IDisposable
 
 		_itdEnabled = config.SpatialAudioItdEnabled;
 		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
+		_farEarAttenuationDecibels = MathHelper.Lerp(
+			MinimumStereoWidthDecibels,
+			MaximumStereoWidthDecibels,
+			Math.Clamp(config.WallToneStereoWidthPercent / 100f, 0f, 1f));
 		float configuredGain = Math.Clamp(config.WallToneVolumePercent / 100f, 0f, 1f);
 		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceHeadroomGain;
 		SetVoiceTarget(_leftVoice, _leftEmitter, snapshot.Left, masterGain);
 		SetVoiceTarget(_rightVoice, _rightEmitter, snapshot.Right, masterGain);
 		SetVoiceTarget(_ceilingVoice, _ceilingEmitter, snapshot.Ceiling, masterGain);
+		SetVoiceTarget(_floorVoice, _floorEmitter, snapshot.Floor, masterGain);
 		_isReset = false;
 	}
 
@@ -177,8 +194,7 @@ internal sealed class WallToneAudioStream : IDisposable
 	{
 		float proximity = snapshot.Proximity;
 		float distanceGain = SpatialAudioDistanceGain.FromProximity(proximity);
-		float frequency = MinimumFrequency * MathF.Pow(MaximumFrequency / MinimumFrequency, proximity);
-		voice.SetTarget(frequency, masterGain);
+		voice.SetTarget(voice.FrequencyForProximity(proximity), masterGain);
 		emitter.SetTarget(new(
 			snapshot.NormalizedPosition.X,
 			snapshot.NormalizedPosition.Y,
@@ -189,9 +205,10 @@ internal sealed class WallToneAudioStream : IDisposable
 	{
 		Array.Clear(_leftMix);
 		Array.Clear(_rightMix);
-		_leftEmitter.Render(_leftVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
-		_rightEmitter.Render(_rightVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
-		_ceilingEmitter.Render(_ceilingVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
+		_leftEmitter.Render(_leftVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix, _farEarAttenuationDecibels);
+		_rightEmitter.Render(_rightVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix, _farEarAttenuationDecibels);
+		_ceilingEmitter.Render(_ceilingVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix, _farEarAttenuationDecibels);
+		_floorEmitter.Render(_floorVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix, _farEarAttenuationDecibels);
 
 		for (int frame = 0; frame < FramesPerBuffer; frame++)
 		{
@@ -210,9 +227,11 @@ internal sealed class WallToneAudioStream : IDisposable
 		_leftVoice.Reset();
 		_rightVoice.Reset();
 		_ceilingVoice.Reset();
+		_floorVoice.Reset();
 		_leftEmitter.Reset();
 		_rightEmitter.Reset();
 		_ceilingEmitter.Reset();
+		_floorEmitter.Reset();
 		Array.Clear(_leftMix);
 		Array.Clear(_rightMix);
 		Array.Clear(_pcmBuffer);
@@ -251,25 +270,44 @@ internal sealed class WallToneAudioStream : IDisposable
 	}
 }
 
+/// <summary>
+/// The band a terrain voice sweeps between its farthest and nearest surface, and
+/// the filter resonance that gives it its character.
+/// </summary>
+internal readonly record struct WallToneVoiceDesign(
+	float MinimumFrequency,
+	float MaximumFrequency,
+	float FilterQ);
+
 internal sealed class WallToneVoice : ISpatialMonoSource
 {
-	private const float DefaultFilterQ = 1.4f;
 	private static readonly float FrequencySmoothing = SmoothingCoefficient(0.035f);
 	private static readonly float GainSmoothing = SmoothingCoefficient(0.020f);
 
 	private readonly uint _initialNoiseState;
+	private readonly WallToneVoiceDesign _design;
 	private uint _noiseState;
-	private float _targetFrequency = 320f;
+	private float _targetFrequency;
 	private float _targetGain;
-	private float _currentFrequency = 320f;
+	private float _currentFrequency;
 	private float _currentGain;
 	private float _integratorOne;
 	private float _integratorTwo;
 
-	internal WallToneVoice(uint seed)
+	internal WallToneVoice(uint seed, WallToneVoiceDesign design)
 	{
 		_initialNoiseState = seed;
 		_noiseState = _initialNoiseState;
+		_design = design;
+		_targetFrequency = design.MinimumFrequency;
+		_currentFrequency = design.MinimumFrequency;
+	}
+
+	internal float FrequencyForProximity(float proximity)
+	{
+		return _design.MinimumFrequency * MathF.Pow(
+			_design.MaximumFrequency / _design.MinimumFrequency,
+			Math.Clamp(proximity, 0f, 1f));
 	}
 
 	internal void SetTarget(float frequency, float gain)
@@ -283,16 +321,16 @@ internal sealed class WallToneVoice : ISpatialMonoSource
 		_currentFrequency += (_targetFrequency - _currentFrequency) * FrequencySmoothing;
 		_currentGain += (_targetGain - _currentGain) * GainSmoothing;
 		float centerFrequency = Math.Clamp(_currentFrequency * pitchRatio, 120f, 6_000f);
-		float bandPassedNoise = FilterBandPass(NextWhiteNoise(ref _noiseState), centerFrequency, DefaultFilterQ);
+		float bandPassedNoise = FilterBandPass(NextWhiteNoise(ref _noiseState), centerFrequency, _design.FilterQ);
 		return bandPassedNoise * _currentGain;
 	}
 
 	public void Reset()
 	{
 		_noiseState = _initialNoiseState;
-		_targetFrequency = 320f;
+		_targetFrequency = _design.MinimumFrequency;
 		_targetGain = 0f;
-		_currentFrequency = 320f;
+		_currentFrequency = _design.MinimumFrequency;
 		_currentGain = 0f;
 		_integratorOne = 0f;
 		_integratorTwo = 0f;

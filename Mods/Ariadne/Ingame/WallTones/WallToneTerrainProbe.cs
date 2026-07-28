@@ -17,11 +17,15 @@ internal static class WallToneTerrainProbe
 	private const float FirstProbeOffsetPixels = 0.25f;
 	private const int RefinementSteps = 6;
 	private const float BodyProbeSpan = 0.85f;
-	// Adjacent body probes are roughly six pixels apart for a normal player. Keeping
-	// this below that spacing rejects diagonal ramps while tolerating ray refinement.
-	private const float SurfaceAlignmentTolerancePixels = 2f;
+	// Step-up terrain is rejected because its upper probes miss the surface entirely,
+	// not because the hits disagree, so this tolerance only has to admit an uneven
+	// face. Half a tile keeps rough cave walls audible without merging separate ledges.
+	private const float SurfaceAlignmentTolerancePixels = TileSize * 0.5f;
 
-	internal static WallToneSnapshot Sample(SpatialObserverSnapshot observer, int rangeTiles)
+	internal static WallToneSnapshot Sample(
+		SpatialObserverSnapshot observer,
+		int rangeTiles,
+		bool includeFloor)
 	{
 		float maximumDistance = Math.Clamp(rangeTiles, 4, 30) * TileSize;
 		Vector2 center = observer.Center;
@@ -31,7 +35,10 @@ internal static class WallToneTerrainProbe
 		return new(
 			SampleSideRegion(center, halfSize, -1f, maximumDistance),
 			SampleSideRegion(center, halfSize, 1f, maximumDistance),
-			SampleCeilingRegion(center, halfSize, gravityDirection, maximumDistance));
+			SampleVerticalRegion(center, halfSize, -gravityDirection, maximumDistance),
+			includeFloor
+				? SampleVerticalRegion(center, halfSize, gravityDirection, maximumDistance)
+				: WallToneRegionSnapshot.Empty(maximumDistance));
 	}
 
 	private static WallToneRegionSnapshot SampleSideRegion(
@@ -77,48 +84,50 @@ internal static class WallToneTerrainProbe
 			hitPoints);
 	}
 
-	private static WallToneRegionSnapshot SampleCeilingRegion(
+	/// <summary>
+	/// Samples the surface above or below the body. Unlike a side, a single block
+	/// overhead already blocks upward movement and a single block underfoot already
+	/// ends a fall, so the nearest hit wins outright with no alignment requirement.
+	/// Demanding agreement here silenced both a lone block and two blocks at
+	/// different heights, which is the whole obstacle in either case.
+	/// </summary>
+	private static WallToneRegionSnapshot SampleVerticalRegion(
 		Vector2 playerCenter,
 		Vector2 playerHalfSize,
-		float gravityDirection,
+		float verticalDirection,
 		float maximumDistance)
 	{
-		Span<float> distances = stackalloc float[ProbeCount];
-		Span<Vector2> hitPoints = stackalloc Vector2[ProbeCount];
-		Span<bool> hits = stackalloc bool[ProbeCount];
-		hits.Clear();
-		Vector2 direction = new(0f, -gravityDirection);
+		Vector2 direction = new(0f, verticalDirection);
 		float horizontalSpan = MathF.Max(playerHalfSize.X * BodyProbeSpan, TileSize * 1.5f);
+		float nearestDistance = float.PositiveInfinity;
+		Vector2 nearestPoint = Vector2.Zero;
 
 		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
 		{
 			float horizontalAmount = probeIndex / (float)(ProbeCount - 1) * 2f - 1f;
 			Vector2 origin = playerCenter + new Vector2(
 				horizontalAmount * horizontalSpan,
-				-gravityDirection * playerHalfSize.Y);
-			if (!TryRaycast(origin, direction, maximumDistance, out float distance, out Vector2 hitPoint))
+				verticalDirection * playerHalfSize.Y);
+			if (!TryRaycast(origin, direction, maximumDistance, out float distance, out Vector2 hitPoint) ||
+				distance >= nearestDistance)
 			{
-				distances[probeIndex] = maximumDistance;
 				continue;
 			}
 
-			hits[probeIndex] = true;
-			distances[probeIndex] = distance;
-			hitPoints[probeIndex] = hitPoint;
+			nearestDistance = distance;
+			nearestPoint = hitPoint;
 		}
 
-		Span<bool> alignedHits = stackalloc bool[ProbeCount];
-		if (!TrySelectAlignedSurface(hits, distances, alignedHits, out _))
+		if (!float.IsFinite(nearestDistance))
 		{
 			return WallToneRegionSnapshot.Empty(maximumDistance);
 		}
 
-		return CreateSnapshot(
-			playerCenter,
+		return new(
+			true,
+			nearestDistance,
 			maximumDistance,
-			alignedHits,
-			distances,
-			hitPoints);
+			NormalizeToSurfaceDirection(nearestPoint, playerCenter));
 	}
 
 	private static bool TrySelectAlignedSurface(
@@ -209,7 +218,7 @@ internal static class WallToneTerrainProbe
 			true,
 			weightedDistance / totalWeight,
 			maximumDistance,
-			NormalizeToScanSquare(centroid, playerCenter, maximumDistance));
+			NormalizeToSurfaceDirection(centroid, playerCenter));
 	}
 
 	private static bool TryRaycast(
@@ -266,16 +275,21 @@ internal static class WallToneTerrainProbe
 		return Collision.IsWorldPointSolid(point, treatPlatformsAsNonSolid: true);
 	}
 
-	private static Vector2 NormalizeToScanSquare(
-		Vector2 point,
-		Vector2 playerCenter,
-		float maximumDistance)
+	/// <summary>
+	/// Reduces a surface to a pure direction from the body. Dividing by the scan
+	/// range instead made a near wall pan more centered than a far one and shrank the
+	/// ceiling's pitch lift to about a semitone, so walls, ceiling and floor all
+	/// sounded alike. Carrying direction here leaves distance entirely to gain and
+	/// filter frequency: a side reaches full pan, and a ceiling and floor land a
+	/// clean octave apart under the mixer's vertical pitch law.
+	/// </summary>
+	private static Vector2 NormalizeToSurfaceDirection(Vector2 point, Vector2 playerCenter)
 	{
 		Vector2 offset = point - playerCenter;
-		float extent = MathF.Max(1f, maximumDistance);
+		float length = offset.Length();
 
-		return new(
-			MathHelper.Clamp(offset.X / extent, -1f, 1f),
-			MathHelper.Clamp(offset.Y / extent, -1f, 1f));
+		return length > float.Epsilon
+			? offset / length
+			: Vector2.Zero;
 	}
 }

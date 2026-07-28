@@ -160,94 +160,58 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.BiomeAnnouncementsEnabled))}: {OnOff(_pending.BiomeAnnouncementsEnabled)}",
-			ToggleBiomeAnnouncementsEnabled,
-			previousValue: ToggleBiomeAnnouncementsEnabled,
-			nextValue: ToggleBiomeAnnouncementsEnabled,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.BiomeAnnouncementsEnabled)),
-			role: "toggle",
-			adjustmentAnnouncement: () => OnOff(_pending.BiomeAnnouncementsEnabled)));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.CursorEarconsEnabled))}: {OnOff(_pending.CursorEarconsEnabled)}",
-			ToggleCursorEarconsEnabled,
-			previousValue: ToggleCursorEarconsEnabled,
-			nextValue: ToggleCursorEarconsEnabled,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.CursorEarconsEnabled)),
-			role: "toggle",
-			adjustmentAnnouncement: () => OnOff(_pending.CursorEarconsEnabled)));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.CursorEarconVolumePercent))}: {_pending.CursorEarconVolumePercent} percent",
-			IncreaseCursorEarconVolume,
-			previousValue: DecreaseCursorEarconVolume,
-			nextValue: IncreaseCursorEarconVolume,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.CursorEarconVolumePercent)),
-			role: "slider",
-			adjustmentAnnouncement: () => $"{_pending.CursorEarconVolumePercent} percent"));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.CursorCoordinateAnnouncementsEnabled))}: {OnOff(_pending.CursorCoordinateAnnouncementsEnabled)}",
-			ToggleCursorCoordinateAnnouncementsEnabled,
-			previousValue: ToggleCursorCoordinateAnnouncementsEnabled,
-			nextValue: ToggleCursorCoordinateAnnouncementsEnabled,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.CursorCoordinateAnnouncementsEnabled)),
-			role: "toggle",
-			adjustmentAnnouncement: () => OnOff(_pending.CursorCoordinateAnnouncementsEnabled)));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.WallToneEnabled))}: {OnOff(_pending.WallToneEnabled)}",
-			ToggleWallToneEnabled,
-			previousValue: ToggleWallToneEnabled,
-			nextValue: ToggleWallToneEnabled,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.WallToneEnabled)),
-			role: "toggle",
-			adjustmentAnnouncement: () => OnOff(_pending.WallToneEnabled)));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.WallToneVolumePercent))}: {_pending.WallToneVolumePercent} percent",
-			IncreaseWallToneVolume,
-			previousValue: DecreaseWallToneVolume,
-			nextValue: IncreaseWallToneVolume,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.WallToneVolumePercent)),
-			role: "slider",
-			adjustmentAnnouncement: () => $"{_pending.WallToneVolumePercent} percent"));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.WallToneRangeTiles))}: {_pending.WallToneRangeTiles} tiles",
-			IncreaseWallToneRange,
-			previousValue: DecreaseWallToneRange,
-			nextValue: IncreaseWallToneRange,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.WallToneRangeTiles)),
-			role: "slider",
-			adjustmentAnnouncement: () => $"{_pending.WallToneRangeTiles} tiles"));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.HostileMobTonesEnabled))}: {OnOff(_pending.HostileMobTonesEnabled)}",
-			ToggleHostileMobTonesEnabled,
-			previousValue: ToggleHostileMobTonesEnabled,
-			nextValue: ToggleHostileMobTonesEnabled,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.HostileMobTonesEnabled)),
-			role: "toggle",
-			adjustmentAnnouncement: () => OnOff(_pending.HostileMobTonesEnabled)));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.HostileMobToneVolumePercent))}: {_pending.HostileMobToneVolumePercent} percent",
-			IncreaseHostileMobToneVolume,
-			previousValue: DecreaseHostileMobToneVolume,
-			nextValue: IncreaseHostileMobToneVolume,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.HostileMobToneVolumePercent)),
-			role: "slider",
-			adjustmentAnnouncement: () => $"{_pending.HostileMobToneVolumePercent} percent"));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.HostileMobMaximumEmitters))}: {_pending.HostileMobMaximumEmitters}",
-			IncreaseHostileMobMaximumEmitters,
-			previousValue: DecreaseHostileMobMaximumEmitters,
-			nextValue: IncreaseHostileMobMaximumEmitters,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.HostileMobMaximumEmitters)),
-			role: "slider",
-			adjustmentAnnouncement: () => $"{_pending.HostileMobMaximumEmitters} enemies"));
-		entries.Add(new(
-			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.SpatialAudioItdEnabled))}: {OnOff(_pending.SpatialAudioItdEnabled)}",
-			ToggleSpatialAudioItdEnabled,
-			previousValue: ToggleSpatialAudioItdEnabled,
-			nextValue: ToggleSpatialAudioItdEnabled,
-			description: () => ConfigFieldTooltip(nameof(AriadneClientConfig.SpatialAudioItdEnabled)),
-			role: "toggle",
-			adjustmentAnnouncement: () => OnOff(_pending.SpatialAudioItdEnabled)));
+		AddToggle(entries, nameof(AriadneClientConfig.BiomeAnnouncementsEnabled),
+			() => _pending.BiomeAnnouncementsEnabled, value => _pending.BiomeAnnouncementsEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.CursorEarconsEnabled),
+			() => _pending.CursorEarconsEnabled, value => _pending.CursorEarconsEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.CursorEarconVolumePercent),
+			() => _pending.CursorEarconVolumePercent, value => _pending.CursorEarconVolumePercent = value);
+		AddToggle(entries, nameof(AriadneClientConfig.CursorCoordinateAnnouncementsEnabled),
+			() => _pending.CursorCoordinateAnnouncementsEnabled, value => _pending.CursorCoordinateAnnouncementsEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RelativeCoordinateReadoutEnabled),
+			() => _pending.RelativeCoordinateReadoutEnabled, value => _pending.RelativeCoordinateReadoutEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.LowHealthHeartbeatEnabled),
+			() => _pending.LowHealthHeartbeatEnabled, value => _pending.LowHealthHeartbeatEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.LowHealthHeartbeatVolumePercent),
+			() => _pending.LowHealthHeartbeatVolumePercent, value => _pending.LowHealthHeartbeatVolumePercent = value);
+		AddToggle(entries, nameof(AriadneClientConfig.LowHealthAnnouncementsEnabled),
+			() => _pending.LowHealthAnnouncementsEnabled, value => _pending.LowHealthAnnouncementsEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.BreathAnnouncementsEnabled),
+			() => _pending.BreathAnnouncementsEnabled, value => _pending.BreathAnnouncementsEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.HotbarAnnouncementsEnabled),
+			() => _pending.HotbarAnnouncementsEnabled, value => _pending.HotbarAnnouncementsEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.ItemPickupAnnouncementsEnabled),
+			() => _pending.ItemPickupAnnouncementsEnabled, value => _pending.ItemPickupAnnouncementsEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.FootstepSoundsEnabled),
+			() => _pending.FootstepSoundsEnabled, value => _pending.FootstepSoundsEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.FootstepVolumePercent),
+			() => _pending.FootstepVolumePercent, value => _pending.FootstepVolumePercent = value);
+		AddToggle(entries, nameof(AriadneClientConfig.MovementBumpTonesEnabled),
+			() => _pending.MovementBumpTonesEnabled, value => _pending.MovementBumpTonesEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.MovementBumpVolumePercent),
+			() => _pending.MovementBumpVolumePercent, value => _pending.MovementBumpVolumePercent = value);
+		AddToggle(entries, nameof(AriadneClientConfig.WallToneEnabled),
+			() => _pending.WallToneEnabled, value => _pending.WallToneEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.WallToneVolumePercent),
+			() => _pending.WallToneVolumePercent, value => _pending.WallToneVolumePercent = value);
+		AddSlider(entries, nameof(AriadneClientConfig.WallToneRangeTiles),
+			() => _pending.WallToneRangeTiles, value => _pending.WallToneRangeTiles = value,
+			minimum: 4, maximum: 30, step: 1, format: value => $"{value} tiles");
+		AddPercentSlider(entries, nameof(AriadneClientConfig.WallToneStereoWidthPercent),
+			() => _pending.WallToneStereoWidthPercent, value => _pending.WallToneStereoWidthPercent = value);
+		AddToggle(entries, nameof(AriadneClientConfig.FallTonesEnabled),
+			() => _pending.FallTonesEnabled, value => _pending.FallTonesEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.HostileMobTonesEnabled),
+			() => _pending.HostileMobTonesEnabled, value => _pending.HostileMobTonesEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.HostileMobToneVolumePercent),
+			() => _pending.HostileMobToneVolumePercent, value => _pending.HostileMobToneVolumePercent = value);
+		AddSlider(entries, nameof(AriadneClientConfig.HostileMobMaximumEmitters),
+			() => _pending.HostileMobMaximumEmitters, value => _pending.HostileMobMaximumEmitters = value,
+			minimum: 1, maximum: 4, step: 1, format: value => $"{value} enemies");
+		AddPercentSlider(entries, nameof(AriadneClientConfig.FreecamBeaconVolumePercent),
+			() => _pending.FreecamBeaconVolumePercent, value => _pending.FreecamBeaconVolumePercent = value);
+		AddToggle(entries, nameof(AriadneClientConfig.SpatialAudioItdEnabled),
+			() => _pending.SpatialAudioItdEnabled, value => _pending.SpatialAudioItdEnabled = value);
 		entries.Add(new(
 			() => $"{ConfigFieldLabel(nameof(AriadneClientConfig.SpatialAudioItdStrengthMilliseconds))}: {ItdAmount(_pending.SpatialAudioItdStrengthMilliseconds)}",
 			IncreaseSpatialAudioItdStrength,
@@ -287,100 +251,67 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 			DiscardAndGoBack));
 	}
 
-	private void ToggleWallToneEnabled()
+	/// <summary>
+	/// Declares one Boolean option. Building every option through these two helpers
+	/// keeps a new setting to a single line and, with the pending comparison and
+	/// default restore now driven from the config object itself, removes the older
+	/// arrangement's habit of leaving an option half-wired across five places.
+	/// </summary>
+	private void AddToggle(
+		List<AccessibleMenuEntry> entries,
+		string field,
+		Func<bool> read,
+		Action<bool> write)
 	{
-		_pending.WallToneEnabled = !_pending.WallToneEnabled;
-		MarkChanged();
+		void Toggle()
+		{
+			write(!read());
+			MarkChanged();
+		}
+
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(field)}: {OnOff(read())}",
+			Toggle,
+			previousValue: Toggle,
+			nextValue: Toggle,
+			description: () => ConfigFieldTooltip(field),
+			role: "toggle",
+			adjustmentAnnouncement: () => OnOff(read())));
 	}
 
-	private void ToggleBiomeAnnouncementsEnabled()
+	private void AddPercentSlider(
+		List<AccessibleMenuEntry> entries,
+		string field,
+		Func<int> read,
+		Action<int> write)
 	{
-		_pending.BiomeAnnouncementsEnabled = !_pending.BiomeAnnouncementsEnabled;
-		MarkChanged();
+		AddSlider(entries, field, read, write, 0, 100, 5, value => $"{value} percent");
 	}
 
-	private void ToggleCursorEarconsEnabled()
+	private void AddSlider(
+		List<AccessibleMenuEntry> entries,
+		string field,
+		Func<int> read,
+		Action<int> write,
+		int minimum,
+		int maximum,
+		int step,
+		Func<int, string> format)
 	{
-		_pending.CursorEarconsEnabled = !_pending.CursorEarconsEnabled;
-		MarkChanged();
-	}
+		void Adjust(int direction)
+		{
+			write(Math.Clamp(read() + direction * step, minimum, maximum));
+			MarkChanged();
+		}
 
-	private void IncreaseCursorEarconVolume()
-	{
-		_pending.CursorEarconVolumePercent = Math.Min(100, _pending.CursorEarconVolumePercent + 5);
-		MarkChanged();
-	}
-
-	private void DecreaseCursorEarconVolume()
-	{
-		_pending.CursorEarconVolumePercent = Math.Max(0, _pending.CursorEarconVolumePercent - 5);
-		MarkChanged();
-	}
-
-	private void ToggleCursorCoordinateAnnouncementsEnabled()
-	{
-		_pending.CursorCoordinateAnnouncementsEnabled = !_pending.CursorCoordinateAnnouncementsEnabled;
-		MarkChanged();
-	}
-
-	private void IncreaseWallToneVolume()
-	{
-		_pending.WallToneVolumePercent = Math.Min(100, _pending.WallToneVolumePercent + 5);
-		MarkChanged();
-	}
-
-	private void DecreaseWallToneVolume()
-	{
-		_pending.WallToneVolumePercent = Math.Max(0, _pending.WallToneVolumePercent - 5);
-		MarkChanged();
-	}
-
-	private void IncreaseWallToneRange()
-	{
-		_pending.WallToneRangeTiles = Math.Min(30, _pending.WallToneRangeTiles + 1);
-		MarkChanged();
-	}
-
-	private void DecreaseWallToneRange()
-	{
-		_pending.WallToneRangeTiles = Math.Max(4, _pending.WallToneRangeTiles - 1);
-		MarkChanged();
-	}
-
-	private void ToggleHostileMobTonesEnabled()
-	{
-		_pending.HostileMobTonesEnabled = !_pending.HostileMobTonesEnabled;
-		MarkChanged();
-	}
-
-	private void IncreaseHostileMobToneVolume()
-	{
-		_pending.HostileMobToneVolumePercent = Math.Min(100, _pending.HostileMobToneVolumePercent + 5);
-		MarkChanged();
-	}
-
-	private void DecreaseHostileMobToneVolume()
-	{
-		_pending.HostileMobToneVolumePercent = Math.Max(0, _pending.HostileMobToneVolumePercent - 5);
-		MarkChanged();
-	}
-
-	private void IncreaseHostileMobMaximumEmitters()
-	{
-		_pending.HostileMobMaximumEmitters = Math.Min(4, _pending.HostileMobMaximumEmitters + 1);
-		MarkChanged();
-	}
-
-	private void DecreaseHostileMobMaximumEmitters()
-	{
-		_pending.HostileMobMaximumEmitters = Math.Max(1, _pending.HostileMobMaximumEmitters - 1);
-		MarkChanged();
-	}
-
-	private void ToggleSpatialAudioItdEnabled()
-	{
-		_pending.SpatialAudioItdEnabled = !_pending.SpatialAudioItdEnabled;
-		MarkChanged();
+		entries.Add(new(
+			() => $"{ConfigFieldLabel(field)}: {format(read())}",
+			() => Adjust(1),
+			previousValue: () => Adjust(-1),
+			nextValue: () => Adjust(1),
+			description: () => ConfigFieldTooltip(field),
+			role: "slider",
+			adjustmentAnnouncement: () => format(read())));
 	}
 
 	private void IncreaseSpatialAudioItdStrength()
@@ -422,19 +353,9 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 
 	private void RestoreDefaults()
 	{
-		AriadneClientConfig defaults = new();
-		_pending.BiomeAnnouncementsEnabled = defaults.BiomeAnnouncementsEnabled;
-		_pending.CursorEarconsEnabled = defaults.CursorEarconsEnabled;
-		_pending.CursorEarconVolumePercent = defaults.CursorEarconVolumePercent;
-		_pending.CursorCoordinateAnnouncementsEnabled = defaults.CursorCoordinateAnnouncementsEnabled;
-		_pending.WallToneEnabled = defaults.WallToneEnabled;
-		_pending.WallToneVolumePercent = defaults.WallToneVolumePercent;
-		_pending.WallToneRangeTiles = defaults.WallToneRangeTiles;
-		_pending.HostileMobTonesEnabled = defaults.HostileMobTonesEnabled;
-		_pending.HostileMobToneVolumePercent = defaults.HostileMobToneVolumePercent;
-		_pending.HostileMobMaximumEmitters = defaults.HostileMobMaximumEmitters;
-		_pending.SpatialAudioItdEnabled = defaults.SpatialAudioItdEnabled;
-		_pending.SpatialAudioItdStrengthMilliseconds = defaults.SpatialAudioItdStrengthMilliseconds;
+		// A fresh instance already carries every property initializer, so restoring
+		// from one covers options this screen has not been taught about yet.
+		_pending = Clone(new AriadneClientConfig());
 		_lastStatus = "Defaults restored as pending values.";
 	}
 
@@ -452,18 +373,9 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 
 	private bool HasChanges()
 	{
-		return _pending.BiomeAnnouncementsEnabled != _active.BiomeAnnouncementsEnabled ||
-			_pending.CursorEarconsEnabled != _active.CursorEarconsEnabled ||
-			_pending.CursorEarconVolumePercent != _active.CursorEarconVolumePercent ||
-			_pending.CursorCoordinateAnnouncementsEnabled != _active.CursorCoordinateAnnouncementsEnabled ||
-			_pending.WallToneEnabled != _active.WallToneEnabled ||
-			_pending.WallToneVolumePercent != _active.WallToneVolumePercent ||
-			_pending.WallToneRangeTiles != _active.WallToneRangeTiles ||
-			_pending.HostileMobTonesEnabled != _active.HostileMobTonesEnabled ||
-			_pending.HostileMobToneVolumePercent != _active.HostileMobToneVolumePercent ||
-			_pending.HostileMobMaximumEmitters != _active.HostileMobMaximumEmitters ||
-			_pending.SpatialAudioItdEnabled != _active.SpatialAudioItdEnabled ||
-			_pending.SpatialAudioItdStrengthMilliseconds != _active.SpatialAudioItdStrengthMilliseconds;
+		// tModLoader's own deep comparison sees every property, so an option cannot
+		// be edited without Save changes noticing it.
+		return !ConfigManager.ObjectEquals(_pending, _active);
 	}
 
 	private string SaveDescription()

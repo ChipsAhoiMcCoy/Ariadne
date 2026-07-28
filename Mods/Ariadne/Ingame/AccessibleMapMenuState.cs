@@ -27,7 +27,7 @@ internal sealed class AccessibleMapMenuState : AccessibleMenuState
 		Player player = Main.LocalPlayer;
 		entries.Add(new(
 			() => $"Current location: {BiomeStatusFormatter.Capture(player, includeElevation: true).Description}",
-			description: () => WorldPositionFormatter.DescribeCoordinates(player.Center),
+			description: WorldPositionFormatter.DescribeSelfLocation,
 			role: "status"));
 
 		Vector2 spawn = new(Main.spawnTileX * 16f, Main.spawnTileY * 16f);

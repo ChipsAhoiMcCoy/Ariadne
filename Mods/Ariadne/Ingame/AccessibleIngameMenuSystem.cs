@@ -38,9 +38,12 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 			_inventoryController?.Deactivate();
 			_scannerSession?.Reset();
 			_waypointSession?.Reset();
+			AccessibleInputSuppression.ResetCursorModeSuppression();
 			_openingSettings = false;
 			return;
 		}
+
+		AccessibleInputSuppression.UpdateCursorModeSuppression(_menuController.IsActive);
 
 		_scannerSession.SynchronizeState();
 		_waypointSession.SynchronizeState();
@@ -159,6 +162,7 @@ internal sealed class AccessibleIngameMenuSystem : ModSystem
 
 	public override void Unload()
 	{
+		AccessibleInputSuppression.ResetCursorModeSuppression();
 		_scannerSession = null;
 		_waypointSession = null;
 		_waypointStore = null;

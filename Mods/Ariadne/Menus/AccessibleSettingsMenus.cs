@@ -102,15 +102,15 @@ internal sealed class AccessibleGeneralSettingsMenuState : AccessibleSettingsPag
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
 		entries.Add(Slider(
-			() => Language.GetTextValue("GameUI.GameZoom", Math.Round(Main.GameZoomTarget * 100f), Math.Round(Main.GameViewMatrix.Zoom.X * 100f)),
+			() => Language.GetTextValue("Mods.Ariadne.Settings.Zoom", MathF.Round(Main.GameZoomTarget * 100f)),
 			() => Main.GameZoomTarget,
 			value => Main.GameZoomTarget = value,
 			1f,
 			2f,
 			0.05f));
 		entries.Add(Slider(
-			() => Language.GetTextValue("GameUI.UIScale", Math.Round(Main.UIScale * 100f), Math.Round(Main.UIScale * 100f)),
-			() => Main.UIScale,
+			() => Language.GetTextValue("Mods.Ariadne.Settings.UIScale", MathF.Round(Main.UIScaleWanted * 100f)),
+			() => Main.UIScaleWanted,
 			SetUiScale,
 			0.5f,
 			2f,

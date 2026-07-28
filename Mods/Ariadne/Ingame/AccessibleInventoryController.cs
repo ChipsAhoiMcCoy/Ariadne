@@ -70,6 +70,9 @@ internal sealed class AccessibleInventoryController
 	private readonly List<AccessibleInventoryNode> _rootNodes = [];
 	private readonly List<int> _selectionPath = [0];
 	private readonly List<AccessibleInventoryItemAction> _itemActions = [];
+	// Remembers where focus sat in each pane so Control Tab returns to it rather
+	// than dropping the listener back on the first slot every time.
+	private readonly Dictionary<string, string> _branchFocus = [];
 	private KeyboardState _previousKeyboard;
 	private Keys? _repeatingKey;
 	private TimeSpan _nextRepeat;
@@ -123,7 +126,19 @@ internal sealed class AccessibleInventoryController
 		}
 
 		bool handled;
-		if (Pressed(keyboard, Keys.Tab))
+		if (IsControlDown(keyboard) && Pressed(keyboard, Keys.Tab))
+		{
+			// Control Tab is the lateral move between sibling panes. It only makes
+			// sense against the tree, so the actions pane closes first rather than
+			// leaving focus stranded on an item that is no longer selected.
+			if (_actionsPaneActive)
+			{
+				CloseActionsPane(announce: false);
+			}
+			MoveToSiblingBranch(IsShiftDown(keyboard) ? -1 : 1);
+			handled = true;
+		}
+		else if (Pressed(keyboard, Keys.Tab))
 		{
 			ToggleActionsPane();
 			handled = true;
@@ -156,6 +171,7 @@ internal sealed class AccessibleInventoryController
 		_lastSemanticState = string.Empty;
 		if (Main.gameMenu)
 		{
+			_branchFocus.Clear();
 			ClearResumeFocus();
 			_suppressInventoryToggleUntilRelease = false;
 		}
@@ -196,7 +212,7 @@ internal sealed class AccessibleInventoryController
 		{
 			AriadneMod.ScreenReader.Output(
 				$"{DescribeSelection()} {DescribeCurrentLevel()} " +
-				$"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Left and Right Arrow keys to change adjustable entries or navigate into and out of the tree, Enter to open or activate the focused entry, Home and End to move to the first and last category, Tab for actions on a focused item, and {ContextHelpChord.Name} for help.");
+				$"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Left and Right Arrow keys to change adjustable entries or navigate into and out of the tree, Control Tab to move sideways between panes such as the hotbar and the inventory, Enter to open or activate the focused entry, Home and End to move to the first and last category, Tab for actions on a focused item, and {ContextHelpChord.Name} for help.");
 		}
 	}
 
@@ -250,18 +266,23 @@ internal sealed class AccessibleInventoryController
 
 		AddCraftingCategory(sections);
 
-		List<AccessibleInventoryEntry> currencyEntries = [];
+		// Coins and ammo are separate panes on screen, and keeping them separate here
+		// means Control Tab steps through the same stops the layout suggests.
+		List<AccessibleInventoryEntry> coinEntries = [];
 		for (int index = 50; index < 54; index++)
 		{
 			int captured = index;
-			currencyEntries.Add(ItemEntry($"coin-{captured}", () => $"Coin slot {captured - 49}", player.inventory, ItemSlot.Context.InventoryCoin, captured, canFavorite: true));
+			coinEntries.Add(ItemEntry($"coin-{captured}", () => $"Coin slot {captured - 49}", player.inventory, ItemSlot.Context.InventoryCoin, captured, canFavorite: true));
 		}
+		AddCategory(sections, "coins", "Coins", coinEntries);
+
+		List<AccessibleInventoryEntry> ammoEntries = [];
 		for (int index = 54; index < 58; index++)
 		{
 			int captured = index;
-			currencyEntries.Add(ItemEntry($"ammo-{captured}", () => $"Ammo slot {captured - 53}", player.inventory, ItemSlot.Context.InventoryAmmo, captured, canFavorite: true));
+			ammoEntries.Add(ItemEntry($"ammo-{captured}", () => $"Ammo slot {captured - 53}", player.inventory, ItemSlot.Context.InventoryAmmo, captured, canFavorite: true));
 		}
-		AddCategory(sections, "coins-ammo", "Coins and Ammo", currencyEntries);
+		AddCategory(sections, "ammo", "Ammo", ammoEntries);
 
 		if (player.chest == -1 && Main.npcShop == 0)
 		{
@@ -1220,6 +1241,105 @@ internal sealed class AccessibleInventoryController
 		AnnounceSelection();
 	}
 
+	private IReadOnlyList<AccessibleInventoryNode> LevelNodes(int depth)
+	{
+		IReadOnlyList<AccessibleInventoryNode> nodes = _rootNodes;
+		for (int level = 0; level < depth; level++)
+		{
+			nodes = nodes[_selectionPath[level]].Children;
+		}
+		return nodes;
+	}
+
+	/// <summary>
+	/// Steps sideways to the neighbouring pane at the current depth and lands inside
+	/// it, rather than on its name. Moving an item between the hotbar and the main
+	/// inventory otherwise meant climbing out of one branch and back down into
+	/// another, which is the part of the tree that made item handling tedious.
+	/// </summary>
+	private void MoveToSiblingBranch(int direction)
+	{
+		if (CurrentLevel == 0)
+		{
+			// Nothing contains the root list, so its own entries are the ring.
+			MoveVertical(direction);
+			return;
+		}
+
+		int parentDepth = CurrentLevel - 1;
+		IReadOnlyList<AccessibleInventoryNode> siblings = LevelNodes(parentDepth);
+		int origin = _selectionPath[parentDepth];
+		int target = FindSiblingBranch(siblings, origin, direction);
+		if (target == origin)
+		{
+			SoundEngine.PlaySound(SoundID.MenuTick);
+			AriadneMod.ScreenReader.Output($"No other pane beside {siblings[origin].Label()}.");
+			return;
+		}
+
+		RememberBranchFocus(siblings[origin]);
+		_selectionPath.RemoveRange(parentDepth + 1, _selectionPath.Count - parentDepth - 1);
+		_selectionPath[parentDepth] = target;
+		AccessibleInventoryNode branch = siblings[target];
+		if (branch.HasChildren)
+		{
+			_selectionPath.Add(RecallBranchFocus(branch));
+		}
+
+		SoundEngine.PlaySound(SoundID.MenuOpen);
+		_lastSemanticState = GetSemanticState();
+		AriadneMod.ScreenReader.Output($"{branch.Label()}. {DescribeSelection()}");
+	}
+
+	/// <summary>
+	/// Finds the next sibling that actually holds entries. Leaves such as the sort
+	/// and quick stack actions stay out of the ring so it matches the panes on
+	/// screen; Up and Down still reach them.
+	/// </summary>
+	private static int FindSiblingBranch(
+		IReadOnlyList<AccessibleInventoryNode> siblings,
+		int origin,
+		int direction)
+	{
+		for (int step = 1; step <= siblings.Count; step++)
+		{
+			int candidate = ((origin + direction * step) % siblings.Count + siblings.Count) % siblings.Count;
+			if (siblings[candidate].HasChildren)
+			{
+				return candidate;
+			}
+		}
+		return origin;
+	}
+
+	private void RememberBranchFocus(AccessibleInventoryNode branch)
+	{
+		IReadOnlyList<AccessibleInventoryNode> children = branch.Children;
+		int index = _selectionPath[CurrentLevel];
+		if (children.Count > 0 && index >= 0 && index < children.Count)
+		{
+			_branchFocus[branch.Id] = children[index].Id;
+		}
+	}
+
+	private int RecallBranchFocus(AccessibleInventoryNode branch)
+	{
+		if (!_branchFocus.TryGetValue(branch.Id, out string? childId))
+		{
+			return 0;
+		}
+
+		IReadOnlyList<AccessibleInventoryNode> children = branch.Children;
+		for (int index = 0; index < children.Count; index++)
+		{
+			if (children[index].Id == childId)
+			{
+				return index;
+			}
+		}
+		return 0;
+	}
+
 	private void NavigateCurrentLevelByFirstLetter(char letter)
 	{
 		int nextIndex = FirstLetterNavigator.FindNextIndex(
@@ -1406,6 +1526,43 @@ internal sealed class AccessibleInventoryController
 					TakeOneFromStack(slot);
 					return null;
 				}));
+		}
+
+		if (IsCarriedInventorySlot(slot))
+		{
+			bool inHotbar = slot.Index < HotbarSlotCount;
+			string destination = inHotbar ? "main inventory" : "hotbar";
+			actions.Add(new(
+				inHotbar ? "move-to-inventory" : "move-to-hotbar",
+				inHotbar ? "Move to inventory" : "Move to hotbar",
+				$"Send {item.AffixName()} to the {destination}, filling a matching stack first and otherwise taking the first free slot.",
+				() => inHotbar
+					? MoveWithinInventory(slot, HotbarSlotCount, 50, destination)
+					: MoveWithinInventory(slot, 0, HotbarSlotCount, destination),
+				returnsToInventory: true));
+		}
+
+		if (Main.LocalPlayer.chest != -1)
+		{
+			string containerName = GetContainerName(Main.LocalPlayer);
+			if (IsCarriedInventorySlot(slot) || slot.Context is ItemSlot.Context.InventoryCoin or ItemSlot.Context.InventoryAmmo)
+			{
+				actions.Add(new(
+					"store-in-container",
+					"Store",
+					$"Move {item.AffixName()} into {containerName}.",
+					() => StoreInContainer(slot, containerName),
+					returnsToInventory: true));
+			}
+			else if (slot.Context is ItemSlot.Context.ChestItem or ItemSlot.Context.BankItem)
+			{
+				actions.Add(new(
+					"take-from-container",
+					"Take",
+					$"Move {item.AffixName()} out of {containerName} and into the inventory.",
+					() => TakeFromContainer(slot, containerName),
+					returnsToInventory: true));
+			}
 		}
 
 		if (IsPlayerInventorySlot(slot) && !item.favorited)
@@ -1624,7 +1781,7 @@ internal sealed class AccessibleInventoryController
 
 		AriadneMod.ScreenReader.Output(
 			$"Inventory tree help. {DescribeSelection()} {DescribeCurrentLevel()} " +
-			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Left and Right change an adjustable entry or navigate into and out of the tree. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions. Enter performs the primary or normal left click action, and Shift Enter takes one item from a stack of more than one, or performs the normal right click action when the slot cannot be split. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
+			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Left and Right change an adjustable entry or navigate into and out of the tree. Control Tab and Control Shift Tab move sideways to the next and previous pane at your current depth, such as from the hotbar to the main inventory, coins, ammo, and crafting, returning you to wherever you last were in each. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions, which include moving the item between the hotbar and the inventory and storing it in or taking it from an open container. Enter performs the primary or normal left click action, and Shift Enter takes one item from a stack of more than one, or performs the normal right click action when the slot cannot be split. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
 	private void AnnounceSelection(bool includeLevel = false)
@@ -1790,6 +1947,130 @@ internal sealed class AccessibleInventoryController
 	private static bool IsControlDown(KeyboardState keyboard)
 	{
 		return keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
+	}
+
+	private static bool IsCarriedInventorySlot(AccessibleInventoryItemSlot slot)
+	{
+		// The hotbar and the main inventory are one array, so a move between them is
+		// a transfer inside it rather than a container operation.
+		return ReferenceEquals(slot.Items, Main.LocalPlayer.inventory) &&
+			slot.Context == ItemSlot.Context.InventoryItem &&
+			slot.Index is >= 0 and < 50;
+	}
+
+	/// <summary>
+	/// Sends a stack to the hotbar or the main inventory, topping up matching stacks
+	/// before claiming an empty slot, which is how a normal quick move behaves.
+	/// </summary>
+	private static string MoveWithinInventory(
+		AccessibleInventoryItemSlot slot,
+		int rangeStart,
+		int rangeEnd,
+		string destinationName)
+	{
+		Item[] inventory = Main.LocalPlayer.inventory;
+		Item moving = inventory[slot.Index];
+		string itemName = moving.AffixName();
+		int transferred = 0;
+		int requested = moving.stack;
+
+		for (int index = rangeStart; index < rangeEnd && !moving.IsAir; index++)
+		{
+			Item destination = inventory[index];
+			if (destination.IsAir ||
+				destination.type != moving.type ||
+				destination.stack >= destination.maxStack)
+			{
+				continue;
+			}
+
+			if (ItemLoader.TryStackItems(destination, moving, out int stacked))
+			{
+				transferred += stacked;
+			}
+			if (moving.stack <= 0)
+			{
+				moving.TurnToAir();
+			}
+		}
+
+		for (int index = rangeStart; index < rangeEnd && !moving.IsAir; index++)
+		{
+			if (!inventory[index].IsAir)
+			{
+				continue;
+			}
+
+			inventory[index] = moving;
+			inventory[slot.Index] = new Item();
+			transferred += moving.stack;
+			break;
+		}
+
+		Recipe.FindRecipes();
+		if (transferred <= 0)
+		{
+			return $"No room in the {destinationName} for {itemName}.";
+		}
+
+		SoundEngine.PlaySound(SoundID.Grab);
+		return transferred < requested
+			? $"Moved {transferred} of {requested} {itemName} to the {destinationName}."
+			: $"Moved {itemName} to the {destinationName}.";
+	}
+
+	private static string StoreInContainer(AccessibleInventoryItemSlot slot, string containerName)
+	{
+		Item moving = slot.Items[slot.Index];
+		string itemName = moving.AffixName();
+		int requested = moving.stack;
+		if (ChestUI.IsBlockedFromTransferIntoChest(moving, GetOpenContainer()))
+		{
+			return $"{itemName} cannot go into {containerName}.";
+		}
+
+		ChestUI.TryPlacingInChest(moving, justCheck: false, slot.Context);
+		int transferred = requested - (moving.IsAir ? 0 : moving.stack);
+		if (moving.IsAir || moving.stack <= 0)
+		{
+			slot.Items[slot.Index] = new Item();
+		}
+
+		Recipe.FindRecipes();
+		if (transferred <= 0)
+		{
+			return $"No room in {containerName} for {itemName}.";
+		}
+
+		SoundEngine.PlaySound(SoundID.Grab);
+		return transferred < requested
+			? $"Stored {transferred} of {requested} {itemName} in {containerName}."
+			: $"Stored {itemName} in {containerName}.";
+	}
+
+	private static string TakeFromContainer(AccessibleInventoryItemSlot slot, string containerName)
+	{
+		Player player = Main.LocalPlayer;
+		Item moving = slot.Items[slot.Index];
+		string itemName = moving.AffixName();
+		int requested = moving.stack;
+		slot.Items[slot.Index] = player.GetItem(
+			player.whoAmI,
+			moving,
+			GetItemSettings.InventoryEntityToPlayerInventorySettings);
+		Recipe.FindRecipes();
+		if (slot.Items[slot.Index].IsAir || slot.Items[slot.Index].stack < requested)
+		{
+			SoundEngine.PlaySound(SoundID.Grab);
+			return $"Took {itemName} from {containerName}.";
+		}
+		return $"No room in the inventory for {itemName}.";
+	}
+
+	private static Item[] GetOpenContainer()
+	{
+		ChestUI.GetContainerUsageInfo(out _, out Item[] container);
+		return container;
 	}
 
 	private static bool CanUse(AccessibleInventoryItemSlot slot)

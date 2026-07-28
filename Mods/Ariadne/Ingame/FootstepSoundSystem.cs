@@ -7,6 +7,7 @@ using Terraria;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Ariadne.Audio;
+using Ariadne.Configs;
 
 namespace Ariadne.Ingame;
 
@@ -44,7 +45,10 @@ internal sealed class FootstepSoundSystem : ModSystem
 
 	public override void PostUpdatePlayers()
 	{
-		if (!CanTrackLocalPlayer())
+		AriadneClientConfig config = ModContent.GetInstance<AriadneClientConfig>();
+		if (!config.FootstepSoundsEnabled ||
+			config.FootstepVolumePercent <= 0 ||
+			!CanTrackLocalPlayer())
 		{
 			ResetTracking();
 			return;
@@ -70,7 +74,9 @@ internal sealed class FootstepSoundSystem : ModSystem
 		bool teleported = MathF.Abs(horizontalMovement) > TeleportThreshold || crossedTileCount > 1;
 		if (crossedTileCount == 1 && isWalking && !teleported && IsTouchingGround(player, out bool onPlatform))
 		{
-			_sounds?.Play(FootstepVolume, onPlatform ? PlatformPitch : 0f);
+			_sounds?.Play(
+				FootstepVolume * config.FootstepVolumePercent / 100f,
+				onPlatform ? PlatformPitch : 0f);
 		}
 	}
 

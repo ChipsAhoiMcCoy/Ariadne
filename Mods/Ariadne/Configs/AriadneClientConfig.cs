@@ -17,14 +17,17 @@ public sealed class AriadneClientConfig : ModConfig
 	[DefaultValue(true)]
 	public bool CursorEarconsEnabled { get; set; } = true;
 
-	[DefaultValue(35)]
+	[DefaultValue(55)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int CursorEarconVolumePercent { get; set; } = 35;
+	public int CursorEarconVolumePercent { get; set; } = 55;
 
 	[DefaultValue(true)]
 	public bool CursorCoordinateAnnouncementsEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
+	public bool RelativeCoordinateReadoutEnabled { get; set; } = true;
 
 	[DefaultValue(true)]
 	public bool LowHealthHeartbeatEnabled { get; set; } = true;
@@ -59,11 +62,11 @@ public sealed class AriadneClientConfig : ModConfig
 	[DefaultValue(true)]
 	public bool WallToneEnabled { get; set; } = true;
 
-	[DefaultValue(35)]
+	[DefaultValue(55)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int WallToneVolumePercent { get; set; } = 35;
+	public int WallToneVolumePercent { get; set; } = 55;
 
 	[DefaultValue(12)]
 	[Range(4, 30)]
@@ -71,14 +74,23 @@ public sealed class AriadneClientConfig : ModConfig
 	[Slider]
 	public int WallToneRangeTiles { get; set; } = 12;
 
-	[DefaultValue(true)]
-	public bool HostileMobTonesEnabled { get; set; } = true;
-
-	[DefaultValue(30)]
+	[DefaultValue(80)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int HostileMobToneVolumePercent { get; set; } = 30;
+	public int WallToneStereoWidthPercent { get; set; } = 80;
+
+	[DefaultValue(true)]
+	public bool FallTonesEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
+	public bool HostileMobTonesEnabled { get; set; } = true;
+
+	[DefaultValue(45)]
+	[Range(0, 100)]
+	[Increment(5)]
+	[Slider]
+	public int HostileMobToneVolumePercent { get; set; } = 45;
 
 	[DefaultValue(3)]
 	[Range(1, 4)]
@@ -86,11 +98,20 @@ public sealed class AriadneClientConfig : ModConfig
 	[Slider]
 	public int HostileMobMaximumEmitters { get; set; } = 3;
 
-	[DefaultValue(35)]
+	[DefaultValue(55)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int FreecamBeaconVolumePercent { get; set; } = 35;
+	public int FreecamBeaconVolumePercent { get; set; } = 55;
+
+	[DefaultValue(true)]
+	public bool FootstepSoundsEnabled { get; set; } = true;
+
+	[DefaultValue(60)]
+	[Range(0, 100)]
+	[Increment(5)]
+	[Slider]
+	public int FootstepVolumePercent { get; set; } = 60;
 
 	[DefaultValue(true)]
 	public bool SpatialAudioItdEnabled { get; set; } = true;

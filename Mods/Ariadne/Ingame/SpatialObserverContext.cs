@@ -3,6 +3,7 @@
 using System;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Ariadne.Audio;
 using Ariadne.Ingame.Freecam;
 
 namespace Ariadne.Ingame;
@@ -20,16 +21,15 @@ internal readonly record struct SpatialObserverSnapshot(
 	Vector2 ViewportSize,
 	bool IsVirtual)
 {
+	/// <summary>
+	/// Places a world position relative to the observer's body, scaled so half a
+	/// viewport away reaches either edge. The viewport rectangle is a poor origin
+	/// because Terraria clamps the camera near world boundaries, leaving the body
+	/// off center and every cue biased toward one ear for as long as it stays there.
+	/// </summary>
 	internal Vector2 NormalizeToViewport(Vector2 worldPosition)
 	{
-		if (ViewportSize.X <= 0f || ViewportSize.Y <= 0f)
-		{
-			return Vector2.Zero;
-		}
-
-		return new(
-			MathHelper.Clamp((worldPosition.X - ViewportPosition.X) / ViewportSize.X * 2f - 1f, -1f, 1f),
-			MathHelper.Clamp((worldPosition.Y - ViewportPosition.Y) / ViewportSize.Y * 2f - 1f, -1f, 1f));
+		return ViewportSpatialPosition.Normalize(worldPosition, Center, ViewportSize);
 	}
 }
 

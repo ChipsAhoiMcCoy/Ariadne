@@ -41,18 +41,29 @@ internal readonly record struct SpatialAudioTransform(
 
 internal static class ViewportSpatialPosition
 {
+	/// <summary>
+	/// Places a world position relative to the listener's own body, scaled so half a
+	/// viewport away reaches either edge. Measuring from the viewport rectangle
+	/// instead assumed the body sits at screen center, which stops being true once
+	/// Terraria clamps the camera near a world boundary: a sound directly on the
+	/// player would then pan to one side for as long as the player stayed there.
+	/// </summary>
 	internal static Vector2 Normalize(Vector2 worldPosition)
 	{
-		Vector2 viewportPosition = Main.Camera.ScaledPosition;
-		Vector2 viewportSize = Main.Camera.ScaledSize;
+		return Normalize(worldPosition, Main.LocalPlayer.Center, Main.Camera.ScaledSize);
+	}
+
+	internal static Vector2 Normalize(Vector2 worldPosition, Vector2 bodyCenter, Vector2 viewportSize)
+	{
 		if (viewportSize.X <= 0f || viewportSize.Y <= 0f)
 		{
 			return Vector2.Zero;
 		}
 
+		Vector2 halfViewport = viewportSize * 0.5f;
 		return new(
-			MathHelper.Clamp((worldPosition.X - viewportPosition.X) / viewportSize.X * 2f - 1f, -1f, 1f),
-			MathHelper.Clamp((worldPosition.Y - viewportPosition.Y) / viewportSize.Y * 2f - 1f, -1f, 1f));
+			MathHelper.Clamp((worldPosition.X - bodyCenter.X) / halfViewport.X, -1f, 1f),
+			MathHelper.Clamp((worldPosition.Y - bodyCenter.Y) / halfViewport.Y, -1f, 1f));
 	}
 }
 
@@ -68,18 +79,24 @@ internal static class SpatialAudioDistanceGain
 internal static class SpatialAudioTransformCalculator
 {
 	internal const int SampleRate = 44_100;
-	private const float MaximumFarEarAttenuationDecibels = 6f;
+	/// <summary>
+	/// The conservative default width. Cues that sit inside the world image, such as
+	/// the cursor and mob tones, stay here so they read as part of the scene. Terrain
+	/// voices pass a deeper value because their whole job is to say which side.
+	/// </summary>
+	internal const float DefaultFarEarAttenuationDecibels = 6f;
 
 	internal static SpatialAudioTransform Calculate(
 		float normalizedX,
 		float normalizedY,
 		bool itdEnabled,
-		float maximumItdMilliseconds)
+		float maximumItdMilliseconds,
+		float farEarAttenuationDecibels = DefaultFarEarAttenuationDecibels)
 	{
 		float x = Math.Clamp(normalizedX, -1f, 1f);
 		float y = Math.Clamp(normalizedY, -1f, 1f);
 		float directionAmount = MathF.Abs(x);
-		float farEarGain = MathF.Pow(10f, -MaximumFarEarAttenuationDecibels * directionAmount / 20f);
+		float farEarGain = MathF.Pow(10f, -MathF.Max(0f, farEarAttenuationDecibels) * directionAmount / 20f);
 		float leftGain = x > 0f ? farEarGain : 1f;
 		float rightGain = x < 0f ? farEarGain : 1f;
 		float powerNormalizer = 1f / MathF.Sqrt(leftGain * leftGain + rightGain * rightGain);
@@ -139,7 +156,8 @@ internal sealed class SpatialAudioEmitter
 		bool itdEnabled,
 		float maximumItdMilliseconds,
 		Span<float> left,
-		Span<float> right)
+		Span<float> right,
+		float farEarAttenuationDecibels = SpatialAudioTransformCalculator.DefaultFarEarAttenuationDecibels)
 	{
 		for (int index = 0; index < left.Length; index++)
 		{
@@ -153,7 +171,8 @@ internal sealed class SpatialAudioEmitter
 				_currentX,
 				_currentY,
 				itdEnabled,
-				maximumItdMilliseconds);
+				maximumItdMilliseconds,
+				farEarAttenuationDecibels);
 			float monoSample = source.ReadSample(transform.PitchRatio);
 			_delayBuffer[_writeIndex] = monoSample;
 			float leftSample = ReadDelayed(transform.LeftDelaySamples);

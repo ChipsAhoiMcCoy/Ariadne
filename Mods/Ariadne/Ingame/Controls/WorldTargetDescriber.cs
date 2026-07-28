@@ -96,8 +96,7 @@ internal static class WorldTargetDescriber
 			Language.GetTextValue(
 				"Mods.Ariadne.Announcements.CursorCoordinates",
 				target,
-				tilePosition.X,
-				tilePosition.Y,
+				WorldPositionFormatter.DescribeCoordinates(worldPosition),
 				coordinateReach),
 			isEmptySpace);
 	}
