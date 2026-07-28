@@ -27,7 +27,9 @@ internal sealed class HostileMobTracker
 	private readonly Dictionary<HostileMobIdentity, VisibleBoundsBuilder> _builders = [];
 	private readonly List<HostileMobCandidate> _candidates = [];
 
-	internal IReadOnlyList<HostileMobCandidate> Capture(SpatialObserverSnapshot observer)
+	internal IReadOnlyList<HostileMobCandidate> Capture(
+		SpatialObserverSnapshot observer,
+		float rangePixels)
 	{
 		UpdateSlotGenerations();
 		_builders.Clear();
@@ -80,11 +82,11 @@ internal sealed class HostileMobTracker
 			}
 		}
 
-		// A screen is far wider than it is tall, so measuring range against the edge the
-		// mob happens to face made a mob overhead count as far more distant than one the
-		// same number of tiles to the side. The half-diagonal is the one screen-derived
-		// length that does not depend on direction, so range means range again.
-		float rangePixels = viewportSize.Length() * 0.5f;
+		// The viewport decides whether a mob is heard; this range decides how loud. They
+		// were once the same length, which tied the level of every mob to the resolution
+		// and zoom of the screen it was drawn on, and put most of a wide monitor's field
+		// into the quietest part of the curve.
+		float safeRangePixels = MathF.Max(rangePixels, 1f);
 		foreach ((HostileMobIdentity identity, VisibleBoundsBuilder builder) in _builders)
 		{
 			Vector2 center = builder.Center;
@@ -93,7 +95,7 @@ internal sealed class HostileMobTracker
 				identity,
 				builder.IsBoss,
 				distanceSquared,
-				MathHelper.Clamp(1f - MathF.Sqrt(distanceSquared) / rangePixels, 0f, 1f),
+				MathHelper.Clamp(1f - MathF.Sqrt(distanceSquared) / safeRangePixels, 0f, 1f),
 				observer.NormalizeToViewport(center)));
 		}
 

@@ -81,10 +81,15 @@ internal static class ViewportSpatialPosition
 
 internal static class SpatialAudioDistanceGain
 {
+	/// <summary>
+	/// Level is the one cue that carries distance, so it follows proximity directly. An
+	/// earlier smoothstep spent its resolution in the middle of the field and left the
+	/// outer third collapsing toward silence, so a source approaching from the edge of
+	/// the screen read as appearing from nothing rather than as closing.
+	/// </summary>
 	internal static float FromProximity(float proximity)
 	{
-		float clampedProximity = Math.Clamp(proximity, 0f, 1f);
-		return clampedProximity * clampedProximity * (3f - 2f * clampedProximity);
+		return Math.Clamp(proximity, 0f, 1f);
 	}
 }
 

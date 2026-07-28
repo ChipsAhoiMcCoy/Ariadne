@@ -14,6 +14,7 @@ internal sealed class HostileMobToneSystem : ModSystem
 {
 	private const int MaximumEmitterCount = 4;
 	private const float ReplacementDistanceRatio = 0.8f;
+	private const float TileSize = 16f;
 
 	private readonly HostileMobTracker _tracker = new();
 	private readonly EmitterAssignment[] _assignments = [new(), new(), new(), new()];
@@ -56,8 +57,9 @@ internal sealed class HostileMobToneSystem : ModSystem
 			return;
 		}
 
-		IReadOnlyList<HostileMobCandidate> candidates =
-			_tracker.Capture(SpatialObserverContext.Current);
+		IReadOnlyList<HostileMobCandidate> candidates = _tracker.Capture(
+			SpatialObserverContext.Current,
+			config.HostileMobToneRangeTiles * TileSize);
 		int maximumEmitters = Math.Clamp(config.HostileMobMaximumEmitters, 1, MaximumEmitterCount);
 		ReconcileAssignments(candidates, maximumEmitters);
 		for (int index = 0; index < MaximumEmitterCount; index++)

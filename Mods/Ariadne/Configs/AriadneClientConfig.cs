@@ -16,6 +16,13 @@ public sealed class AriadneClientConfig : ModConfig
 	/// </summary>
 	private const int DefaultVolumePercent = 70;
 
+	/// <summary>
+	/// The distance at which a hostile mob falls silent. It sits past the horizontal
+	/// edge of a common screen so that nothing visible is inaudible, while keeping the
+	/// level of a mob a fixed number of tiles away independent of screen and zoom.
+	/// </summary>
+	private const int DefaultHostileMobToneRangeTiles = 80;
+
 	public override ConfigScope Mode => ConfigScope.ClientSide;
 
 	[DefaultValue(true)]
@@ -92,6 +99,12 @@ public sealed class AriadneClientConfig : ModConfig
 	[Increment(5)]
 	[Slider]
 	public int HostileMobToneVolumePercent { get; set; } = DefaultVolumePercent;
+
+	[DefaultValue(DefaultHostileMobToneRangeTiles)]
+	[Range(20, 120)]
+	[Increment(5)]
+	[Slider]
+	public int HostileMobToneRangeTiles { get; set; } = DefaultHostileMobToneRangeTiles;
 
 	[DefaultValue(3)]
 	[Range(1, 4)]

@@ -25,13 +25,17 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	private const float MaximumModulationRate = 12f;
 	private const float EmitterGainAttackSeconds = 0.003f;
 	private const int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
+	private const int CalibrationPoints = 9;
 
 	/// <summary>
-	/// The gain that puts one voice on the shared reference at its closest range,
-	/// measured rather than trimmed by ear because the tone spends most of its cycle
-	/// between ticks and a raw gain says little about how loud it lands.
+	/// The gain that puts one voice on the shared reference, measured at each proximity
+	/// rather than once at the closest range. The rate that carries distance also carries
+	/// energy, because a voice ticking at 1.5 Hz sounds for a fraction of the second that
+	/// one at 12 Hz does, and a single closest-range measurement therefore let a distant
+	/// mob lose level twice: once to the emitter's distance gain and again to its own
+	/// cadence. Measuring the rate out leaves distance gain the only thing setting level.
 	/// </summary>
-	private static readonly float VoiceGain = CalibrateVoiceGain();
+	private static readonly float[] VoiceGains = CalibrateVoiceGains();
 
 	private readonly Mod _owner;
 	private readonly ModulatedTriangleToneVoice[] _voices =
@@ -103,7 +107,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		_itdEnabled = config.SpatialAudioItdEnabled;
 		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
 		float configuredGain = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
-		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceGain;
+		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f);
 		for (int index = 0; index < MaximumEmitterCount; index++)
 		{
 			HostileMobToneTarget target = index < targets.Length
@@ -197,10 +201,20 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		ResetSignalState();
 	}
 
-	private static float CalibrateVoiceGain()
+	private static float[] CalibrateVoiceGains()
+	{
+		float[] gains = new float[CalibrationPoints];
+		for (int index = 0; index < CalibrationPoints; index++)
+		{
+			gains[index] = CalibrateVoiceGain(index / (float)(CalibrationPoints - 1));
+		}
+		return gains;
+	}
+
+	private static float CalibrateVoiceGain(float proximity)
 	{
 		ModulatedTriangleToneVoice voice = new(0f, 0f);
-		voice.SetTarget(CarrierFrequency, MaximumModulationRate, gain: 1f);
+		voice.SetTarget(CarrierFrequency, ModulationRateForProximity(proximity), gain: 1f);
 		float[] samples = new float[CalibrationFrames];
 		for (int index = 0; index < samples.Length; index++)
 		{
@@ -212,6 +226,21 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 			AuthoredAudioLevels.SpatialVoiceReferenceLoudness);
 	}
 
+	private static float VoiceGainForProximity(float proximity)
+	{
+		float position = Math.Clamp(proximity, 0f, 1f) * (CalibrationPoints - 1);
+		int lower = Math.Min((int)position, CalibrationPoints - 2);
+		return VoiceGains[lower] +
+			(VoiceGains[lower + 1] - VoiceGains[lower]) * (position - lower);
+	}
+
+	private static float ModulationRateForProximity(float proximity)
+	{
+		return MinimumModulationRate * MathF.Pow(
+			MaximumModulationRate / MinimumModulationRate,
+			Math.Clamp(proximity, 0f, 1f));
+	}
+
 	private static void SetVoiceTarget(
 		ModulatedTriangleToneVoice voice,
 		SpatialAudioEmitter emitter,
@@ -220,9 +249,11 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	{
 		float proximity = target.IsActive ? target.Proximity : 0f;
 		float distanceGain = SpatialAudioDistanceGain.FromProximity(proximity);
-		float modulationRate = MinimumModulationRate *
-			MathF.Pow(MaximumModulationRate / MinimumModulationRate, proximity);
-		voice.SetTarget(CarrierFrequency, modulationRate, target.IsActive ? masterGain : 0f);
+		float modulationRate = ModulationRateForProximity(proximity);
+		voice.SetTarget(
+			CarrierFrequency,
+			modulationRate,
+			target.IsActive ? masterGain * VoiceGainForProximity(proximity) : 0f);
 		emitter.SetTarget(new(
 			target.NormalizedX,
 			target.NormalizedY,
