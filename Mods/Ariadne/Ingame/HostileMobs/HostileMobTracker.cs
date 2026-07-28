@@ -13,7 +13,7 @@ internal readonly record struct HostileMobCandidate(
 	HostileMobIdentity Identity,
 	bool IsBoss,
 	float DistanceSquared,
-	float ViewportEdgeFraction,
+	float Proximity,
 	Vector2 NormalizedPosition);
 
 /// <summary>
@@ -52,12 +52,12 @@ internal sealed class HostileMobTracker
 				continue;
 			}
 
+			// The viewport only decides whether a mob is heard at all. Clipping the bounds
+			// as well dragged a mob straddling an edge back toward the middle, so its cue
+			// retreated from that edge over the last stretch before it left the screen.
 			Rectangle hitbox = npc.Hitbox;
-			float clippedLeft = MathF.Max(hitbox.Left, viewportLeft);
-			float clippedTop = MathF.Max(hitbox.Top, viewportTop);
-			float clippedRight = MathF.Min(hitbox.Right, viewportRight);
-			float clippedBottom = MathF.Min(hitbox.Bottom, viewportBottom);
-			if (clippedRight <= clippedLeft || clippedBottom <= clippedTop)
+			if (MathF.Min(hitbox.Right, viewportRight) <= MathF.Max(hitbox.Left, viewportLeft) ||
+				MathF.Min(hitbox.Bottom, viewportBottom) <= MathF.Max(hitbox.Top, viewportTop))
 			{
 				continue;
 			}
@@ -67,37 +67,34 @@ internal sealed class HostileMobTracker
 			bool isBoss = npc.boss || rootIndex != index && Main.npc[rootIndex].boss;
 			if (_builders.TryGetValue(identity, out VisibleBoundsBuilder? builder))
 			{
-				builder.Include(clippedLeft, clippedTop, clippedRight, clippedBottom, isBoss);
+				builder.Include(hitbox.Left, hitbox.Top, hitbox.Right, hitbox.Bottom, isBoss);
 			}
 			else
 			{
 				_builders.Add(identity, new(
-					clippedLeft,
-					clippedTop,
-					clippedRight,
-					clippedBottom,
+					hitbox.Left,
+					hitbox.Top,
+					hitbox.Right,
+					hitbox.Bottom,
 					isBoss));
 			}
 		}
 
+		// A screen is far wider than it is tall, so measuring range against the edge the
+		// mob happens to face made a mob overhead count as far more distant than one the
+		// same number of tiles to the side. The half-diagonal is the one screen-derived
+		// length that does not depend on direction, so range means range again.
+		float rangePixels = viewportSize.Length() * 0.5f;
 		foreach ((HostileMobIdentity identity, VisibleBoundsBuilder builder) in _builders)
 		{
 			Vector2 center = builder.Center;
-			Vector2 normalizedPosition = new(
-				MathHelper.Clamp((center.X - viewportLeft) / viewportSize.X * 2f - 1f, -1f, 1f),
-				MathHelper.Clamp((center.Y - viewportTop) / viewportSize.Y * 2f - 1f, -1f, 1f));
+			float distanceSquared = Vector2.DistanceSquared(observer.Center, center);
 			_candidates.Add(new(
 				identity,
 				builder.IsBoss,
-				Vector2.DistanceSquared(observer.Center, center),
-				CalculateViewportEdgeFraction(
-					observer.Center,
-					center,
-					viewportLeft,
-					viewportTop,
-					viewportRight,
-					viewportBottom),
-				normalizedPosition));
+				distanceSquared,
+				MathHelper.Clamp(1f - MathF.Sqrt(distanceSquared) / rangePixels, 0f, 1f),
+				observer.NormalizeToViewport(center)));
 		}
 
 		return _candidates;
@@ -142,43 +139,6 @@ internal sealed class HostileMobTracker
 		return (uint)rootIndex < Main.maxNPCs && Main.npc[rootIndex].active
 			? rootIndex
 			: ownIndex;
-	}
-
-	private static float CalculateViewportEdgeFraction(
-		Vector2 playerCenter,
-		Vector2 candidateCenter,
-		float left,
-		float top,
-		float right,
-		float bottom)
-	{
-		Vector2 delta = candidateCenter - playerCenter;
-		if (delta.LengthSquared() < 0.001f)
-		{
-			return 0f;
-		}
-
-		float boundaryScale = float.PositiveInfinity;
-		if (delta.X > 0f)
-		{
-			boundaryScale = MathF.Min(boundaryScale, (right - playerCenter.X) / delta.X);
-		}
-		else if (delta.X < 0f)
-		{
-			boundaryScale = MathF.Min(boundaryScale, (left - playerCenter.X) / delta.X);
-		}
-		if (delta.Y > 0f)
-		{
-			boundaryScale = MathF.Min(boundaryScale, (bottom - playerCenter.Y) / delta.Y);
-		}
-		else if (delta.Y < 0f)
-		{
-			boundaryScale = MathF.Min(boundaryScale, (top - playerCenter.Y) / delta.Y);
-		}
-
-		return float.IsFinite(boundaryScale) && boundaryScale > 0f
-			? MathHelper.Clamp(1f / boundaryScale, 0f, 1f)
-			: 1f;
 	}
 
 	private sealed class VisibleBoundsBuilder

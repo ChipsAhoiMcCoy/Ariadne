@@ -69,7 +69,7 @@ internal sealed class HostileMobToneSystem : ModSystem
 					true,
 					candidate.NormalizedPosition.X,
 					candidate.NormalizedPosition.Y,
-					candidate.ViewportEdgeFraction);
+					candidate.Proximity);
 			}
 			else
 			{

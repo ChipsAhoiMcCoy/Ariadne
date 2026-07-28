@@ -11,6 +11,7 @@ using Terraria.Audio;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Ariadne.Configs;
+using Ariadne.Ingame;
 
 namespace Ariadne.Audio;
 
@@ -377,7 +378,8 @@ internal sealed class CursorEarconSound : IDisposable
 		Vector2 worldPosition,
 		AriadneClientConfig config)
 	{
-		Vector2 normalizedPosition = ViewportSpatialPosition.Normalize(worldPosition);
+		Vector2 normalizedPosition =
+			SpatialObserverContext.Current.NormalizeToViewport(worldPosition);
 		SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
 			normalizedPosition.X,
 			normalizedPosition.Y,
@@ -453,7 +455,10 @@ internal sealed class CursorEarconSound : IDisposable
 		in ResolvedNativeSound source,
 		Vector2 worldPosition)
 	{
-		Vector2 normalizedPosition = ViewportSpatialPosition.Normalize(worldPosition);
+		// This path hands the world position to Terraria, which pans it under its own
+		// law, so only the vertical offset below comes from the shared spatial field.
+		Vector2 normalizedPosition =
+			SpatialObserverContext.Current.NormalizeToViewport(worldPosition);
 		float verticalPitchOffset = -0.5f * normalizedPosition.Y;
 		return new SoundStyle(source.SoundPath, SoundType.Sound)
 		{

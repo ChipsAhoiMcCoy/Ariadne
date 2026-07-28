@@ -2,7 +2,6 @@
 
 using System;
 using Microsoft.Xna.Framework;
-using Terraria;
 
 namespace Ariadne.Audio;
 
@@ -15,16 +14,6 @@ internal interface ISpatialMonoSource
 	float ReadSample(float pitchRatio);
 
 	void Reset();
-}
-
-/// <summary>
-/// A mono source that supplies its own per-sample screen position.
-/// This bypasses emitter smoothing so authored motion keeps its intended path
-/// while still using the shared ILD and ITD transform.
-/// </summary>
-internal interface IMovingSpatialMonoSource : ISpatialMonoSource
-{
-	SpatialSourceParameters CurrentSpatialParameters { get; }
 }
 
 internal readonly record struct SpatialSourceParameters(
@@ -42,28 +31,51 @@ internal readonly record struct SpatialAudioTransform(
 internal static class ViewportSpatialPosition
 {
 	/// <summary>
-	/// Places a world position relative to the listener's own body, scaled so half a
-	/// viewport away reaches either edge. Measuring from the viewport rectangle
-	/// instead assumed the body sits at screen center, which stops being true once
-	/// Terraria clamps the camera near a world boundary: a sound directly on the
-	/// player would then pan to one side for as long as the player stayed there.
+	/// How little of the viewport a side may claim before its scale stops shrinking.
+	/// The body can sit on, or briefly past, a viewport edge while the camera catches
+	/// up, which would otherwise divide by zero or invert that side entirely.
 	/// </summary>
-	internal static Vector2 Normalize(Vector2 worldPosition)
-	{
-		return Normalize(worldPosition, Main.LocalPlayer.Center, Main.Camera.ScaledSize);
-	}
+	private const float MinimumReachFraction = 0.25f;
 
-	internal static Vector2 Normalize(Vector2 worldPosition, Vector2 bodyCenter, Vector2 viewportSize)
+	/// <summary>
+	/// Places a world position on the screen the listener is actually looking at: zero
+	/// is the body, and either extreme is that edge of the visible viewport. The body
+	/// stays the origin because Terraria clamps the camera near a world boundary, and
+	/// measuring from the rectangle's centre would pan a sound standing on the player
+	/// to one side for as long as the player stayed there. Each side is scaled by its
+	/// own distance to its own edge so that clamping cannot leave one half of the
+	/// screen saturated before its edge while the other half never reaches the extreme.
+	/// </summary>
+	internal static Vector2 Normalize(
+		Vector2 worldPosition,
+		Vector2 bodyCenter,
+		Vector2 viewportPosition,
+		Vector2 viewportSize)
 	{
 		if (viewportSize.X <= 0f || viewportSize.Y <= 0f)
 		{
 			return Vector2.Zero;
 		}
 
-		Vector2 halfViewport = viewportSize * 0.5f;
 		return new(
-			MathHelper.Clamp((worldPosition.X - bodyCenter.X) / halfViewport.X, -1f, 1f),
-			MathHelper.Clamp((worldPosition.Y - bodyCenter.Y) / halfViewport.Y, -1f, 1f));
+			NormalizeAxis(worldPosition.X, bodyCenter.X, viewportPosition.X, viewportSize.X),
+			NormalizeAxis(worldPosition.Y, bodyCenter.Y, viewportPosition.Y, viewportSize.Y));
+	}
+
+	private static float NormalizeAxis(
+		float world,
+		float body,
+		float viewportStart,
+		float viewportExtent)
+	{
+		float offset = world - body;
+		float reach = offset >= 0f
+			? viewportStart + viewportExtent - body
+			: body - viewportStart;
+		return MathHelper.Clamp(
+			offset / MathF.Max(reach, viewportExtent * MinimumReachFraction),
+			-1f,
+			1f);
 	}
 }
 
@@ -79,12 +91,13 @@ internal static class SpatialAudioDistanceGain
 internal static class SpatialAudioTransformCalculator
 {
 	internal const int SampleRate = 44_100;
+
 	/// <summary>
-	/// The conservative default width. Cues that sit inside the world image, such as
-	/// the cursor and mob tones, stay here so they read as part of the scene. Terrain
-	/// voices pass a deeper value because their whole job is to say which side.
+	/// One stereo width for every cue. A per-cue width let two sounds at the same
+	/// screen position land in different places, which is the one thing a shared
+	/// coordinate system exists to prevent.
 	/// </summary>
-	internal const float DefaultFarEarAttenuationDecibels = 6f;
+	private const float FarEarAttenuationDecibels = 24f;
 
 	/// <summary>
 	/// What each channel receives from a centered voice under the equal-power pan
@@ -93,17 +106,25 @@ internal static class SpatialAudioTransformCalculator
 	/// </summary>
 	internal static readonly float CenteredChannelGain = 1f / MathF.Sqrt(2f);
 
+	/// <summary>
+	/// The field is linear in screen position: a source halfway to the edge images
+	/// halfway over. An earlier cube-root curve spent most of the field on the few
+	/// tiles nearest the body, so a source crossing the body swung ear to ear within a
+	/// few tiles while the outer reaches of the screen barely moved at all. Resolution
+	/// near the midline is left to the interaural delay below, which is the cue that
+	/// resolves it: a source five tiles off centre is already tens of microseconds
+	/// wide, well above what the ear can hear, at a level difference of only 2 dB.
+	/// </summary>
 	internal static SpatialAudioTransform Calculate(
 		float normalizedX,
 		float normalizedY,
 		bool itdEnabled,
-		float maximumItdMilliseconds,
-		float farEarAttenuationDecibels = DefaultFarEarAttenuationDecibels)
+		float maximumItdMilliseconds)
 	{
 		float x = Math.Clamp(normalizedX, -1f, 1f);
 		float y = Math.Clamp(normalizedY, -1f, 1f);
 		float directionAmount = MathF.Abs(x);
-		float farEarGain = MathF.Pow(10f, -MathF.Max(0f, farEarAttenuationDecibels) * directionAmount / 20f);
+		float farEarGain = MathF.Pow(10f, -FarEarAttenuationDecibels * directionAmount / 20f);
 		float leftGain = x > 0f ? farEarGain : 1f;
 		float rightGain = x < 0f ? farEarGain : 1f;
 		float powerNormalizer = 1f / MathF.Sqrt(leftGain * leftGain + rightGain * rightGain);
@@ -163,8 +184,7 @@ internal sealed class SpatialAudioEmitter
 		bool itdEnabled,
 		float maximumItdMilliseconds,
 		Span<float> left,
-		Span<float> right,
-		float farEarAttenuationDecibels = SpatialAudioTransformCalculator.DefaultFarEarAttenuationDecibels)
+		Span<float> right)
 	{
 		for (int index = 0; index < left.Length; index++)
 		{
@@ -178,42 +198,13 @@ internal sealed class SpatialAudioEmitter
 				_currentX,
 				_currentY,
 				itdEnabled,
-				maximumItdMilliseconds,
-				farEarAttenuationDecibels);
+				maximumItdMilliseconds);
 			float monoSample = source.ReadSample(transform.PitchRatio);
 			_delayBuffer[_writeIndex] = monoSample;
 			float leftSample = ReadDelayed(transform.LeftDelaySamples);
 			float rightSample = ReadDelayed(transform.RightDelaySamples);
 			left[index] += leftSample * transform.LeftGain * _currentDistanceGain;
 			right[index] += rightSample * transform.RightGain * _currentDistanceGain;
-			_writeIndex = (_writeIndex + 1) % DelayBufferLength;
-		}
-	}
-
-	internal void RenderMoving(
-		IMovingSpatialMonoSource source,
-		bool itdEnabled,
-		float maximumItdMilliseconds,
-		Span<float> left,
-		Span<float> right)
-	{
-		for (int index = 0; index < left.Length; index++)
-		{
-			SpatialSourceParameters parameters = source.CurrentSpatialParameters;
-			float x = Math.Clamp(parameters.NormalizedX, -1f, 1f);
-			float y = Math.Clamp(parameters.NormalizedY, -1f, 1f);
-			float distanceGain = Math.Clamp(parameters.DistanceGain, 0f, 1f);
-			SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
-				x,
-				y,
-				itdEnabled,
-				maximumItdMilliseconds);
-			float monoSample = source.ReadSample(transform.PitchRatio);
-			_delayBuffer[_writeIndex] = monoSample;
-			float leftSample = ReadDelayed(transform.LeftDelaySamples);
-			float rightSample = ReadDelayed(transform.RightDelaySamples);
-			left[index] += leftSample * transform.LeftGain * distanceGain;
-			right[index] += rightSample * transform.RightGain * distanceGain;
 			_writeIndex = (_writeIndex + 1) % DelayBufferLength;
 		}
 	}

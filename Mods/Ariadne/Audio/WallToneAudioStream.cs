@@ -1,7 +1,6 @@
 #nullable enable
 
 using System;
-using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using Terraria;
 using Terraria.Audio;
@@ -15,8 +14,6 @@ internal sealed class WallToneAudioStream : IDisposable
 {
 	private const int FramesPerBuffer = 512;
 	private const int TargetQueuedBuffers = 6;
-	private const float MinimumStereoWidthDecibels = 6f;
-	private const float MaximumStereoWidthDecibels = 24f;
 
 	/// <summary>
 	/// Terrain answers from more than one direction at once, and a corridor commonly
@@ -57,7 +54,6 @@ internal sealed class WallToneAudioStream : IDisposable
 	private DynamicSoundEffectInstance? _stream;
 	private bool _itdEnabled = true;
 	private float _maximumItdMilliseconds = 0.65f;
-	private float _farEarAttenuationDecibels = MaximumStereoWidthDecibels;
 	private bool _isRunning;
 	private bool _isReset = true;
 	private bool _failureLogged;
@@ -104,10 +100,6 @@ internal sealed class WallToneAudioStream : IDisposable
 
 		_itdEnabled = config.SpatialAudioItdEnabled;
 		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
-		_farEarAttenuationDecibels = MathHelper.Lerp(
-			MinimumStereoWidthDecibels,
-			MaximumStereoWidthDecibels,
-			Math.Clamp(config.WallToneStereoWidthPercent / 100f, 0f, 1f));
 		float configuredGain = Math.Clamp(config.WallToneVolumePercent / 100f, 0f, 1f);
 		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f);
 		SetVoiceTarget(_leftVoice, _leftEmitter, snapshot.Left, masterGain * SideVoiceGain);
@@ -239,10 +231,10 @@ internal sealed class WallToneAudioStream : IDisposable
 	{
 		Array.Clear(_leftMix);
 		Array.Clear(_rightMix);
-		_leftEmitter.Render(_leftVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix, _farEarAttenuationDecibels);
-		_rightEmitter.Render(_rightVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix, _farEarAttenuationDecibels);
-		_ceilingEmitter.Render(_ceilingVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix, _farEarAttenuationDecibels);
-		_floorEmitter.Render(_floorVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix, _farEarAttenuationDecibels);
+		_leftEmitter.Render(_leftVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
+		_rightEmitter.Render(_rightVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
+		_ceilingEmitter.Render(_ceilingVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
+		_floorEmitter.Render(_floorVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
 
 		for (int frame = 0; frame < FramesPerBuffer; frame++)
 		{

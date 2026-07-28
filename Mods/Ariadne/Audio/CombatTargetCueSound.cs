@@ -7,6 +7,7 @@ using Terraria;
 using Terraria.Audio;
 using Terraria.ModLoader;
 using Ariadne.Configs;
+using Ariadne.Ingame;
 
 namespace Ariadne.Audio;
 
@@ -68,7 +69,8 @@ internal sealed class CombatTargetCueSound : IDisposable
 		try
 		{
 			StopCurrent();
-			Vector2 normalizedPosition = ViewportSpatialPosition.Normalize(worldPosition);
+			Vector2 normalizedPosition =
+				SpatialObserverContext.Current.NormalizeToViewport(worldPosition);
 			byte[] pcm = CreatePcm(
 				normalizedPosition,
 				config.SpatialAudioItdEnabled,

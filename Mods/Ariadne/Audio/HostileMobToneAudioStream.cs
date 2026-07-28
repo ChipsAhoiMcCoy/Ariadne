@@ -13,7 +13,7 @@ internal readonly record struct HostileMobToneTarget(
 	bool IsActive,
 	float NormalizedX,
 	float NormalizedY,
-	float ViewportEdgeFraction);
+	float Proximity);
 
 internal sealed class HostileMobToneAudioStream : IDisposable
 {
@@ -218,7 +218,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		in HostileMobToneTarget target,
 		float masterGain)
 	{
-		float proximity = target.IsActive ? 1f - target.ViewportEdgeFraction : 0f;
+		float proximity = target.IsActive ? target.Proximity : 0f;
 		float distanceGain = SpatialAudioDistanceGain.FromProximity(proximity);
 		float modulationRate = MinimumModulationRate *
 			MathF.Pow(MaximumModulationRate / MinimumModulationRate, proximity);
@@ -295,9 +295,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 			target.IsActive,
 			float.IsFinite(target.NormalizedX) ? Math.Clamp(target.NormalizedX, -1f, 1f) : 0f,
 			float.IsFinite(target.NormalizedY) ? Math.Clamp(target.NormalizedY, -1f, 1f) : 0f,
-			float.IsFinite(target.ViewportEdgeFraction)
-				? Math.Clamp(target.ViewportEdgeFraction, 0f, 1f)
-				: 1f);
+			float.IsFinite(target.Proximity) ? Math.Clamp(target.Proximity, 0f, 1f) : 0f);
 	}
 
 	private static short Encode(float sample)

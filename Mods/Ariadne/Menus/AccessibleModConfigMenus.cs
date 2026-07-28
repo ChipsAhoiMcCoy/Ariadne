@@ -197,8 +197,6 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 		AddSlider(entries, nameof(AriadneClientConfig.WallToneRangeTiles),
 			() => _pending.WallToneRangeTiles, value => _pending.WallToneRangeTiles = value,
 			minimum: 4, maximum: 30, step: 1, format: value => $"{value} tiles");
-		AddPercentSlider(entries, nameof(AriadneClientConfig.WallToneStereoWidthPercent),
-			() => _pending.WallToneStereoWidthPercent, value => _pending.WallToneStereoWidthPercent = value);
 		AddToggle(entries, nameof(AriadneClientConfig.FallTonesEnabled),
 			() => _pending.FallTonesEnabled, value => _pending.FallTonesEnabled = value);
 		AddToggle(entries, nameof(AriadneClientConfig.HostileMobTonesEnabled),

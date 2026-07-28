@@ -22,14 +22,15 @@ internal readonly record struct SpatialObserverSnapshot(
 	bool IsVirtual)
 {
 	/// <summary>
-	/// Places a world position relative to the observer's body, scaled so half a
-	/// viewport away reaches either edge. The viewport rectangle is a poor origin
+	/// Places a world position on the observer's own screen: the body reads centred and
+	/// either visible edge reads hard over. The viewport rectangle is a poor origin
 	/// because Terraria clamps the camera near world boundaries, leaving the body
-	/// off center and every cue biased toward one ear for as long as it stays there.
+	/// off center and every cue biased toward one ear for as long as it stays there,
+	/// so the body supplies the origin and the rectangle supplies each side's scale.
 	/// </summary>
 	internal Vector2 NormalizeToViewport(Vector2 worldPosition)
 	{
-		return ViewportSpatialPosition.Normalize(worldPosition, Center, ViewportSize);
+		return ViewportSpatialPosition.Normalize(worldPosition, Center, ViewportPosition, ViewportSize);
 	}
 }
 

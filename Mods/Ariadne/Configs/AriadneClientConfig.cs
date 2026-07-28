@@ -81,12 +81,6 @@ public sealed class AriadneClientConfig : ModConfig
 	[Slider]
 	public int WallToneRangeTiles { get; set; } = 12;
 
-	[DefaultValue(80)]
-	[Range(0, 100)]
-	[Increment(5)]
-	[Slider]
-	public int WallToneStereoWidthPercent { get; set; } = 80;
-
 	[DefaultValue(true)]
 	public bool FallTonesEnabled { get; set; } = true;
 
