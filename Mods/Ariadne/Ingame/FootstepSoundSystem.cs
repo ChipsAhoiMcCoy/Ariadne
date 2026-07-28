@@ -15,7 +15,6 @@ namespace Ariadne.Ingame;
 internal sealed class FootstepSoundSystem : ModSystem
 {
 	private const float TileWidth = 16f;
-	private const float FootstepVolume = 0.48f;
 	private const float GroundProbeDistance = 0.1f;
 	private const float TeleportThreshold = TileWidth * 1.5f;
 
@@ -75,7 +74,7 @@ internal sealed class FootstepSoundSystem : ModSystem
 		if (crossedTileCount == 1 && isWalking && !teleported && IsTouchingGround(player, out bool onPlatform))
 		{
 			_sounds?.Play(
-				FootstepVolume * config.FootstepVolumePercent / 100f,
+				config.FootstepVolumePercent / 100f,
 				onPlatform ? PlatformPitch : 0f);
 		}
 	}

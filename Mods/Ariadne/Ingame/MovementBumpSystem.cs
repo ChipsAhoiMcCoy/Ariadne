@@ -17,7 +17,6 @@ namespace Ariadne.Ingame;
 [Autoload(Side = ModSide.Client)]
 internal sealed class MovementBumpSystem : ModSystem
 {
-	private const float BumpVolume = 0.90f;
 	private const float VerticalPitch = 0.30f;
 	private const float ProgressThresholdPixels = 0.05f;
 	private const float RestingSpeedThreshold = 0.05f;
@@ -189,7 +188,7 @@ internal sealed class MovementBumpSystem : ModSystem
 		}
 
 		sounds.Play(
-			BumpVolume * config.MovementBumpVolumePercent / 100f * Math.Clamp(volumeScale, 0f, 1f),
+			config.MovementBumpVolumePercent / 100f * Math.Clamp(volumeScale, 0f, 1f),
 			-Math.Sign(verticalDirection) * VerticalPitch,
 			surface);
 	}

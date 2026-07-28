@@ -20,11 +20,18 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	private const int FramesPerBuffer = 512;
 	private const int TargetQueuedBuffers = 6;
 	private const int MaximumEmitterCount = 4;
-	private const float VoiceHeadroomGain = 0.28f;
 	private const float CarrierFrequency = 320f;
 	private const float MinimumModulationRate = 1.5f;
 	private const float MaximumModulationRate = 12f;
 	private const float EmitterGainAttackSeconds = 0.003f;
+	private const int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
+
+	/// <summary>
+	/// The gain that puts one voice on the shared reference at its closest range,
+	/// measured rather than trimmed by ear because the tone spends most of its cycle
+	/// between ticks and a raw gain says little about how loud it lands.
+	/// </summary>
+	private static readonly float VoiceGain = CalibrateVoiceGain();
 
 	private readonly Mod _owner;
 	private readonly ModulatedTriangleToneVoice[] _voices =
@@ -96,7 +103,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		_itdEnabled = config.SpatialAudioItdEnabled;
 		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
 		float configuredGain = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
-		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceHeadroomGain;
+		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceGain;
 		for (int index = 0; index < MaximumEmitterCount; index++)
 		{
 			HostileMobToneTarget target = index < targets.Length
@@ -188,6 +195,21 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		_disposed = true;
 		_isRunning = false;
 		ResetSignalState();
+	}
+
+	private static float CalibrateVoiceGain()
+	{
+		ModulatedTriangleToneVoice voice = new(0f, 0f);
+		voice.SetTarget(CarrierFrequency, MaximumModulationRate, gain: 1f);
+		float[] samples = new float[CalibrationFrames];
+		for (int index = 0; index < samples.Length; index++)
+		{
+			samples[index] = voice.ReadSample(pitchRatio: 1f);
+		}
+
+		return AuthoredAudioLevels.LoudnessTrim(
+			samples,
+			AuthoredAudioLevels.SpatialVoiceReferenceLoudness);
 	}
 
 	private static void SetVoiceTarget(
@@ -287,7 +309,6 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 internal sealed class ModulatedTriangleToneVoice : ISpatialMonoSource
 {
 	private const float MinimumModulationGain = 0.04f;
-	private const float PerceptualCompensationGain = 2.1f;
 	private const float TickAttackSeconds = 0.002f;
 	private const float TickDecaySeconds = 0.030f;
 	private static readonly float FrequencySmoothing = SmoothingCoefficient(0.035f);
@@ -342,7 +363,7 @@ internal sealed class ModulatedTriangleToneVoice : ISpatialMonoSource
 		_carrierPhase = WrapPhase(_carrierPhase + carrierIncrement);
 		_modulationPhase = WrapPhase(
 			_modulationPhase + _currentModulationRate / SpatialAudioTransformCalculator.SampleRate);
-		return triangle * PerceptualCompensationGain * modulationGain * _currentGain;
+		return triangle * modulationGain * _currentGain;
 	}
 
 	public void Reset()

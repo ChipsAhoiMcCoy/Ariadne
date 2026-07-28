@@ -9,6 +9,13 @@ public sealed class AriadneClientConfig : ModConfig
 {
 	private const float DefaultSpatialAudioItdMilliseconds = 0.65f;
 
+	/// <summary>
+	/// Every cue is normalized to one reference loudness, so a percentage means the
+	/// same loudness whichever cue it belongs to and every volume starts level. The
+	/// default leaves a few decibels of room to raise a cue above the rest.
+	/// </summary>
+	private const int DefaultVolumePercent = 70;
+
 	public override ConfigScope Mode => ConfigScope.ClientSide;
 
 	[DefaultValue(true)]
@@ -17,11 +24,11 @@ public sealed class AriadneClientConfig : ModConfig
 	[DefaultValue(true)]
 	public bool CursorEarconsEnabled { get; set; } = true;
 
-	[DefaultValue(55)]
+	[DefaultValue(DefaultVolumePercent)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int CursorEarconVolumePercent { get; set; } = 55;
+	public int CursorEarconVolumePercent { get; set; } = DefaultVolumePercent;
 
 	[DefaultValue(true)]
 	public bool CursorCoordinateAnnouncementsEnabled { get; set; } = true;
@@ -32,11 +39,11 @@ public sealed class AriadneClientConfig : ModConfig
 	[DefaultValue(true)]
 	public bool LowHealthHeartbeatEnabled { get; set; } = true;
 
-	[DefaultValue(45)]
+	[DefaultValue(DefaultVolumePercent)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int LowHealthHeartbeatVolumePercent { get; set; } = 45;
+	public int LowHealthHeartbeatVolumePercent { get; set; } = DefaultVolumePercent;
 
 	[DefaultValue(true)]
 	public bool LowHealthAnnouncementsEnabled { get; set; } = true;
@@ -53,20 +60,20 @@ public sealed class AriadneClientConfig : ModConfig
 	[DefaultValue(true)]
 	public bool MovementBumpTonesEnabled { get; set; } = true;
 
-	[DefaultValue(60)]
+	[DefaultValue(DefaultVolumePercent)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int MovementBumpVolumePercent { get; set; } = 60;
+	public int MovementBumpVolumePercent { get; set; } = DefaultVolumePercent;
 
 	[DefaultValue(true)]
 	public bool WallToneEnabled { get; set; } = true;
 
-	[DefaultValue(55)]
+	[DefaultValue(DefaultVolumePercent)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int WallToneVolumePercent { get; set; } = 55;
+	public int WallToneVolumePercent { get; set; } = DefaultVolumePercent;
 
 	[DefaultValue(12)]
 	[Range(4, 30)]
@@ -86,11 +93,11 @@ public sealed class AriadneClientConfig : ModConfig
 	[DefaultValue(true)]
 	public bool HostileMobTonesEnabled { get; set; } = true;
 
-	[DefaultValue(45)]
+	[DefaultValue(DefaultVolumePercent)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int HostileMobToneVolumePercent { get; set; } = 45;
+	public int HostileMobToneVolumePercent { get; set; } = DefaultVolumePercent;
 
 	[DefaultValue(3)]
 	[Range(1, 4)]
@@ -98,20 +105,20 @@ public sealed class AriadneClientConfig : ModConfig
 	[Slider]
 	public int HostileMobMaximumEmitters { get; set; } = 3;
 
-	[DefaultValue(55)]
+	[DefaultValue(DefaultVolumePercent)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int FreecamBeaconVolumePercent { get; set; } = 55;
+	public int FreecamBeaconVolumePercent { get; set; } = DefaultVolumePercent;
 
 	[DefaultValue(true)]
 	public bool FootstepSoundsEnabled { get; set; } = true;
 
-	[DefaultValue(60)]
+	[DefaultValue(DefaultVolumePercent)]
 	[Range(0, 100)]
 	[Increment(5)]
 	[Slider]
-	public int FootstepVolumePercent { get; set; } = 60;
+	public int FootstepVolumePercent { get; set; } = DefaultVolumePercent;
 
 	[DefaultValue(true)]
 	public bool SpatialAudioItdEnabled { get; set; } = true;

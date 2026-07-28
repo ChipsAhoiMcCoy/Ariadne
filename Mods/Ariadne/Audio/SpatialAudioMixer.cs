@@ -86,6 +86,13 @@ internal static class SpatialAudioTransformCalculator
 	/// </summary>
 	internal const float DefaultFarEarAttenuationDecibels = 6f;
 
+	/// <summary>
+	/// What each channel receives from a centered voice under the equal-power pan
+	/// below. Level calibration has to account for it, because a mono cue played
+	/// without the spatializer reaches both channels whole.
+	/// </summary>
+	internal static readonly float CenteredChannelGain = 1f / MathF.Sqrt(2f);
+
 	internal static SpatialAudioTransform Calculate(
 		float normalizedX,
 		float normalizedY,

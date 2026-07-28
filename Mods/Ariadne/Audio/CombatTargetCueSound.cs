@@ -19,6 +19,12 @@ internal sealed class CombatTargetCueSound : IDisposable
 	private const float DurationSeconds = 0.16f;
 	private const int DelayTailFrames = 64;
 
+	/// <summary>
+	/// The gain that puts the cue on the shared reference, measured once from the
+	/// voice itself rather than trimmed by ear.
+	/// </summary>
+	private static readonly float CueTrim = CalibrateCueTrim();
+
 	private readonly Mod _owner;
 	private SoundEffect? _soundEffect;
 	private SoundEffectInstance? _instance;
@@ -133,18 +139,39 @@ internal sealed class CombatTargetCueSound : IDisposable
 		_disposed = true;
 	}
 
+	private static float CalibrateCueTrim()
+	{
+		int cueFrames = CueFrameCount();
+		float[] samples = new float[cueFrames];
+		TargetLockCueVoice voice = new(cueFrames, gain: 1f);
+		for (int frame = 0; frame < cueFrames; frame++)
+		{
+			samples[frame] = voice.ReadSample(pitchRatio: 1f);
+		}
+
+		return AuthoredAudioLevels.PeakLimitedTrim(
+			samples,
+			AuthoredAudioLevels.SpatialVoiceReferenceLoudness,
+			AuthoredAudioLevels.NormalizedSpatialVoicePeak);
+	}
+
+	private static int CueFrameCount()
+	{
+		return Math.Max(
+			1,
+			(int)MathF.Round(SpatialAudioTransformCalculator.SampleRate * DurationSeconds));
+	}
+
 	private static byte[] CreatePcm(
 		Vector2 normalizedPosition,
 		bool itdEnabled,
 		float maximumItdMilliseconds)
 	{
-		int cueFrames = Math.Max(
-			1,
-			(int)MathF.Round(SpatialAudioTransformCalculator.SampleRate * DurationSeconds));
+		int cueFrames = CueFrameCount();
 		int totalFrames = cueFrames + DelayTailFrames;
 		float[] left = new float[totalFrames];
 		float[] right = new float[totalFrames];
-		TargetLockCueVoice voice = new(cueFrames);
+		TargetLockCueVoice voice = new(cueFrames, CueTrim);
 		SpatialAudioEmitter emitter = new(gainAttackSeconds: 0.001f);
 		emitter.SetTargetImmediately(new(
 			normalizedPosition.X,
@@ -207,23 +234,21 @@ internal sealed class CombatTargetCueSound : IDisposable
 
 	private static short Encode(float sample)
 	{
-		float normalized = Math.Clamp(
-			sample * AuthoredAudioLevels.NormalizedOneShotPeak,
-			-1f,
-			1f);
-		return (short)MathF.Round(normalized * short.MaxValue);
+		return (short)MathF.Round(Math.Clamp(sample, -1f, 1f) * short.MaxValue);
 	}
 
 	private sealed class TargetLockCueVoice : ISpatialMonoSource
 	{
 		private const float AttackSeconds = 0.004f;
 		private readonly int _frameCount;
+		private readonly float _gain;
 		private float _phase;
 		private int _frame;
 
-		internal TargetLockCueVoice(int frameCount)
+		internal TargetLockCueVoice(int frameCount, float gain)
 		{
 			_frameCount = Math.Max(1, frameCount);
+			_gain = gain;
 		}
 
 		public float ReadSample(float pitchRatio)
@@ -247,7 +272,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 
 			float angle = MathF.Tau * _phase;
 			float tone = MathF.Sin(angle) + 0.22f * MathF.Sin(angle * 2f);
-			return tone / 1.22f * attack * release;
+			return tone / 1.22f * attack * release * _gain;
 		}
 
 		public void Reset()

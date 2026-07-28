@@ -14,7 +14,13 @@ internal sealed class FreecamBodyBeaconAudioStream : IDisposable
 {
 	private const int FramesPerBuffer = 512;
 	private const int TargetQueuedBuffers = 6;
-	private const float VoiceHeadroomGain = 0.5f;
+	private const int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
+
+	/// <summary>
+	/// The gain that puts the beacon on the shared reference. It pulses for a sixth
+	/// of its cycle, so its measured loudness sits well under its peak.
+	/// </summary>
+	private static readonly float VoiceGain = CalibrateVoiceGain();
 
 	private readonly Mod _owner;
 	private readonly BodyBeaconVoice _voice = new();
@@ -75,7 +81,7 @@ internal sealed class FreecamBodyBeaconAudioStream : IDisposable
 		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
 		float configuredGain = Math.Clamp(config.FreecamBeaconVolumePercent / 100f, 0f, 1f);
 		float masterGain =
-			configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceHeadroomGain;
+			configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceGain;
 		_voice.SetGain(masterGain);
 		SpatialSourceParameters target = new(
 			normalizedPosition.X,
@@ -163,6 +169,21 @@ internal sealed class FreecamBodyBeaconAudioStream : IDisposable
 		_disposed = true;
 		_isRunning = false;
 		ResetSignalState();
+	}
+
+	private static float CalibrateVoiceGain()
+	{
+		BodyBeaconVoice voice = new();
+		voice.SetGain(1f);
+		float[] samples = new float[CalibrationFrames];
+		for (int index = 0; index < samples.Length; index++)
+		{
+			samples[index] = voice.ReadSample(pitchRatio: 1f);
+		}
+
+		return AuthoredAudioLevels.LoudnessTrim(
+			samples,
+			AuthoredAudioLevels.SpatialVoiceReferenceLoudness);
 	}
 
 	private void GenerateBuffer()

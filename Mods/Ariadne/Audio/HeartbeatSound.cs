@@ -22,7 +22,6 @@ internal sealed class HeartbeatSound : IDisposable
 	private const float PitchSweepSeconds = 0.030f;
 	private const float PitchDrop = 0.9f;
 	private const float ThudDecaySeconds = 0.018f;
-	private const float SummedPartialPeak = 1.64f;
 
 	private static readonly ThumpDesign FirstSound = new(
 		StartSeconds: 0.000f,
@@ -77,7 +76,7 @@ internal sealed class HeartbeatSound : IDisposable
 	{
 		int sampleCount = (int)MathF.Round(SampleRate * BeatSeconds);
 		int releaseSamples = Math.Max(2, (int)MathF.Round(SampleRate * ReleaseSeconds));
-		byte[] pcm = new byte[sampleCount * sizeof(short)];
+		float[] samples = new float[sampleCount];
 		uint noiseState = 0x5D2E_C41Bu;
 		float filteredNoise = 0f;
 
@@ -95,18 +94,16 @@ internal sealed class HeartbeatSound : IDisposable
 			float release = i < sampleCount - releaseSamples
 				? 1f
 				: (sampleCount - 1f - i) / (releaseSamples - 1f);
-			float sample = Math.Clamp(
-				(Thump(FirstSound, time, filteredNoise) + Thump(SecondSound, time, filteredNoise)) /
-					SummedPartialPeak * AuthoredAudioLevels.NormalizedOneShotPeak * release,
-				-1f,
-				1f);
-
-			short encoded = (short)MathF.Round(sample * short.MaxValue);
-			pcm[i * 2] = (byte)encoded;
-			pcm[i * 2 + 1] = (byte)(encoded >> 8);
+			samples[i] =
+				(Thump(FirstSound, time, filteredNoise) + Thump(SecondSound, time, filteredNoise)) *
+				release;
 		}
 
-		return new SoundEffect(pcm, SampleRate, AudioChannels.Mono);
+		AuthoredAudioLevels.NormalizeOneShot(samples);
+		return new SoundEffect(
+			AuthoredAudioLevels.EncodeMono(samples),
+			SampleRate,
+			AudioChannels.Mono);
 	}
 
 	private static float Thump(ThumpDesign design, float time, float noise)

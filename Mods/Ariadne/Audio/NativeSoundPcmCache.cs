@@ -245,9 +245,21 @@ internal sealed class NativePcmClip
 	internal NativePcmClip(float[] samples)
 	{
 		Samples = samples;
+		LoudnessTrim = AuthoredAudioLevels.PeakLimitedTrim(
+			samples,
+			AuthoredAudioLevels.SpatialVoiceReferenceLoudness,
+			AuthoredAudioLevels.NormalizedSpatialVoicePeak);
 	}
 
 	internal float[] Samples { get; }
+
+	/// <summary>
+	/// Brings this clip to the shared reference loudness. Terraria's own sounds are
+	/// mixed for their role in the game and span more than ten decibels between, say,
+	/// a dig and a coin pickup. As a cursor earcon they answer one question — what is
+	/// under the cursor — so level must not imply anything about the tile.
+	/// </summary>
+	internal float LoudnessTrim { get; }
 }
 
 internal static class XnbSoundEffectPcmDecoder

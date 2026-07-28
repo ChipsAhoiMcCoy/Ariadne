@@ -15,9 +15,17 @@ internal sealed class WallToneAudioStream : IDisposable
 {
 	private const int FramesPerBuffer = 512;
 	private const int TargetQueuedBuffers = 6;
-	private const float VoiceHeadroomGain = 0.28f;
 	private const float MinimumStereoWidthDecibels = 6f;
 	private const float MaximumStereoWidthDecibels = 24f;
+
+	/// <summary>
+	/// Terrain answers from more than one direction at once, and a corridor commonly
+	/// puts a side and the floor in the same ear. Each voice therefore sits this far
+	/// under the shared reference so the bed as a whole arrives on it.
+	/// </summary>
+	private const float BedVoiceOffsetDecibels = 3f;
+
+	private const int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
 
 	// The sides are the neutral reference. The ceiling sits higher and narrower so it
 	// reads thin and focused, the floor lower and broader so it reads as a rumble.
@@ -26,6 +34,13 @@ internal sealed class WallToneAudioStream : IDisposable
 	private static readonly WallToneVoiceDesign SideDesign = new(320f, 2_400f, 1.4f);
 	private static readonly WallToneVoiceDesign CeilingDesign = new(480f, 3_200f, 2.2f);
 	private static readonly WallToneVoiceDesign FloorDesign = new(180f, 1_200f, 0.9f);
+
+	// Band and resonance decide how loud a voice sounds at a given gain, so one
+	// shared gain left the ceiling voice far above the floor voice. Each design is
+	// measured against the reference instead of being trimmed by ear.
+	private static readonly float SideVoiceGain = CalibrateVoiceGain(SideDesign);
+	private static readonly float CeilingVoiceGain = CalibrateVoiceGain(CeilingDesign);
+	private static readonly float FloorVoiceGain = CalibrateVoiceGain(FloorDesign);
 
 	private readonly Mod _owner;
 	private readonly WallToneVoice _leftVoice = new(0x93A4_52E1u, SideDesign);
@@ -94,11 +109,11 @@ internal sealed class WallToneAudioStream : IDisposable
 			MaximumStereoWidthDecibels,
 			Math.Clamp(config.WallToneStereoWidthPercent / 100f, 0f, 1f));
 		float configuredGain = Math.Clamp(config.WallToneVolumePercent / 100f, 0f, 1f);
-		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f) * VoiceHeadroomGain;
-		SetVoiceTarget(_leftVoice, _leftEmitter, snapshot.Left, masterGain);
-		SetVoiceTarget(_rightVoice, _rightEmitter, snapshot.Right, masterGain);
-		SetVoiceTarget(_ceilingVoice, _ceilingEmitter, snapshot.Ceiling, masterGain);
-		SetVoiceTarget(_floorVoice, _floorEmitter, snapshot.Floor, masterGain);
+		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f);
+		SetVoiceTarget(_leftVoice, _leftEmitter, snapshot.Left, masterGain * SideVoiceGain);
+		SetVoiceTarget(_rightVoice, _rightEmitter, snapshot.Right, masterGain * SideVoiceGain);
+		SetVoiceTarget(_ceilingVoice, _ceilingEmitter, snapshot.Ceiling, masterGain * CeilingVoiceGain);
+		SetVoiceTarget(_floorVoice, _floorEmitter, snapshot.Floor, masterGain * FloorVoiceGain);
 		_isReset = false;
 	}
 
@@ -184,6 +199,25 @@ internal sealed class WallToneAudioStream : IDisposable
 		_disposed = true;
 		_isRunning = false;
 		ResetSignalState();
+	}
+
+	/// <summary>
+	/// Measures one design at its nearest surface and returns the gain that puts it
+	/// on the bed's share of the reference loudness.
+	/// </summary>
+	private static float CalibrateVoiceGain(WallToneVoiceDesign design)
+	{
+		WallToneVoice voice = new(0x51F0_2C7Bu, design);
+		voice.SetTarget(voice.FrequencyForProximity(1f), gain: 1f);
+		float[] samples = new float[CalibrationFrames];
+		for (int index = 0; index < samples.Length; index++)
+		{
+			samples[index] = voice.ReadSample(pitchRatio: 1f);
+		}
+
+		return AuthoredAudioLevels.LoudnessTrim(
+			samples,
+			AuthoredAudioLevels.SpatialVoiceReferenceLoudness - BedVoiceOffsetDecibels);
 	}
 
 	private static void SetVoiceTarget(

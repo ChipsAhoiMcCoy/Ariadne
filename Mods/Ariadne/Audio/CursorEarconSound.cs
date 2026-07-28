@@ -177,7 +177,7 @@ internal sealed class CursorEarconSound : IDisposable
 				else
 				{
 					sound.Instance.Volume = Math.Clamp(
-						configuredVolume * gameVolume * sound.NativeVolume,
+						configuredVolume * gameVolume * sound.LoudnessTrim,
 						0f,
 						1f);
 				}
@@ -425,11 +425,11 @@ internal sealed class CursorEarconSound : IDisposable
 			0f,
 			1f);
 		instance.Volume = Math.Clamp(
-			configuredVolume * Main.soundVolume * source.Volume,
+			configuredVolume * Main.soundVolume * clip.LoudnessTrim,
 			0f,
 			1f);
 		instance.Play();
-		_renderedSounds.Add(new(effect, instance, source.Volume));
+		_renderedSounds.Add(new(effect, instance, clip.LoudnessTrim));
 	}
 
 	private SlotId PlayFallback(
@@ -643,18 +643,18 @@ internal sealed class CursorEarconSound : IDisposable
 		internal RenderedCursorSound(
 			SoundEffect effect,
 			SoundEffectInstance instance,
-			float nativeVolume)
+			float loudnessTrim)
 		{
 			Effect = effect;
 			Instance = instance;
-			NativeVolume = nativeVolume;
+			LoudnessTrim = loudnessTrim;
 		}
 
 		internal SoundEffect Effect { get; }
 
 		internal SoundEffectInstance Instance { get; }
 
-		internal float NativeVolume { get; }
+		internal float LoudnessTrim { get; }
 
 		public void Dispose()
 		{
