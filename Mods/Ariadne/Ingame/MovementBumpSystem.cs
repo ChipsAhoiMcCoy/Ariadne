@@ -17,7 +17,7 @@ namespace Ariadne.Ingame;
 [Autoload(Side = ModSide.Client)]
 internal sealed class MovementBumpSystem : ModSystem
 {
-	private const float VerticalPitch = 0.30f;
+	internal const float VerticalPitch = 0.30f;
 	private const float ProgressThresholdPixels = 0.05f;
 	private const float RestingSpeedThreshold = 0.05f;
 	private const float TeleportThresholdPixels = 24f;

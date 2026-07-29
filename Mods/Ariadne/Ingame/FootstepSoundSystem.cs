@@ -20,7 +20,7 @@ internal sealed class FootstepSoundSystem : ModSystem
 
 	// A perfect fourth above the solid-ground step: far enough to name without
 	// listening for the interval, and close enough to still read as a footstep.
-	private const float PlatformPitch = 0.4f;
+	internal const float PlatformPitch = 0.4f;
 
 	private FootstepSoundBank? _sounds;
 	private int _previousTileX;

@@ -37,6 +37,39 @@ Announcements: {
 	ItemPickedUp: Picked up {0}
 }
 
+CombatTarget: {
+	Summary: "{0}, {1}/{2} HP, {3}, {4} tiles away."
+	SummaryWithCondition: "{0}, {1}/{2} HP, {3}, {4} tiles away, {5}."
+	WithPrefix: "{0} {1}"
+	PartOf: "{0} {1}"
+	Shielded: cannot be hurt yet
+	LunarShield: shield {0} of {1}
+	LunarShieldDown: shield down
+	TowerShieldDown: "{0} shield down. It can be hit now."
+	BecameVulnerable: Target can be hit.
+	BecameShielded: Target cannot be hurt.
+	Cleared: Combat target cleared because it is no longer visible or reachable.
+	Lost: Combat target lost.
+	Replaced: Combat target replaced.
+	Reacquired: Combat target reacquired.
+	NoTargets: No eligible combat targets.
+	Released: Combat target released. Cursor recentered. {0}
+	PartHead: head
+	PartWestHand: west hand
+	PartEastHand: east hand
+	PartCore: core
+	PartTrueEye: true eye
+	AtPlayer: at your position
+	East: east
+	Southeast: southeast
+	South: south
+	Southwest: southwest
+	West: west
+	Northwest: northwest
+	North: north
+	Northeast: northeast
+}
+
 Chat: {
 	Opened: Chat edit field. Type a message and press Enter to send, or Escape to cancel. Up and Down read received messages. Alt plus H reads chat help.
 	Closed: Chat closed.
@@ -97,6 +130,306 @@ Position: {
 Settings: {
 	Zoom: Zoom: {0} percent
 	UIScale: UI Scale: {0} percent
+}
+
+SoundGuide: {
+	Title: Ariadne Sound Guide
+	Summary: Hear every sound Ariadne makes and what each one tells you.
+	Label: "{0}: {1}"
+	VariantPosition: Variant {0} of {1}.
+	ControlHint: Enter: play
+	Instructions: Press Enter to play the sound the focused option names. Each press then moves that option on to its next variant, so pressing Enter repeatedly hears all of them. Left and Right Arrow keys choose a variant without playing it. Everything plays at the volumes you have set, so this is what the world will sound like.
+	Unavailable: Nothing can be played because Ariadne's audio bus is unavailable. See the tModLoader client log.
+	GameVolumeOff: Nothing will be heard until Terraria's Sound volume is raised above zero.
+	CueVolumeOff: Nothing will be heard until this cue's volume is raised above zero in Ariadne's settings.
+
+	Help: {
+		Enter: Play the sound the focused option names, then move that option on to its next variant. Pressing Enter repeatedly walks every variant of a cue and returns to the first. The option's own name always says what the next press will play.
+		VariantsControl: Left and Right Arrow keys
+		Variants: Choose which variant of the focused cue Enter will play. The variant is spoken but nothing is played, so you can pick one deliberately instead of stepping through them.
+		VolumesControl: Volumes
+		Volumes: Every cue plays at the loudness you have configured for it, underneath Terraria's own Sound volume. A cue turned down to zero stays silent here too, and the focused option says so rather than leaving you with silence to interpret.
+	}
+
+	Cues: {
+		Footsteps: {
+			Name: Footsteps
+			Description: A short thud each time you walk onto a new tile, so movement has a rhythm and standing still is silent. Four timbres are used in rotation, which keeps a long walk from becoming one repeating click, and the pitch names what you are standing on. Mounts, teleports and grapples are deliberately silent.
+
+			Variants: {
+				Ground: {
+					Name: Solid ground
+					Detail: The neutral step. Four of them play here at a walking pace, which is what shows the rotation between timbres.
+				}
+
+				Platform: {
+					Name: Wooden platform
+					Detail: A perfect fourth above solid ground: far enough to name without listening for the interval, and close enough to still be a footstep. Every tile holding you up has to be a platform, because one solid tile underfoot would stop the descent the raised pitch promises.
+				}
+			}
+		}
+
+		MovementBumps: {
+			Name: Blocked movement
+			Description: A low knock whenever a movement request stops making progress. It rings about three times as long as a footstep, so the two never blur together inside one stride, and it sounds from you rather than from the surface. Momentum on ice, knockback, mounts, ropes and grapples are all excluded, so it only answers when the controls are genuinely being refused.
+
+			Variants: {
+				Wall: {
+					Name: Wall ahead
+					Detail: The neutral knock: terrain in the direction you are walking, damped into a dull thud so it cannot be mistaken for a step.
+				}
+
+				Door: {
+					Name: Closed door ahead
+					Detail: A fifth higher, dying away faster, with the partial pushed up and the noise pulled back so it reads as a knock on wood. Sounding the same as stone made every closed door read as a dead end.
+				}
+
+				Landing: {
+					Name: Landing
+					Detail: Pitched down. It grows louder with the height of the drop up to about fifteen tiles; this is a full-weight landing.
+				}
+
+				Ceiling: {
+					Name: Head against the ceiling
+					Detail: Pitched up, the mirror of a landing.
+				}
+			}
+		}
+
+		Heartbeat: {
+			Name: Low health heartbeat
+			Description: A two-part lub-dub that begins once health falls to half and quickens at each lower threshold, so how hurt you are is legible without reading the life meter. Raising the pitch also tightens the gap between the two thumps, the way a quickening pulse does. Four beats play for each stage, because the rate is most of what a stage means.
+
+			Variants: {
+				Half: {
+					Name: Half health
+					Detail: About thirty-six beats a minute, the slowest stage and the one that starts the cue.
+				}
+
+				Forty: {
+					Name: Forty percent health
+					Detail: About forty-four beats a minute.
+				}
+
+				Thirty: {
+					Name: Thirty percent health
+					Detail: About fifty-five beats a minute.
+				}
+
+				Twenty: {
+					Name: Twenty percent health
+					Detail: About sixty-nine beats a minute.
+				}
+
+				Ten: {
+					Name: Ten percent health
+					Detail: About ninety beats a minute. This is where the spoken warning changes from low to critical.
+				}
+
+				Five: {
+					Name: Five percent health
+					Detail: About a hundred and twenty beats a minute, the fastest stage.
+				}
+			}
+		}
+
+		CursorEarcons: {
+			Name: Cursor earcons
+			Description: Every step of the unlocked cursor onto a nonempty tile plays that tile's own Terraria sound, from the tile's direction and distance rather than from you, so the shape of what you are moving across is audible. Each clip is levelled to one shared loudness first, because here level has to mean distance and nothing about the tile. Smart Cursor sounds one whenever its resolved target changes. They are auditioned from directly in front of you; in play the cue sits wherever the cursor is.
+
+			Variants: {
+				Stone: {
+					Name: Stone and dirt
+					Detail: Terraria's dig sound. Its three variants are used in rotation, so press Enter more than once to hear them.
+				}
+
+				Grass: {
+					Name: Grass
+					Detail: A single sound with no variants.
+				}
+
+				Metal: {
+					Name: Metal ore
+					Detail: The tink of a tile too hard for the pickaxe in hand, also in three variants.
+				}
+
+				Glass: {
+					Name: Glass and shatter
+					Detail: A single sound with no variants.
+				}
+
+				Water: {
+					Name: Water and honey
+					Detail: A liquid alternates a strong and a weak splash, so two consecutive steps through the same pool are never identical.
+				}
+
+				Shimmer: {
+					Name: Shimmer
+					Detail: Shimmer has four dedicated splashes of its own rather than sharing water's.
+				}
+
+				Lava: {
+					Name: Lava
+					Detail: The only dedicated lava sound Terraria exposes is its flow, so the cue is a faded first second of it.
+				}
+			}
+		}
+
+		CombatTarget: {
+			Name: Combat target cues
+			Description: Marks a combat target being taken and lost, and whether the target you already hold can be hurt at this moment. All four share one timbre and one envelope, so only the direction of the pitch sweep says which event it is, and a rise against a fall is about the most reliable distinction hearing offers. In play each sounds from the target itself, so a loss comes from where the target last was and still names the direction of the thing that vanished.
+
+			Variants: {
+				Acquired: {
+					Name: Target taken
+					Detail: A rise between two pitches.
+				}
+
+				Lost: {
+					Name: Target lost
+					Detail: The same two pitches falling, given slightly longer because a descent needs room to read as settling rather than as being cut off.
+				}
+
+				Opened: {
+					Name: Target can be hit
+					Detail: The rise an octave up and about half as long. A boss part whose window is a fraction of a second cannot be reported in words, so this is what carries it.
+				}
+
+				Shielded: {
+					Name: Target cannot be hurt
+					Detail: The fall an octave up. Moon Lord's hands answer this several times a second, which is why the pair is kept short and pitched well clear of the one it must not be mistaken for.
+				}
+			}
+		}
+
+		HostileMobTones: {
+			Name: Hostile enemy tones
+			Description: A continuous ticking tone for each prioritised hostile within the field, several at once with bosses taking priority. Loudness and tick rate both rise as an enemy closes, from about one and a half ticks a second at the edge of its range to twelve at your position, while horizontal direction sets the stereo position and the far-ear delay and screen height alone sets the pitch. An enemy is heard from the point of it nearest you rather than from its middle, so a worm sounds from whichever coil is closest. Distances here are fractions of your configured hostile mob tone range.
+
+			Variants: {
+				CloseRight: {
+					Name: Close, on your right
+					Detail: Loud and ticking quickly. This is an enemy nearly on top of you.
+				}
+
+				HalfwayRight: {
+					Name: Halfway to you, on your right
+					Detail: Half the level and about half the tick rate of the close cue.
+				}
+
+				EdgeRight: {
+					Name: At the edge of its range, on your right
+					Detail: Quiet and slow. This is what an enemy sounds like as it first becomes audible.
+				}
+
+				CloseLeft: {
+					Name: Close, on your left
+					Detail: The mirror of the close right cue. Compare the two to hear how wide the stereo field is.
+				}
+
+				Above: {
+					Name: Close, above you
+					Detail: Height alone raises the pitch; the carrier itself never changes, so a high tone always means a high enemy.
+				}
+
+				Below: {
+					Name: Close, below you
+					Detail: The same tone dropped by the same amount it was raised above you.
+				}
+
+				Crowd: {
+					Name: Three enemies at once
+					Detail: One close on your right, one further off on your left, and one above. How many are actually heard is limited by your maximum hostile mob emitters setting.
+				}
+			}
+		}
+
+		WallTones: {
+			Name: Terrain wall tones
+			Description: Filtered noise that draws the terrain immediately around you: one voice for each side, one for the ceiling, and one for the ground while you are falling. Each rises in pitch and in loudness as its surface gets nearer, so a corridor narrowing is heard before it is met. The sides are the neutral timbre, the ceiling is higher and narrower so it reads as thin and focused, and the floor is lower and broader so it reads as a rumble. Distances here are fractions of your configured wall tone range; because the stereo field is a fixed hundred and twenty tiles wide, a wall a few tiles away sits only slightly off centre and its timbre and pitch carry more than its pan does.
+
+			Variants: {
+				LeftClose: {
+					Name: Wall close on your left
+					Detail: High and loud. A surface has to answer four probes down the height of your body before it counts, so a one-tile step up stays silent.
+				}
+
+				LeftFar: {
+					Name: Wall far on your left
+					Detail: The same voice near the end of its range: low and quiet. Compare it with the close cue to hear the whole sweep.
+				}
+
+				RightClose: {
+					Name: Wall close on your right
+					Detail: The mirror of the close left cue.
+				}
+
+				Corridor: {
+					Name: A narrow corridor
+					Detail: Both sides close at once. Each voice sits a few decibels below the shared reference so that the pair of them together still arrives on it.
+				}
+
+				Ceiling: {
+					Name: Ceiling above you
+					Detail: Thinner and higher than a side. A single block overhead already blocks upward movement, so the nearest hit wins outright with no alignment required.
+				}
+
+				Floor: {
+					Name: Ground below you while falling
+					Detail: Broader and lower than a side. The ground is at zero distance whenever you are standing on it, so this voice only sounds mid-descent, and only if falling tones are enabled.
+				}
+			}
+		}
+
+		BodyBeacon: {
+			Name: Freecam body beacon
+			Description: While freecam has taken the camera away from your body, a short pulse every three quarters of a second marks where the body is. Once the body has left the field the pulse is projected onto the field's edge, so its direction stays readable however far the camera has travelled.
+
+			Variants: {
+				Left: {
+					Name: Body to your left
+					Detail: Hard left, which is where the beacon sits once the camera has carried the body past the edge of the field.
+				}
+
+				Right: {
+					Name: Body to your right
+					Detail: Hard right.
+				}
+
+				Above: {
+					Name: Body above you
+					Detail: Centred and pitched up by a tritone, which is the full vertical range of the field.
+				}
+
+				Below: {
+					Name: Body below you
+					Detail: Centred and pitched down by the same amount.
+				}
+
+				AtBody: {
+					Name: Body at the camera
+					Detail: Centred and unpitched. This is what the beacon sounds like the moment before freecam returns you.
+				}
+			}
+		}
+
+		BreathCues: {
+			Name: Breath and submersion cues
+			Description: Terraria's own splash, played alongside the spoken announcement whenever you go under, come back up, or cross another ten percent of remaining breath. It is the game's sound rather than one of Ariadne's, so it does not pass through the mod's mixer and none of Ariadne's volumes apply to it.
+
+			Variants: {
+				Submerged: {
+					Name: Going under
+					Detail: The full splash, played once as you submerge and again if you go under honey.
+				}
+
+				Surfaced: {
+					Name: Surfacing, and each tenth of breath
+					Detail: The weaker splash, played on surfacing and at every ten percent of breath lost.
+				}
+			}
+		}
+	}
 }
 
 Configs: {

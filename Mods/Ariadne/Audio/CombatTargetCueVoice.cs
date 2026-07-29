@@ -70,15 +70,22 @@ internal sealed class CombatTargetCueVoice : ISpatialMonoSource
 }
 
 /// <summary>
-/// The two cues combat targeting sounds, and the gain each needs to reach the shared
+/// The cues combat targeting sounds, and the gain each needs to reach the shared
 /// reference.
 ///
-/// They are one pair rather than two sounds: taking a target rises between two
+/// They are pairs rather than separate sounds: taking a target rises between two
 /// pitches, losing one falls back between the same two. Sharing the timbre and the
 /// envelope keeps both recognisable as the targeting cue, while a rise against a fall
 /// is about the most reliable distinction hearing offers, so neither has to be learned
 /// against the other. The fall is given slightly longer because a descent needs room
 /// to read as settling rather than as being cut off.
+///
+/// The second pair says whether the target already held can be hurt at this moment, and
+/// is built from the same rise and fall an octave up and roughly half as long. Which
+/// thing you hold is a slower question than whether it is open right now, and Moon Lord's
+/// hands answer the second one several times a second, so the state pair is kept short
+/// enough to sit inside that rhythm and pitched clear of the pair it must not be mistaken
+/// for.
 /// </summary>
 internal sealed class CombatTargetCue
 {
@@ -99,6 +106,8 @@ internal sealed class CombatTargetCue
 
 	internal static readonly CombatTargetCue Acquired = new(new(0.16f, LowPitch, HighPitch));
 	internal static readonly CombatTargetCue Lost = new(new(0.20f, HighPitch, LowPitch));
+	internal static readonly CombatTargetCue Opened = new(new(0.07f, LowPitch * 2f, HighPitch * 2f));
+	internal static readonly CombatTargetCue Shielded = new(new(0.09f, HighPitch * 2f, LowPitch * 2f));
 
 	private readonly CombatTargetCueDesign _design;
 

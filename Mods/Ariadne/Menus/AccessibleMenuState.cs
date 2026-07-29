@@ -55,6 +55,14 @@ internal abstract class AccessibleMenuState : UIState
 
 	protected virtual string AdditionalNavigationInstructions => string.Empty;
 
+	/// <summary>
+	/// What the contextual help says Enter does. A screen that claims Enter for
+	/// something other than activation has to correct this, or its help contradicts
+	/// the key it just described.
+	/// </summary>
+	protected virtual string ActivationHelp =>
+		"Activate the focused option or its currently selected action.";
+
 	protected int SelectedIndex => _selectedIndex;
 
 	protected abstract void BuildEntries(List<AccessibleMenuEntry> entries);
@@ -320,7 +328,7 @@ internal abstract class AccessibleMenuState : UIState
 					topics.Add(new("Left Arrow", "Return to the previous menu when the focused option is not adjustable."));
 				}
 			}
-			topics.Add(new("Enter", "Activate the focused option or its currently selected action."));
+			topics.Add(new("Enter", ActivationHelp));
 		}
 		if (CanGoBack)
 		{

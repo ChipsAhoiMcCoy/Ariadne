@@ -105,6 +105,17 @@ internal sealed class AriadneAudioBus : IDisposable
 	internal bool IsAvailable => !_disposed && _stream is not null;
 
 	/// <summary>
+	/// Whether a cue is being deliberately auditioned, which opens the listening gate
+	/// on its own.
+	///
+	/// <see cref="GameplayAudioGate"/> answers whether unobstructed gameplay is in
+	/// progress, and a menu never is; the sound guide's whole purpose is to be heard
+	/// from a menu. Only the bus reads this, so the gate every cue owner consults is
+	/// unchanged and nothing in the world resumes behind the guide.
+	/// </summary>
+	internal bool IsAuditioning { get; set; }
+
+	/// <summary>
 	/// Submits one silent block as float, before any real audio, to find out whether
 	/// this build of FNA carries the float path. It has to happen first: the extension
 	/// rewrites the instance's wave format on its way in, so discovering the failure
@@ -165,7 +176,7 @@ internal sealed class AriadneAudioBus : IDisposable
 			}
 
 			float masterGain = Math.Clamp(Main.soundVolume, 0f, 1f);
-			bool canListen = GameplayAudioGate.CanListen();
+			bool canListen = IsAuditioning || GameplayAudioGate.CanListen();
 			while (_stream.PendingBufferCount < _targetQueuedBuffers)
 			{
 				GenerateBuffer(masterGain, canListen);

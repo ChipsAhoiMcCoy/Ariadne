@@ -114,6 +114,10 @@ internal sealed class WorldCursorSystem : ModSystem
 		{
 			_targetCue?.PlayLoss(targetLossPosition, config);
 		}
+		else if (_combatTargets.TryTakeVulnerabilityCue(out CombatTargetVulnerabilityCue vulnerability))
+		{
+			_targetCue?.PlayVulnerability(vulnerability.Position, vulnerability.CanBeHit, config);
+		}
 
 		if (smartEnabled)
 		{
@@ -339,7 +343,8 @@ internal sealed class WorldCursorSystem : ModSystem
 		// comes back under the player rather than being left at the dead target.
 		_cursorState.Recenter(player);
 		WorldTargetDescription description = WorldTargetDescriber.Describe(_cursorState.PrecisionTile, player);
-		AriadneMod.ScreenReader.Output($"Combat target released. Cursor recentered. {description.DetailedText}");
+		AriadneMod.ScreenReader.Output(
+			Language.GetTextValue("Mods.Ariadne.CombatTarget.Released", description.DetailedText));
 	}
 
 	private static Point GetManualAimDirection(bool current)
@@ -540,6 +545,8 @@ internal sealed class WorldCursorSystem : ModSystem
 			$"outward to the next one; pressing it on the farthest enemy releases the lock " +
 			$"and recenters the cursor. " +
 			$"A locked enemy that goes out of reach is taken back automatically when it returns. " +
+			$"Boss parts and shielded pillars can be locked before they can be hurt; a short high rise " +
+			$"says the target has opened, and a short high fall says it has closed again. " +
 			$"Manual aim always cancels combat lock. " +
 			$"Press {status} for a character status readout, {scanner} to scan the visible surroundings, and {wallTones} to toggle wall tones. " +
 			$"Hold {targetModifier} with {waypoints} to open waypoints. Hold {freecam} to move a free camera, and release it to return to your body. " +

@@ -86,6 +86,21 @@ internal sealed class FreecamBodyBeaconAudioStream : IAudioBusSource, IDisposabl
 		return true;
 	}
 
+	/// <summary>
+	/// Fades the beacon out where a reset would step. Freecam never needs this,
+	/// because the listening gate has already faded the whole mix by the time it
+	/// stops feeding a target; a caller that silences the beacon while the gate is
+	/// open has to hand the ending to the emitter's own release instead.
+	/// </summary>
+	internal void Silence()
+	{
+		if (_disposed || _isReset)
+		{
+			return;
+		}
+		_emitter.SetTarget(new(0f, 0f, DistanceGain: 0f));
+	}
+
 	internal void StopAndReset()
 	{
 		if (_disposed || _isReset)

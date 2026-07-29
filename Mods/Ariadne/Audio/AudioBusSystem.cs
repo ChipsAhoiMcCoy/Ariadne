@@ -46,6 +46,26 @@ internal sealed class AudioBusSystem : ModSystem
 		Bus?.Pump();
 	}
 
+	/// <summary>
+	/// Keeps the mix moving when the world pass will not run. Terraria returns out of
+	/// its update before <see cref="ModSystem.PostUpdateEverything"/> on the title
+	/// screen and while the game is paused, so a bus pumped only from there stops
+	/// mid-queue: whatever was still sounding ends at a buffer boundary rather than
+	/// through the gate's fade, and the sound guide would have no mix at all.
+	///
+	/// The pause flag is last frame's decision, so a frame can fall between the two
+	/// hooks. The queue is deep enough to cover it, and a frame both hooks reach only
+	/// tops the queue up twice.
+	/// </summary>
+	public override void PostUpdateInput()
+	{
+		if (Main.dedServ || (!Main.gameMenu && !Main.gamePaused))
+		{
+			return;
+		}
+		Bus?.Pump();
+	}
+
 	public override void Unload()
 	{
 		_bus?.Dispose();

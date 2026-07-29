@@ -58,6 +58,15 @@ internal sealed class CombatTargetCueSound : IDisposable
 		Play(CombatTargetCue.Lost, worldPosition, config);
 	}
 
+	/// <summary>
+	/// Sounds the target already held opening or shutting. A boss part whose window is a
+	/// fraction of a second cannot be reported in words, so this is what carries it.
+	/// </summary>
+	internal void PlayVulnerability(Vector2 worldPosition, bool canBeHit, AriadneClientConfig config)
+	{
+		Play(canBeHit ? CombatTargetCue.Opened : CombatTargetCue.Shielded, worldPosition, config);
+	}
+
 	internal void Update(AriadneClientConfig config)
 	{
 		if (_disposed || _voice is null)

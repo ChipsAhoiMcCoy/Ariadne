@@ -16,6 +16,7 @@ using Terraria.Localization;
 using Terraria.ModLoader;
 using Terraria.UI;
 using Ariadne.Accessibility;
+using Ariadne.SoundGuide;
 
 namespace Ariadne.Menus;
 
@@ -41,6 +42,11 @@ internal sealed class AccessibleSettingsMenuState : AccessibleSettingsPageState
 
 		if (Controller.IsInGame)
 		{
+			entries.Add(new(
+				() => Language.GetTextValue("Mods.Ariadne.SoundGuide.Title"),
+				() => Controller.Navigate(new SoundGuideMenuState(Controller)),
+				description: () => Language.GetTextValue("Mods.Ariadne.SoundGuide.Summary"),
+				role: "submenu"));
 			entries.Add(new(
 				() => Language.GetTextValue("tModLoader.ModConfiguration"),
 				() => Controller.Navigate(new AccessibleModConfigListMenuState(Controller)),

@@ -25,7 +25,12 @@ internal sealed class LowHealthHeartbeatSystem : ModSystem
 
 	private const int CriticalStageIndex = 4;
 
-	private static readonly HeartbeatStage[] Stages =
+	/// <summary>
+	/// The rate, pitch and level the beat takes in each band of remaining health.
+	/// Exposed so the sound guide can audition the same table rather than restate it,
+	/// which would let the two drift apart.
+	/// </summary>
+	internal static readonly HeartbeatStage[] Stages =
 	[
 		new(MaximumHealthFraction: 0.50f, IntervalTicks: 100, Pitch: 0.00f, VolumeScale: 0.74f),
 		new(MaximumHealthFraction: 0.40f, IntervalTicks: 82, Pitch: 0.05f, VolumeScale: 0.82f),
@@ -156,7 +161,7 @@ internal sealed class LowHealthHeartbeatSystem : ModSystem
 		_ticksUntilNextBeat = 0;
 	}
 
-	private readonly record struct HeartbeatStage(
+	internal readonly record struct HeartbeatStage(
 		float MaximumHealthFraction,
 		int IntervalTicks,
 		float Pitch,

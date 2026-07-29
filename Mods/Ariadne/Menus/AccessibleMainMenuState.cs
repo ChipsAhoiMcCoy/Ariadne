@@ -6,6 +6,7 @@ using System.Reflection;
 using Terraria;
 using Terraria.Localization;
 using Terraria.ModLoader;
+using Ariadne.SoundGuide;
 
 namespace Ariadne.Menus;
 
@@ -31,6 +32,10 @@ internal sealed class AccessibleMainMenuState : AccessibleMenuState
 		entries.Add(new(() => Lang.menu[131].Value, () => Controller.Navigate(new AccessibleAchievementsMenuState(Controller))));
 		entries.Add(new(() => Language.GetTextValue("UI.Workshop"), () => Controller.Navigate(new AccessibleWorkshopMenuState(Controller))));
 		entries.Add(new(() => Lang.menu[14].Value, () => Controller.Navigate(new AccessibleSettingsMenuState(Controller))));
+		entries.Add(new(
+			() => Language.GetTextValue("Mods.Ariadne.SoundGuide.Title"),
+			() => Controller.Navigate(new SoundGuideMenuState(Controller)),
+			description: () => Language.GetTextValue("Mods.Ariadne.SoundGuide.Summary")));
 		entries.Add(new(() => Language.GetTextValue("UI.Credits"), () => Controller.Navigate(new AccessibleCreditsMenuState(Controller))));
 		entries.Add(new(() => Lang.menu[15].Value, Main.WeGameRequireExitGame));
 	}
