@@ -232,5 +232,10 @@ Configs: {
 			Label: Interaural time difference strength
 			Tooltip: Set the global maximum far-ear delay in milliseconds. The full amount occurs at either horizontal viewport edge.
 		}
+
+		SpatialAudioHeadShadowEnabled: {
+			Label: Head shadow
+			Tooltip: Roll the treble off whichever ear the head is between, on top of the level difference the pan already applies. A real head takes the high frequencies and leaves the low ones. This changes the character of the stereo field, so compare it against the setting off before keeping it.
+		}
 	}
 }

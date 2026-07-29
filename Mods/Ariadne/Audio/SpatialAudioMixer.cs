@@ -21,12 +21,24 @@ internal readonly record struct SpatialSourceParameters(
 	float NormalizedY,
 	float DistanceGain);
 
+/// <summary>
+/// The listener's own settings, which belong to the player rather than to any one
+/// cue. Passed as a unit so a new cue does not have to be threaded through every
+/// emitter individually.
+/// </summary>
+internal readonly record struct SpatialAudioSettings(
+	bool ItdEnabled,
+	float MaximumItdMilliseconds,
+	bool HeadShadowEnabled);
+
 internal readonly record struct SpatialAudioTransform(
 	float LeftGain,
 	float RightGain,
 	float LeftDelaySamples,
 	float RightDelaySamples,
-	float PitchRatio);
+	float PitchRatio,
+	float LeftShadow,
+	float RightShadow);
 
 internal static class ViewportSpatialPosition
 {
@@ -95,7 +107,12 @@ internal static class SpatialAudioDistanceGain
 
 internal static class SpatialAudioTransformCalculator
 {
-	internal const int SampleRate = 44_100;
+	/// <summary>
+	/// Taken from the output device so nothing downstream has to resample. Held as a
+	/// field rather than read through <see cref="AudioFormat"/> at every use because
+	/// the per-sample voices read it inside their inner loops.
+	/// </summary>
+	internal static readonly int SampleRate = AudioFormat.SampleRate;
 
 	/// <summary>
 	/// One stereo width for every cue. A per-cue width let two sounds at the same
@@ -123,8 +140,7 @@ internal static class SpatialAudioTransformCalculator
 	internal static SpatialAudioTransform Calculate(
 		float normalizedX,
 		float normalizedY,
-		bool itdEnabled,
-		float maximumItdMilliseconds)
+		in SpatialAudioSettings settings)
 	{
 		float x = Math.Clamp(normalizedX, -1f, 1f);
 		float y = Math.Clamp(normalizedY, -1f, 1f);
@@ -136,13 +152,26 @@ internal static class SpatialAudioTransformCalculator
 		leftGain *= powerNormalizer;
 		rightGain *= powerNormalizer;
 
-		float delaySamples = itdEnabled
-			? directionAmount * Math.Clamp(maximumItdMilliseconds, 0f, 1f) / 1_000f * SampleRate
+		float delaySamples = settings.ItdEnabled
+			? directionAmount * Math.Clamp(settings.MaximumItdMilliseconds, 0f, 1f) / 1_000f * SampleRate
 			: 0f;
 		float leftDelay = x > 0f ? delaySamples : 0f;
 		float rightDelay = x < 0f ? delaySamples : 0f;
 		float pitchRatio = MathF.Pow(2f, (-6f * y) / 12f);
-		return new(leftGain, rightGain, leftDelay, rightDelay, pitchRatio);
+
+		// How much of the head each ear is behind. Taken from the signed position so
+		// the two shadows cross through zero together and a source passing the midline
+		// does not step from one ear's filter to the other's.
+		float leftShadow = settings.HeadShadowEnabled ? MathF.Max(0f, x) : 0f;
+		float rightShadow = settings.HeadShadowEnabled ? MathF.Max(0f, -x) : 0f;
+		return new(
+			leftGain,
+			rightGain,
+			leftDelay,
+			rightDelay,
+			pitchRatio,
+			leftShadow,
+			rightShadow);
 	}
 }
 
@@ -152,17 +181,58 @@ internal static class SpatialAudioTransformCalculator
 /// </summary>
 internal sealed class SpatialAudioEmitter
 {
-	private const int DelayBufferLength = 64;
+	/// <summary>
+	/// The longest interaural delay the configuration allows, which is what the delay
+	/// line has to hold. It is a duration rather than a sample count because the mixer
+	/// now runs at the device's rate: a fixed sixty-four samples covered a millisecond
+	/// at 44.1 kHz and would silently truncate the delay on a faster endpoint.
+	/// </summary>
+	private const float MaximumItdMilliseconds = 1f;
+
+	/// <summary>
+	/// Three taps of headroom past the longest delay, so the four-point interpolation
+	/// below always has a neighbour on each side.
+	/// </summary>
+	private static readonly int DelayBufferLength = NextPowerOfTwo(
+		(int)MathF.Ceiling(MaximumItdMilliseconds / 1_000f * SpatialAudioTransformCalculator.SampleRate) + 4);
+
+	private static readonly int DelayIndexMask = DelayBufferLength - 1;
+
+	/// <summary>
+	/// How often the pan, delay and pitch laws are re-evaluated. Every sample cost two
+	/// transcendentals and a square root per emitter, which across a terrain bed, four
+	/// mob voices and a beacon came to roughly eight hundred thousand of each a second
+	/// on the game thread. The listener's position cannot move meaningfully inside a
+	/// third of a millisecond, so the law is solved on that grid and the results are
+	/// carried across it by straight lines, which is inaudible and sixteen times less
+	/// work.
+	/// </summary>
+	private const int ControlBlockSamples = 16;
+
+	/// <summary>
+	/// Where the far ear's corner sits with the head fully between it and the source,
+	/// and where it sits with no head in the way. The open figure is above anything the
+	/// mod synthesizes, so an unshadowed ear is left alone.
+	/// </summary>
+	private const float ShadowedEarCutoffHertz = 2_200f;
+	private const float OpenEarCutoffHertz = 20_000f;
+
 	private static readonly float PositionSmoothing = SmoothingCoefficient(0.025f);
 	private static readonly float GainReleaseSmoothing = SmoothingCoefficient(0.160f);
 
 	private readonly float[] _delayBuffer = new float[DelayBufferLength];
 	private readonly float _gainAttackSmoothing;
 	private SpatialSourceParameters _target;
+	private SpatialAudioTransform _appliedTransform;
+	private float _appliedLeftGain;
+	private float _appliedRightGain;
+	private float _leftShadowState;
+	private float _rightShadowState;
 	private float _currentX;
 	private float _currentY;
 	private float _currentDistanceGain;
 	private int _writeIndex;
+	private bool _hasAppliedTransform;
 
 	internal SpatialAudioEmitter(float gainAttackSeconds = 0.100f)
 	{
@@ -186,37 +256,77 @@ internal sealed class SpatialAudioEmitter
 
 	internal void Render(
 		ISpatialMonoSource source,
-		bool itdEnabled,
-		float maximumItdMilliseconds,
+		in SpatialAudioSettings settings,
 		Span<float> left,
 		Span<float> right)
 	{
-		for (int index = 0; index < left.Length; index++)
+		int position = 0;
+		while (position < left.Length)
 		{
-			_currentX += (_target.NormalizedX - _currentX) * PositionSmoothing;
-			_currentY += (_target.NormalizedY - _currentY) * PositionSmoothing;
-			float gainSmoothing = _target.DistanceGain > _currentDistanceGain
-				? _gainAttackSmoothing
-				: GainReleaseSmoothing;
-			_currentDistanceGain += (_target.DistanceGain - _currentDistanceGain) * gainSmoothing;
+			int blockLength = Math.Min(ControlBlockSamples, left.Length - position);
+			AdvanceControlBlock(blockLength);
 			SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
 				_currentX,
 				_currentY,
-				itdEnabled,
-				maximumItdMilliseconds);
-			float monoSample = source.ReadSample(transform.PitchRatio);
-			_delayBuffer[_writeIndex] = monoSample;
-			float leftSample = ReadDelayed(transform.LeftDelaySamples);
-			float rightSample = ReadDelayed(transform.RightDelaySamples);
-			left[index] += leftSample * transform.LeftGain * _currentDistanceGain;
-			right[index] += rightSample * transform.RightGain * _currentDistanceGain;
-			_writeIndex = (_writeIndex + 1) % DelayBufferLength;
+				settings);
+
+			// Distance rides in the channel gains rather than as a third factor, so one
+			// straight line per ear carries both the pan and the level.
+			float leftGain = transform.LeftGain * _currentDistanceGain;
+			float rightGain = transform.RightGain * _currentDistanceGain;
+			if (!_hasAppliedTransform)
+			{
+				_appliedTransform = transform;
+				_appliedLeftGain = leftGain;
+				_appliedRightGain = rightGain;
+				_hasAppliedTransform = true;
+			}
+
+			float inverseLength = 1f / blockLength;
+			float leftGainStep = (leftGain - _appliedLeftGain) * inverseLength;
+			float rightGainStep = (rightGain - _appliedRightGain) * inverseLength;
+			float leftDelayStep =
+				(transform.LeftDelaySamples - _appliedTransform.LeftDelaySamples) * inverseLength;
+			float rightDelayStep =
+				(transform.RightDelaySamples - _appliedTransform.RightDelaySamples) * inverseLength;
+			float pitchStep =
+				(transform.PitchRatio - _appliedTransform.PitchRatio) * inverseLength;
+
+			// The shadow filters hold their coefficient for the block. A one-pole moved
+			// on this grid cannot step far enough to be heard as a change in its own
+			// right, and interpolating it would cost more than the filter does.
+			float leftShadowCoefficient = ShadowCoefficient(transform.LeftShadow);
+			float rightShadowCoefficient = ShadowCoefficient(transform.RightShadow);
+
+			for (int offset = 0; offset < blockLength; offset++)
+			{
+				float monoSample = source.ReadSample(_appliedTransform.PitchRatio + pitchStep * offset);
+				_delayBuffer[_writeIndex] = monoSample;
+				float leftSample = ReadDelayed(_appliedTransform.LeftDelaySamples + leftDelayStep * offset);
+				float rightSample = ReadDelayed(_appliedTransform.RightDelaySamples + rightDelayStep * offset);
+				_leftShadowState += (leftSample - _leftShadowState) * leftShadowCoefficient;
+				_rightShadowState += (rightSample - _rightShadowState) * rightShadowCoefficient;
+				left[position + offset] += _leftShadowState * (_appliedLeftGain + leftGainStep * offset);
+				right[position + offset] += _rightShadowState * (_appliedRightGain + rightGainStep * offset);
+				_writeIndex = (_writeIndex + 1) & DelayIndexMask;
+			}
+
+			_appliedTransform = transform;
+			_appliedLeftGain = leftGain;
+			_appliedRightGain = rightGain;
+			position += blockLength;
 		}
 	}
 
 	internal void Reset()
 	{
 		_target = default;
+		_appliedTransform = default;
+		_appliedLeftGain = 0f;
+		_appliedRightGain = 0f;
+		_leftShadowState = 0f;
+		_rightShadowState = 0f;
+		_hasAppliedTransform = false;
 		_currentX = 0f;
 		_currentY = 0f;
 		_currentDistanceGain = 0f;
@@ -224,20 +334,94 @@ internal sealed class SpatialAudioEmitter
 		Array.Clear(_delayBuffer);
 	}
 
+	/// <summary>
+	/// Carries the smoothed position and level forward by a whole control block. The
+	/// per-sample coefficients are raised to the block length so the time constants
+	/// stay exactly what they were when this ran once per sample.
+	/// </summary>
+	private void AdvanceControlBlock(int blockLength)
+	{
+		float positionSmoothing = BlockSmoothing(PositionSmoothing, blockLength);
+		_currentX += (_target.NormalizedX - _currentX) * positionSmoothing;
+		_currentY += (_target.NormalizedY - _currentY) * positionSmoothing;
+		float gainSmoothing = _target.DistanceGain > _currentDistanceGain
+			? _gainAttackSmoothing
+			: GainReleaseSmoothing;
+		_currentDistanceGain +=
+			(_target.DistanceGain - _currentDistanceGain) * BlockSmoothing(gainSmoothing, blockLength);
+	}
+
+	private static float BlockSmoothing(float perSampleSmoothing, int blockLength)
+	{
+		return blockLength == ControlBlockSamples
+			? 1f - MathF.Pow(1f - perSampleSmoothing, ControlBlockSamples)
+			: 1f - MathF.Pow(1f - perSampleSmoothing, blockLength);
+	}
+
+	/// <summary>
+	/// The far ear's one-pole coefficient. A head does not attenuate every frequency
+	/// alike: it casts an acoustic shadow that takes the treble and leaves the bass,
+	/// which is the cue the flat attenuation in the pan law cannot express. At no
+	/// shadow the corner sits above anything the mod synthesizes, so a centred source
+	/// passes through untouched.
+	/// </summary>
+	private static float ShadowCoefficient(float shadowAmount)
+	{
+		if (shadowAmount <= 0f)
+		{
+			return 1f;
+		}
+
+		float cutoff = OpenEarCutoffHertz *
+			MathF.Pow(ShadowedEarCutoffHertz / OpenEarCutoffHertz, Math.Clamp(shadowAmount, 0f, 1f));
+		float nyquist = SpatialAudioTransformCalculator.SampleRate * 0.5f;
+		if (cutoff >= nyquist)
+		{
+			return 1f;
+		}
+
+		return 1f - MathF.Exp(-MathF.Tau * cutoff / SpatialAudioTransformCalculator.SampleRate);
+	}
+
+	/// <summary>
+	/// Reads the delay line with four-point Hermite interpolation. Two-tap linear
+	/// interpolation attenuates by an amount that depends on where the fraction falls,
+	/// so a source sweeping across the field had its timbre swept with it: the delay
+	/// doubled as a low-pass whose corner moved with the pan.
+	/// </summary>
 	private float ReadDelayed(float delaySamples)
 	{
 		float delay = float.IsFinite(delaySamples)
-			? Math.Clamp(delaySamples, 0f, DelayBufferLength - 2f)
+			? Math.Clamp(delaySamples, 0f, DelayBufferLength - 3f)
 			: 0f;
 		int wholeSampleDelay = (int)MathF.Floor(delay);
 		float fraction = delay - wholeSampleDelay;
-		int newerIndex = _writeIndex - wholeSampleDelay;
-		if (newerIndex < 0)
+		return AudioInterpolation.Hermite(
+			TapAt(wholeSampleDelay - 1),
+			TapAt(wholeSampleDelay),
+			TapAt(wholeSampleDelay + 1),
+			TapAt(wholeSampleDelay + 2),
+			fraction);
+	}
+
+	/// <summary>
+	/// One tap, clamped rather than wrapped past the write head, because a delay of
+	/// zero has no newer neighbour to reach for.
+	/// </summary>
+	private float TapAt(int sampleDelay)
+	{
+		int clamped = Math.Clamp(sampleDelay, 0, DelayBufferLength - 1);
+		return _delayBuffer[(_writeIndex - clamped) & DelayIndexMask];
+	}
+
+	private static int NextPowerOfTwo(int value)
+	{
+		int result = 4;
+		while (result < value)
 		{
-			newerIndex += DelayBufferLength;
+			result <<= 1;
 		}
-		int olderIndex = newerIndex == 0 ? DelayBufferLength - 1 : newerIndex - 1;
-		return _delayBuffer[newerIndex] * (1f - fraction) + _delayBuffer[olderIndex] * fraction;
+		return result;
 	}
 
 	private static SpatialSourceParameters SanitizeTarget(

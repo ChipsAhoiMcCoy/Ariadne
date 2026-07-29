@@ -1,20 +1,15 @@
 #nullable enable
 
 using System;
-using Microsoft.Xna.Framework.Audio;
 using Terraria;
-using Terraria.Audio;
 using Terraria.ModLoader;
 using Ariadne.Configs;
 using Ariadne.Ingame.WallTones;
 
 namespace Ariadne.Audio;
 
-internal sealed class WallToneAudioStream : IDisposable
+internal sealed class WallToneAudioStream : IAudioBusSource, IDisposable
 {
-	private const int FramesPerBuffer = 512;
-	private const int TargetQueuedBuffers = 6;
-
 	/// <summary>
 	/// Terrain answers from more than one direction at once, and a corridor commonly
 	/// puts a side and the floor in the same ear. Each voice therefore sits this far
@@ -22,7 +17,7 @@ internal sealed class WallToneAudioStream : IDisposable
 	/// </summary>
 	private const float BedVoiceOffsetDecibels = 3f;
 
-	private const int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
+	private static readonly int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
 
 	// The sides are the neutral reference. The ceiling sits higher and narrower so it
 	// reads thin and focused, the floor lower and broader so it reads as a rumble.
@@ -39,7 +34,7 @@ internal sealed class WallToneAudioStream : IDisposable
 	private static readonly float CeilingVoiceGain = CalibrateVoiceGain(CeilingDesign);
 	private static readonly float FloorVoiceGain = CalibrateVoiceGain(FloorDesign);
 
-	private readonly Mod _owner;
+	private readonly AriadneAudioBus _bus;
 	private readonly WallToneVoice _leftVoice = new(0x93A4_52E1u, SideDesign);
 	private readonly WallToneVoice _rightVoice = new(0xD17B_8305u, SideDesign);
 	private readonly WallToneVoice _ceilingVoice = new(0x6C8E_9CF3u, CeilingDesign);
@@ -48,21 +43,14 @@ internal sealed class WallToneAudioStream : IDisposable
 	private readonly SpatialAudioEmitter _rightEmitter = new();
 	private readonly SpatialAudioEmitter _ceilingEmitter = new();
 	private readonly SpatialAudioEmitter _floorEmitter = new();
-	private readonly float[] _leftMix = new float[FramesPerBuffer];
-	private readonly float[] _rightMix = new float[FramesPerBuffer];
-	private readonly byte[] _pcmBuffer = new byte[FramesPerBuffer * 2 * sizeof(short)];
-	private DynamicSoundEffectInstance? _stream;
-	private bool _itdEnabled = true;
-	private float _maximumItdMilliseconds = 0.65f;
-	private bool _isRunning;
+	private SpatialAudioSettings _settings;
 	private bool _isReset = true;
-	private bool _failureLogged;
 	private bool _disposed;
 
-	private WallToneAudioStream(Mod owner, DynamicSoundEffectInstance stream)
+	private WallToneAudioStream(AriadneAudioBus bus)
 	{
-		_owner = owner;
-		_stream = stream;
+		_bus = bus;
+		bus.Add(this);
 	}
 
 	internal static WallToneAudioStream? TryCreate(Mod owner)
@@ -71,37 +59,27 @@ internal sealed class WallToneAudioStream : IDisposable
 		{
 			return null;
 		}
-		if (!SoundEngine.IsAudioSupported)
+
+		AriadneAudioBus? bus = AudioBusSystem.Bus;
+		if (bus is null)
 		{
-			owner.Logger.Warn("Wall tones are unavailable because this client does not support audio.");
+			owner.Logger.Warn("Wall tones are unavailable because the audio bus could not be created.");
 			return null;
 		}
 
-		try
-		{
-			DynamicSoundEffectInstance stream = new(
-				SpatialAudioTransformCalculator.SampleRate,
-				AudioChannels.Stereo);
-			return new(owner, stream);
-		}
-		catch (Exception exception)
-		{
-			owner.Logger.Warn($"Wall-tone streaming could not be initialized and will remain silent: {exception.GetBaseException().Message}");
-			return null;
-		}
+		return new(bus);
 	}
 
 	internal void UpdateTargets(WallToneSnapshot snapshot, AriadneClientConfig config)
 	{
-		if (_disposed || _stream is null)
+		if (_disposed)
 		{
 			return;
 		}
 
-		_itdEnabled = config.SpatialAudioItdEnabled;
-		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
-		float configuredGain = Math.Clamp(config.WallToneVolumePercent / 100f, 0f, 1f);
-		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f);
+		_settings = config.ToSpatialAudioSettings();
+		// Terraria's sound slider is applied once, by the bus, for the whole mix.
+		float masterGain = Math.Clamp(config.WallToneVolumePercent / 100f, 0f, 1f);
 		SetVoiceTarget(_leftVoice, _leftEmitter, snapshot.Left, masterGain * SideVoiceGain);
 		SetVoiceTarget(_rightVoice, _rightEmitter, snapshot.Right, masterGain * SideVoiceGain);
 		SetVoiceTarget(_ceilingVoice, _ceilingEmitter, snapshot.Ceiling, masterGain * CeilingVoiceGain);
@@ -109,60 +87,32 @@ internal sealed class WallToneAudioStream : IDisposable
 		_isReset = false;
 	}
 
-	internal void Pump()
+	public bool Render(Span<float> left, Span<float> right)
 	{
-		if (_disposed || _stream is null)
+		if (_disposed)
 		{
-			return;
+			return false;
 		}
 
-		try
-		{
-			while (_stream.PendingBufferCount < TargetQueuedBuffers)
-			{
-				GenerateBuffer();
-				_stream.SubmitBuffer(_pcmBuffer);
-			}
-
-			if (!_isRunning || _stream.State != SoundState.Playing)
-			{
-				_stream.Play();
-				_isRunning = true;
-			}
-		}
-		catch (Exception exception)
-		{
-			DisableAfterFailure(exception);
-		}
+		_leftEmitter.Render(_leftVoice, _settings, left, right);
+		_rightEmitter.Render(_rightVoice, _settings, left, right);
+		_ceilingEmitter.Render(_ceilingVoice, _settings, left, right);
+		_floorEmitter.Render(_floorVoice, _settings, left, right);
+		return true;
 	}
 
 	internal void StopAndReset()
 	{
-		if (_disposed || _stream is null || _isReset)
+		if (_disposed || _isReset)
 		{
 			return;
 		}
-
-		try
-		{
-			if (_isRunning || _stream.State != SoundState.Stopped)
-			{
-				_stream.Stop(true);
-			}
-		}
-		catch (Exception exception)
-		{
-			DisableAfterFailure(exception);
-			return;
-		}
-
-		_isRunning = false;
 		ResetSignalState();
 	}
 
 	internal void ResetForDiscontinuity()
 	{
-		if (_disposed || _stream is null)
+		if (_disposed)
 		{
 			return;
 		}
@@ -178,18 +128,8 @@ internal sealed class WallToneAudioStream : IDisposable
 			return;
 		}
 
-		try
-		{
-			_stream?.Stop(true);
-		}
-		catch
-		{
-			// Disposal must remain safe if the audio device has already disappeared.
-		}
-		_stream?.Dispose();
-		_stream = null;
+		_bus.Remove(this);
 		_disposed = true;
-		_isRunning = false;
 		ResetSignalState();
 	}
 
@@ -227,27 +167,6 @@ internal sealed class WallToneAudioStream : IDisposable
 			snapshot.HasHit ? distanceGain : 0f));
 	}
 
-	private void GenerateBuffer()
-	{
-		Array.Clear(_leftMix);
-		Array.Clear(_rightMix);
-		_leftEmitter.Render(_leftVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
-		_rightEmitter.Render(_rightVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
-		_ceilingEmitter.Render(_ceilingVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
-		_floorEmitter.Render(_floorVoice, _itdEnabled, _maximumItdMilliseconds, _leftMix, _rightMix);
-
-		for (int frame = 0; frame < FramesPerBuffer; frame++)
-		{
-			short left = Encode(SoftLimit(_leftMix[frame]));
-			short right = Encode(SoftLimit(_rightMix[frame]));
-			int byteIndex = frame * 4;
-			_pcmBuffer[byteIndex] = (byte)left;
-			_pcmBuffer[byteIndex + 1] = (byte)(left >> 8);
-			_pcmBuffer[byteIndex + 2] = (byte)right;
-			_pcmBuffer[byteIndex + 3] = (byte)(right >> 8);
-		}
-	}
-
 	private void ResetSignalState()
 	{
 		_leftVoice.Reset();
@@ -258,41 +177,7 @@ internal sealed class WallToneAudioStream : IDisposable
 		_rightEmitter.Reset();
 		_ceilingEmitter.Reset();
 		_floorEmitter.Reset();
-		Array.Clear(_leftMix);
-		Array.Clear(_rightMix);
-		Array.Clear(_pcmBuffer);
 		_isReset = true;
-	}
-
-	private void DisableAfterFailure(Exception exception)
-	{
-		if (!_failureLogged)
-		{
-			_owner.Logger.Warn($"Wall-tone streaming failed and has been disabled for this session: {exception.GetBaseException().Message}");
-			_failureLogged = true;
-		}
-
-		try
-		{
-			_stream?.Dispose();
-		}
-		catch
-		{
-			// The stream is already unusable.
-		}
-		_stream = null;
-		_isRunning = false;
-		ResetSignalState();
-	}
-
-	private static float SoftLimit(float sample)
-	{
-		return MathF.Tanh(sample);
-	}
-
-	private static short Encode(float sample)
-	{
-		return (short)MathF.Round(Math.Clamp(sample, -1f, 1f) * short.MaxValue);
 	}
 }
 

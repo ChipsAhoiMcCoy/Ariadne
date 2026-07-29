@@ -2,6 +2,7 @@
 
 using System.ComponentModel;
 using Terraria.ModLoader.Config;
+using Ariadne.Audio;
 
 namespace Ariadne.Configs;
 
@@ -135,4 +136,21 @@ public sealed class AriadneClientConfig : ModConfig
 	[Increment(0.05f)]
 	[Slider]
 	public float SpatialAudioItdStrengthMilliseconds { get; set; } = DefaultSpatialAudioItdMilliseconds;
+
+	/// <summary>
+	/// Rolls the treble off the ear the head is between, on top of the level
+	/// difference the pan already applies. It is the cue the flat attenuation cannot
+	/// express, but it also changes the character of a field whose width is tuned, so
+	/// it stays off until a listener has compared the two.
+	/// </summary>
+	[DefaultValue(false)]
+	public bool SpatialAudioHeadShadowEnabled { get; set; }
+
+	internal SpatialAudioSettings ToSpatialAudioSettings()
+	{
+		return new(
+			SpatialAudioItdEnabled,
+			SpatialAudioItdStrengthMilliseconds,
+			SpatialAudioHeadShadowEnabled);
+	}
 }

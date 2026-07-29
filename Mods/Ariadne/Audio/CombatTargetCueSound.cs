@@ -71,10 +71,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 			StopCurrent();
 			Vector2 normalizedPosition =
 				SpatialObserverContext.Current.NormalizeToViewport(worldPosition);
-			byte[] pcm = CreatePcm(
-				normalizedPosition,
-				config.SpatialAudioItdEnabled,
-				config.SpatialAudioItdStrengthMilliseconds);
+			byte[] pcm = CreatePcm(normalizedPosition, config.ToSpatialAudioSettings());
 			_soundEffect = new SoundEffect(
 				pcm,
 				SpatialAudioTransformCalculator.SampleRate,
@@ -166,8 +163,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 
 	private static byte[] CreatePcm(
 		Vector2 normalizedPosition,
-		bool itdEnabled,
-		float maximumItdMilliseconds)
+		in SpatialAudioSettings settings)
 	{
 		int cueFrames = CueFrameCount();
 		int totalFrames = cueFrames + DelayTailFrames;
@@ -179,12 +175,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 			normalizedPosition.X,
 			normalizedPosition.Y,
 			DistanceGain: 1f));
-		emitter.Render(
-			voice,
-			itdEnabled,
-			maximumItdMilliseconds,
-			left,
-			right);
+		emitter.Render(voice, settings, left, right);
 
 		byte[] pcm = new byte[totalFrames * 2 * sizeof(short)];
 		for (int frame = 0; frame < totalFrames; frame++)

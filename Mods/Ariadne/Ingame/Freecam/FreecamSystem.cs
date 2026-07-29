@@ -390,7 +390,6 @@ internal sealed class FreecamSystem : ModSystem
 			observer.ViewportPosition,
 			observer.ViewportSize);
 		_beaconAudio?.UpdateTarget(observer.NormalizeToViewport(beaconPosition), config);
-		_beaconAudio?.Pump();
 	}
 
 	private static Vector2 ProjectToViewportEdge(

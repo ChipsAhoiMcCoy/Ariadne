@@ -1,9 +1,7 @@
 #nullable enable
 
 using System;
-using Microsoft.Xna.Framework.Audio;
 using Terraria;
-using Terraria.Audio;
 using Terraria.ModLoader;
 using Ariadne.Configs;
 
@@ -15,16 +13,14 @@ internal readonly record struct HostileMobToneTarget(
 	float NormalizedY,
 	float Proximity);
 
-internal sealed class HostileMobToneAudioStream : IDisposable
+internal sealed class HostileMobToneAudioStream : IAudioBusSource, IDisposable
 {
-	private const int FramesPerBuffer = 512;
-	private const int TargetQueuedBuffers = 6;
 	private const int MaximumEmitterCount = 4;
 	private const float CarrierFrequency = 320f;
 	private const float MinimumModulationRate = 1.5f;
 	private const float MaximumModulationRate = 12f;
 	private const float EmitterGainAttackSeconds = 0.003f;
-	private const int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
+	private static readonly int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
 	private const int CalibrationPoints = 9;
 
 	/// <summary>
@@ -37,7 +33,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 	/// </summary>
 	private static readonly float[] VoiceGains = CalibrateVoiceGains();
 
-	private readonly Mod _owner;
+	private readonly AriadneAudioBus _bus;
 	private readonly ModulatedTriangleToneVoice[] _voices =
 	[
 		new(0.00f, 0.00f),
@@ -52,21 +48,14 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		new(EmitterGainAttackSeconds),
 		new(EmitterGainAttackSeconds),
 	];
-	private readonly float[] _leftMix = new float[FramesPerBuffer];
-	private readonly float[] _rightMix = new float[FramesPerBuffer];
-	private readonly byte[] _pcmBuffer = new byte[FramesPerBuffer * 2 * sizeof(short)];
-	private DynamicSoundEffectInstance? _stream;
-	private bool _itdEnabled = true;
-	private float _maximumItdMilliseconds = 0.65f;
-	private bool _isRunning;
+	private SpatialAudioSettings _settings;
 	private bool _isReset = true;
-	private bool _failureLogged;
 	private bool _disposed;
 
-	private HostileMobToneAudioStream(Mod owner, DynamicSoundEffectInstance stream)
+	private HostileMobToneAudioStream(AriadneAudioBus bus)
 	{
-		_owner = owner;
-		_stream = stream;
+		_bus = bus;
+		bus.Add(this);
 	}
 
 	internal static HostileMobToneAudioStream? TryCreate(Mod owner)
@@ -75,39 +64,29 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		{
 			return null;
 		}
-		if (!SoundEngine.IsAudioSupported)
+
+		AriadneAudioBus? bus = AudioBusSystem.Bus;
+		if (bus is null)
 		{
-			owner.Logger.Warn("Hostile-mob tones are unavailable because this client does not support audio.");
+			owner.Logger.Warn("Hostile-mob tones are unavailable because the audio bus could not be created.");
 			return null;
 		}
 
-		try
-		{
-			DynamicSoundEffectInstance stream = new(
-				SpatialAudioTransformCalculator.SampleRate,
-				AudioChannels.Stereo);
-			return new(owner, stream);
-		}
-		catch (Exception exception)
-		{
-			owner.Logger.Warn($"Hostile-mob tone streaming could not be initialized and will remain silent: {exception.GetBaseException().Message}");
-			return null;
-		}
+		return new(bus);
 	}
 
 	internal void UpdateTargets(
 		ReadOnlySpan<HostileMobToneTarget> targets,
 		AriadneClientConfig config)
 	{
-		if (_disposed || _stream is null)
+		if (_disposed)
 		{
 			return;
 		}
 
-		_itdEnabled = config.SpatialAudioItdEnabled;
-		_maximumItdMilliseconds = config.SpatialAudioItdStrengthMilliseconds;
-		float configuredGain = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
-		float masterGain = configuredGain * Math.Clamp(Main.soundVolume, 0f, 1f);
+		_settings = config.ToSpatialAudioSettings();
+		// Terraria's sound slider is applied once, by the bus, for the whole mix.
+		float masterGain = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
 		for (int index = 0; index < MaximumEmitterCount; index++)
 		{
 			HostileMobToneTarget target = index < targets.Length
@@ -129,53 +108,26 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 		_emitters[emitterIndex].Reset();
 	}
 
-	internal void Pump()
+	public bool Render(Span<float> left, Span<float> right)
 	{
-		if (_disposed || _stream is null)
+		if (_disposed)
 		{
-			return;
+			return false;
 		}
 
-		try
+		for (int index = 0; index < MaximumEmitterCount; index++)
 		{
-			while (_stream.PendingBufferCount < TargetQueuedBuffers)
-			{
-				GenerateBuffer();
-				_stream.SubmitBuffer(_pcmBuffer);
-			}
-			if (!_isRunning || _stream.State != SoundState.Playing)
-			{
-				_stream.Play();
-				_isRunning = true;
-			}
+			_emitters[index].Render(_voices[index], _settings, left, right);
 		}
-		catch (Exception exception)
-		{
-			DisableAfterFailure(exception);
-		}
+		return true;
 	}
 
 	internal void StopAndReset()
 	{
-		if (_disposed || _stream is null || _isReset)
+		if (_disposed || _isReset)
 		{
 			return;
 		}
-
-		try
-		{
-			if (_isRunning || _stream.State != SoundState.Stopped)
-			{
-				_stream.Stop(true);
-			}
-		}
-		catch (Exception exception)
-		{
-			DisableAfterFailure(exception);
-			return;
-		}
-
-		_isRunning = false;
 		ResetSignalState();
 	}
 
@@ -186,18 +138,8 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 			return;
 		}
 
-		try
-		{
-			_stream?.Stop(true);
-		}
-		catch
-		{
-			// Disposal remains safe when the audio device has already disappeared.
-		}
-		_stream?.Dispose();
-		_stream = null;
+		_bus.Remove(this);
 		_disposed = true;
-		_isRunning = false;
 		ResetSignalState();
 	}
 
@@ -260,32 +202,6 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 			target.IsActive ? distanceGain : 0f));
 	}
 
-	private void GenerateBuffer()
-	{
-		Array.Clear(_leftMix);
-		Array.Clear(_rightMix);
-		for (int index = 0; index < MaximumEmitterCount; index++)
-		{
-			_emitters[index].Render(
-				_voices[index],
-				_itdEnabled,
-				_maximumItdMilliseconds,
-				_leftMix,
-				_rightMix);
-		}
-
-		for (int frame = 0; frame < FramesPerBuffer; frame++)
-		{
-			short left = Encode(MathF.Tanh(_leftMix[frame]));
-			short right = Encode(MathF.Tanh(_rightMix[frame]));
-			int byteIndex = frame * 4;
-			_pcmBuffer[byteIndex] = (byte)left;
-			_pcmBuffer[byteIndex + 1] = (byte)(left >> 8);
-			_pcmBuffer[byteIndex + 2] = (byte)right;
-			_pcmBuffer[byteIndex + 3] = (byte)(right >> 8);
-		}
-	}
-
 	private void ResetSignalState()
 	{
 		for (int index = 0; index < MaximumEmitterCount; index++)
@@ -293,31 +209,7 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 			_voices[index].Reset();
 			_emitters[index].Reset();
 		}
-		Array.Clear(_leftMix);
-		Array.Clear(_rightMix);
-		Array.Clear(_pcmBuffer);
 		_isReset = true;
-	}
-
-	private void DisableAfterFailure(Exception exception)
-	{
-		if (!_failureLogged)
-		{
-			_owner.Logger.Warn($"Hostile-mob tone streaming failed and has been disabled for this session: {exception.GetBaseException().Message}");
-			_failureLogged = true;
-		}
-
-		try
-		{
-			_stream?.Dispose();
-		}
-		catch
-		{
-			// The stream is already unusable.
-		}
-		_stream = null;
-		_isRunning = false;
-		ResetSignalState();
 	}
 
 	private static HostileMobToneTarget SanitizeTarget(in HostileMobToneTarget target)
@@ -327,11 +219,6 @@ internal sealed class HostileMobToneAudioStream : IDisposable
 			float.IsFinite(target.NormalizedX) ? Math.Clamp(target.NormalizedX, -1f, 1f) : 0f,
 			float.IsFinite(target.NormalizedY) ? Math.Clamp(target.NormalizedY, -1f, 1f) : 0f,
 			float.IsFinite(target.Proximity) ? Math.Clamp(target.Proximity, 0f, 1f) : 0f);
-	}
-
-	private static short Encode(float sample)
-	{
-		return (short)MathF.Round(Math.Clamp(sample, -1f, 1f) * short.MaxValue);
 	}
 }
 

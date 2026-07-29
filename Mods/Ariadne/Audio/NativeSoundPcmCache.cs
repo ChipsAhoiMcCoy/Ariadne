@@ -264,7 +264,7 @@ internal sealed class NativePcmClip
 
 internal static class XnbSoundEffectPcmDecoder
 {
-	private const int TargetSampleRate = SpatialAudioTransformCalculator.SampleRate;
+	private static readonly int TargetSampleRate = SpatialAudioTransformCalculator.SampleRate;
 	private const int MaximumTypeReaders = 32;
 	private const int MaximumReaderNameBytes = 1_024;
 	private const int MaximumWaveFormatBytes = 256;
@@ -358,7 +358,7 @@ internal static class XnbSoundEffectPcmDecoder
 		float[] mono = DecodeMonoPcm16(pcm, channels, blockAlign);
 		if (sampleRate != TargetSampleRate)
 		{
-			mono = ResampleLinear(mono, sampleRate, TargetSampleRate);
+			mono = Resample(mono, sampleRate, TargetSampleRate);
 		}
 		return new(mono);
 	}
@@ -386,7 +386,7 @@ internal static class XnbSoundEffectPcmDecoder
 		return mono;
 	}
 
-	private static float[] ResampleLinear(
+	private static float[] Resample(
 		float[] source,
 		int sourceRate,
 		int targetRate)
@@ -400,11 +400,20 @@ internal static class XnbSoundEffectPcmDecoder
 		{
 			double sourcePosition = index * sourceStep;
 			int lower = Math.Min((int)sourcePosition, source.Length - 1);
-			int upper = Math.Min(lower + 1, source.Length - 1);
 			float fraction = (float)(sourcePosition - lower);
-			target[index] = MathHelper.Lerp(source[lower], source[upper], fraction);
+			target[index] = AudioInterpolation.Hermite(
+				SampleAt(source, lower - 1),
+				SampleAt(source, lower),
+				SampleAt(source, lower + 1),
+				SampleAt(source, lower + 2),
+				fraction);
 		}
 		return target;
+	}
+
+	private static float SampleAt(float[] source, int index)
+	{
+		return source[Math.Clamp(index, 0, source.Length - 1)];
 	}
 
 	private static string ReadLimitedString(BinaryReader reader, string assetName)

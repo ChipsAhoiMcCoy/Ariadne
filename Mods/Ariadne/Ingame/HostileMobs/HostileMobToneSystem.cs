@@ -90,10 +90,7 @@ internal sealed class HostileMobToneSystem : ModSystem
 		{
 			_audio?.StopAndReset();
 			ResetAwareness();
-			return;
 		}
-
-		_audio?.Pump();
 	}
 
 	public override void Unload()

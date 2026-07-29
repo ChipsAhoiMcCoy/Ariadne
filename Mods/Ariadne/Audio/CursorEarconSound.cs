@@ -380,11 +380,11 @@ internal sealed class CursorEarconSound : IDisposable
 	{
 		Vector2 normalizedPosition =
 			SpatialObserverContext.Current.NormalizeToViewport(worldPosition);
+		SpatialAudioSettings settings = config.ToSpatialAudioSettings();
 		SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
 			normalizedPosition.X,
 			normalizedPosition.Y,
-			config.SpatialAudioItdEnabled,
-			config.SpatialAudioItdStrengthMilliseconds);
+			settings);
 		float randomizedPitch = source.Pitch +
 			(Random.Shared.NextSingle() - 0.5f) * source.PitchVariance;
 		float nativePitchRatio = MathF.Pow(2f, randomizedPitch);
@@ -407,12 +407,8 @@ internal sealed class CursorEarconSound : IDisposable
 			normalizedPosition.Y,
 			DistanceGain: 1f));
 		emitter.Render(
-			new NativePcmVoice(
-				clip.Samples,
-				sourceFrameLimit,
-				nativePitchRatio),
-			config.SpatialAudioItdEnabled,
-			config.SpatialAudioItdStrengthMilliseconds,
+			new NativePcmVoice(clip.Samples, sourceFrameLimit, nativePitchRatio),
+			settings,
 			left,
 			right);
 
@@ -624,9 +620,13 @@ internal sealed class CursorEarconSound : IDisposable
 			}
 
 			int lower = (int)_position;
-			int upper = Math.Min(lower + 1, _frameLimit - 1);
 			float fraction = (float)(_position - lower);
-			float sample = MathHelper.Lerp(_samples[lower], _samples[upper], fraction);
+			float sample = AudioInterpolation.Hermite(
+				SampleAt(lower - 1),
+				SampleAt(lower),
+				SampleAt(lower + 1),
+				SampleAt(lower + 2),
+				fraction);
 			if (_isTruncated)
 			{
 				float fadeFrames =
@@ -635,6 +635,11 @@ internal sealed class CursorEarconSound : IDisposable
 			}
 			_position += Math.Max(0.05f, pitchRatio * _nativePitchRatio);
 			return sample;
+		}
+
+		private float SampleAt(int frame)
+		{
+			return _samples[Math.Clamp(frame, 0, _frameLimit - 1)];
 		}
 
 		public void Reset()

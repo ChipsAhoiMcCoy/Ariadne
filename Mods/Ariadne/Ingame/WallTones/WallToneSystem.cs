@@ -105,7 +105,6 @@ internal sealed class WallToneSystem : ModSystem
 		}
 
 		_audio?.UpdateTargets(_snapshot, config);
-		_audio?.Pump();
 	}
 
 	public override void Unload()
