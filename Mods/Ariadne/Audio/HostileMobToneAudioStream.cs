@@ -21,17 +21,22 @@ internal sealed class HostileMobToneAudioStream : IAudioBusSource, IDisposable
 	private const float MaximumModulationRate = 12f;
 	private const float EmitterGainAttackSeconds = 0.003f;
 	private static readonly int CalibrationFrames = SpatialAudioTransformCalculator.SampleRate;
-	private const int CalibrationPoints = 9;
 
 	/// <summary>
-	/// The gain that puts one voice on the shared reference, measured at each proximity
-	/// rather than once at the closest range. The rate that carries distance also carries
-	/// energy, because a voice ticking at 1.5 Hz sounds for a fraction of the second that
-	/// one at 12 Hz does, and a single closest-range measurement therefore let a distant
-	/// mob lose level twice: once to the emitter's distance gain and again to its own
-	/// cadence. Measuring the rate out leaves distance gain the only thing setting level.
+	/// The gain that puts one voice on the shared reference, measured once at the cadence
+	/// the closest range ticks at.
+	///
+	/// Measuring it separately at every cadence looked like it was correcting for the rate
+	/// carrying energy of its own, and instead made the rate pay for itself. Loudness is
+	/// read over a window a third of a second wide, which a 12 Hz tick train fills and a
+	/// 1.5 Hz one barely touches, so normalizing each cadence to the same window loudness
+	/// handed a distant mob a six-decibel boost that cancelled almost all of its distance
+	/// gain: across the first twenty tiles of an eighty-tile range, a tick moved by six
+	/// tenths of a decibel. One measurement leaves every tick the same height, so a nearby
+	/// mob is loud and sounds often while a far one is quiet and sounds rarely, and
+	/// distance gain is the only thing setting level.
 	/// </summary>
-	private static readonly float[] VoiceGains = CalibrateVoiceGains();
+	private static readonly float VoiceGain = CalibrateVoiceGain();
 
 	private readonly AriadneAudioBus _bus;
 	private readonly ModulatedTriangleToneVoice[] _voices =
@@ -143,20 +148,10 @@ internal sealed class HostileMobToneAudioStream : IAudioBusSource, IDisposable
 		ResetSignalState();
 	}
 
-	private static float[] CalibrateVoiceGains()
-	{
-		float[] gains = new float[CalibrationPoints];
-		for (int index = 0; index < CalibrationPoints; index++)
-		{
-			gains[index] = CalibrateVoiceGain(index / (float)(CalibrationPoints - 1));
-		}
-		return gains;
-	}
-
-	private static float CalibrateVoiceGain(float proximity)
+	private static float CalibrateVoiceGain()
 	{
 		ModulatedTriangleToneVoice voice = new(0f, 0f);
-		voice.SetTarget(CarrierFrequency, ModulationRateForProximity(proximity), gain: 1f);
+		voice.SetTarget(CarrierFrequency, MaximumModulationRate, gain: 1f);
 		float[] samples = new float[CalibrationFrames];
 		for (int index = 0; index < samples.Length; index++)
 		{
@@ -166,14 +161,6 @@ internal sealed class HostileMobToneAudioStream : IAudioBusSource, IDisposable
 		return AuthoredAudioLevels.LoudnessTrim(
 			samples,
 			AuthoredAudioLevels.SpatialVoiceReferenceLoudness);
-	}
-
-	private static float VoiceGainForProximity(float proximity)
-	{
-		float position = Math.Clamp(proximity, 0f, 1f) * (CalibrationPoints - 1);
-		int lower = Math.Min((int)position, CalibrationPoints - 2);
-		return VoiceGains[lower] +
-			(VoiceGains[lower + 1] - VoiceGains[lower]) * (position - lower);
 	}
 
 	private static float ModulationRateForProximity(float proximity)
@@ -195,7 +182,7 @@ internal sealed class HostileMobToneAudioStream : IAudioBusSource, IDisposable
 		voice.SetTarget(
 			CarrierFrequency,
 			modulationRate,
-			target.IsActive ? masterGain * VoiceGainForProximity(proximity) : 0f);
+			target.IsActive ? masterGain * VoiceGain : 0f);
 		emitter.SetTarget(new(
 			target.NormalizedX,
 			target.NormalizedY,
