@@ -7,7 +7,8 @@ Keybinds: {
 	AimRight.DisplayName: Aim Right
 	UseHeldItem.DisplayName: Use Held Item
 	SecondaryUse.DisplayName: Secondary Use or Interact
-	CombatTargetModifier.DisplayName: Ariadne Modifier (combat targeting and waypoints)
+	CombatTargetModifier.DisplayName: Ariadne Modifier (waypoints)
+	CombatTargetCycle.DisplayName: Cycle Combat Target
 	FreecamModifier.DisplayName: Freecam Modifier
 	PlayerStatus.DisplayName: Character Status Readout
 	OpenWaypoints.DisplayName: Open Waypoints (hold Ariadne Modifier)

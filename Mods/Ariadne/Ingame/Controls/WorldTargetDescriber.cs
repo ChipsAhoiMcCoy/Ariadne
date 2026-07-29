@@ -37,7 +37,7 @@ internal static class WorldTargetDescriber
 		Point16 root = objectData is null ? Point16.NegativeOne : TileObjectData.TopLeft(x, y);
 		if (tile.HasTile && objectData is not null && root != Point16.NegativeOne)
 		{
-			target = GetTileName(x, y, tile.TileType);
+			target = GetObjectName(x, y, tile, root);
 			semanticKey = $"object:{tile.TileType}:{root.X}:{root.Y}:{target}";
 		}
 		else if (tile.HasTile)
@@ -99,6 +99,14 @@ internal static class WorldTargetDescriber
 				WorldPositionFormatter.DescribeCoordinates(worldPosition),
 				coordinateReach),
 			isEmptySpace);
+	}
+
+	private static string GetObjectName(int x, int y, Tile tile, Point16 root)
+	{
+		string name = GetTileName(x, y, tile.TileType);
+		return ContainerNameResolver.IsContainer(tile.TileType)
+			? ContainerNameResolver.Describe(root, tile, name)
+			: name;
 	}
 
 	internal static string GetTileName(int x, int y, ushort type)

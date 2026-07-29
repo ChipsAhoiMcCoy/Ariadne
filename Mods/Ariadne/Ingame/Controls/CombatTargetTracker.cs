@@ -11,6 +11,17 @@ namespace Ariadne.Ingame.Controls;
 
 internal readonly record struct CombatTargetIdentity(int RootNpcIndex, uint Generation, int RootNetId);
 
+/// <summary>
+/// What a cycle press did. The caller only needs to distinguish a released lock,
+/// because that is the step that hands the cursor back to the player.
+/// </summary>
+internal enum CombatTargetCycleResult
+{
+	None,
+	Selected,
+	Released,
+}
+
 internal sealed class CombatTargetTracker
 {
 	private readonly bool[] _wasActive = new bool[Main.maxNPCs];
@@ -83,14 +94,35 @@ internal sealed class CombatTargetTracker
 		SelectGroup(replacement, player, oldAimPoint, "Combat target replaced.");
 	}
 
-	internal void SelectPrevious(Player player, Vector2 currentAimPoint)
+	/// <summary>
+	/// Advances one step through the eligible targets ordered nearest to farthest.
+	/// Stepping past the farthest one releases the lock, so a single key can both
+	/// take a target and give it back.
+	/// </summary>
+	internal CombatTargetCycleResult CycleNext(Player player, Vector2 currentAimPoint)
 	{
-		SelectSpatial(player, currentAimPoint, -1);
-	}
+		CaptureCandidates(player);
+		if (_candidates.Count == 0)
+		{
+			ClearSilently();
+			AriadneMod.ScreenReader.Output("No eligible combat targets.");
+			return CombatTargetCycleResult.None;
+		}
 
-	internal void SelectNext(Player player, Vector2 currentAimPoint)
-	{
-		SelectSpatial(player, currentAimPoint, 1);
+		List<CombatTargetGroup> ordered = _candidates
+			.OrderBy(candidate => candidate.DistanceSquaredTo(player.Center))
+			.ToList();
+		int currentIndex = _selectedIdentity is CombatTargetIdentity selected
+			? ordered.FindIndex(candidate => candidate.Identity == selected)
+			: -1;
+		if (currentIndex == ordered.Count - 1)
+		{
+			ClearSilently();
+			return CombatTargetCycleResult.Released;
+		}
+
+		SelectGroup(ordered[currentIndex + 1], player, currentAimPoint, null);
+		return CombatTargetCycleResult.Selected;
 	}
 
 	internal void CancelForManualAim()
@@ -114,44 +146,6 @@ internal sealed class CombatTargetTracker
 		_candidates.Clear();
 		ClearSilently();
 		_lastAimPoint = Vector2.Zero;
-	}
-
-	private void SelectSpatial(Player player, Vector2 currentAimPoint, int offset)
-	{
-		CaptureCandidates(player);
-		if (_candidates.Count == 0)
-		{
-			ClearSilently();
-			AriadneMod.ScreenReader.Output("No eligible combat targets.");
-			return;
-		}
-
-		if (_selectedIdentity is not CombatTargetIdentity selected)
-		{
-			CombatTargetGroup initial = _candidates
-				.OrderByDescending(candidate => candidate.BestDirectionDot(player.Center, currentAimPoint))
-				.ThenBy(candidate => candidate.DistanceSquaredTo(player.Center))
-				.First();
-			SelectGroup(initial, player, currentAimPoint, null);
-			return;
-		}
-
-		List<CombatTargetGroup> spatial = _candidates
-			.OrderBy(candidate => candidate.AngleAround(player.Center))
-			.ThenBy(candidate => candidate.DistanceSquaredTo(player.Center))
-			.ToList();
-		int currentIndex = spatial.FindIndex(candidate => candidate.Identity == selected);
-		if (currentIndex < 0)
-		{
-			CombatTargetGroup initial = spatial
-				.OrderByDescending(candidate => candidate.BestDirectionDot(player.Center, currentAimPoint))
-				.First();
-			SelectGroup(initial, player, currentAimPoint, null);
-			return;
-		}
-
-		int nextIndex = (currentIndex + offset + spatial.Count) % spatial.Count;
-		SelectGroup(spatial[nextIndex], player, currentAimPoint, null);
 	}
 
 	private void SelectGroup(
@@ -382,25 +376,5 @@ internal sealed class CombatTargetTracker
 			return Segments.Min(index => Vector2.DistanceSquared(Main.npc[index].Center, point));
 		}
 
-		internal float BestDirectionDot(Vector2 origin, Vector2 aimPoint)
-		{
-			Vector2 aimDirection = SafeDirection(origin, aimPoint);
-			return Segments.Max(index => Vector2.Dot(
-				SafeDirection(origin, Main.npc[index].Center),
-				aimDirection));
-		}
-
-		internal float AngleAround(Vector2 origin)
-		{
-			Vector2 center = Vector2.Zero;
-			foreach (int index in Segments)
-			{
-				center += Main.npc[index].Center;
-			}
-			center /= Segments.Count;
-			Vector2 delta = center - origin;
-			float angle = MathF.Atan2(delta.Y, delta.X);
-			return angle < 0f ? angle + MathHelper.TwoPi : angle;
-		}
 	}
 }

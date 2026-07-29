@@ -17,19 +17,6 @@ using Ariadne.Ingame.Freecam;
 
 namespace Ariadne.Ingame.Controls;
 
-/// <summary>
-/// Which combat-targeting command a modifier chord issued this tick. Naming the
-/// command lets the handler swallow only the direction it consumed, so the other
-/// walk directions survive the chord.
-/// </summary>
-internal enum CombatTargetCommand
-{
-	None,
-	Clear,
-	SelectPrevious,
-	SelectNext,
-}
-
 [Autoload(Side = ModSide.Client)]
 internal sealed class WorldCursorSystem : ModSystem
 {
@@ -48,9 +35,6 @@ internal sealed class WorldCursorSystem : ModSystem
 	private bool _hasLastSmartTarget;
 	private string _lastSmartSemanticKey = string.Empty;
 	private string _spokenSmartSemanticKey = string.Empty;
-	private bool _targetLeftWasHeld;
-	private bool _targetRightWasHeld;
-	private bool _targetDownWasHeld;
 	private TriggerSnapshot _nativePrimaryTrigger;
 	private TriggerSnapshot _nativeSecondaryTrigger;
 
@@ -77,7 +61,6 @@ internal sealed class WorldCursorSystem : ModSystem
 			ClearSmartFeedbackTarget();
 			_cursorEarcon?.StopAndReset();
 			_targetCue?.StopAndReset();
-			ResetTargetChordLatches();
 			_coordinates.RestorePhysicalPointerIfOwned();
 			_previousKeyboard = keyboard;
 			return;
@@ -113,27 +96,13 @@ internal sealed class WorldCursorSystem : ModSystem
 		}
 
 		Vector2 movementDirection = PlayerInput.Triggers.Current.DirectionsRaw;
-		bool targetModifierHeld = AriadneMod.CombatTargetModifierKeybind?.Current == true;
-		bool targetLeftHeld = targetModifierHeld && PlayerInput.Triggers.Current.Left;
-		bool targetRightHeld = targetModifierHeld && PlayerInput.Triggers.Current.Right;
-		bool targetDownHeld = targetModifierHeld && PlayerInput.Triggers.Current.Down;
-		CombatTargetCommand targetCommand = manualAimActive
-			? CombatTargetCommand.None
-			: HandleCombatTargetCommands(
-				player,
-				priorAimPoint,
-				leftPressed: targetLeftHeld && !_targetLeftWasHeld,
-				rightPressed: targetRightHeld && !_targetRightWasHeld,
-				downPressed: targetDownHeld && !_targetDownWasHeld);
-		bool targetCommandHandled = targetCommand != CombatTargetCommand.None;
-		_targetLeftWasHeld = targetLeftHeld;
-		_targetRightWasHeld = targetRightHeld;
-		_targetDownWasHeld = targetDownHeld;
-		// Only the direction that actually issued a command is swallowed, and only
-		// on its press edge. Consuming the whole hold stopped the player dead for as
-		// long as the chord was down, which is fatal during a boss fight.
-		ConsumeTargetMovementChord(targetCommand);
-		if (!targetCommandHandled)
+		bool cyclePressed = !manualAimActive &&
+			AriadneMod.CombatTargetCycleKeybind?.JustPressed == true;
+		if (cyclePressed)
+		{
+			HandleCombatTargetCycle(player, priorAimPoint);
+		}
+		else
 		{
 			_combatTargets.Update(player);
 		}
@@ -150,7 +119,6 @@ internal sealed class WorldCursorSystem : ModSystem
 				_cursorState.SetAimDirection(manualDirection.ToVector2());
 			}
 			else if (!_combatTargets.HasTarget &&
-				AriadneMod.CombatTargetModifierKeybind?.Current != true &&
 				movementDirection.LengthSquared() > 0f)
 			{
 				_cursorState.SetAimDirection(movementDirection);
@@ -356,54 +324,18 @@ internal sealed class WorldCursorSystem : ModSystem
 		AriadneMod.ScreenReader.Output(announcement, interrupt);
 	}
 
-	private CombatTargetCommand HandleCombatTargetCommands(
-		Player player,
-		Vector2 currentAimPoint,
-		bool leftPressed,
-		bool rightPressed,
-		bool downPressed)
+	private void HandleCombatTargetCycle(Player player, Vector2 currentAimPoint)
 	{
-		if (downPressed)
+		if (_combatTargets.CycleNext(player, currentAimPoint) != CombatTargetCycleResult.Released)
 		{
-			_combatTargets.Clear();
-			_cursorState.Recenter(player);
-			WorldTargetDescription description = WorldTargetDescriber.Describe(_cursorState.PrecisionTile, player);
-			AriadneMod.ScreenReader.Output($"Combat target cleared. Cursor recentered. {description.DetailedText}");
-			return CombatTargetCommand.Clear;
+			return;
 		}
-		if (leftPressed && !rightPressed)
-		{
-			_combatTargets.SelectPrevious(player, currentAimPoint);
-			return CombatTargetCommand.SelectPrevious;
-		}
-		if (rightPressed && !leftPressed)
-		{
-			_combatTargets.SelectNext(player, currentAimPoint);
-			return CombatTargetCommand.SelectNext;
-		}
-		return CombatTargetCommand.None;
-	}
 
-	private static void ConsumeTargetMovementChord(CombatTargetCommand command)
-	{
-		switch (command)
-		{
-			case CombatTargetCommand.SelectPrevious:
-				PlayerInput.Triggers.Current.Left = false;
-				PlayerInput.Triggers.JustPressed.Left = false;
-				PlayerInput.Triggers.JustReleased.Left = false;
-				break;
-			case CombatTargetCommand.SelectNext:
-				PlayerInput.Triggers.Current.Right = false;
-				PlayerInput.Triggers.JustPressed.Right = false;
-				PlayerInput.Triggers.JustReleased.Right = false;
-				break;
-			case CombatTargetCommand.Clear:
-				PlayerInput.Triggers.Current.Down = false;
-				PlayerInput.Triggers.JustPressed.Down = false;
-				PlayerInput.Triggers.JustReleased.Down = false;
-				break;
-		}
+		// Stepping past the farthest target ends the lock, so the precision cursor
+		// comes back under the player rather than being left at the dead target.
+		_cursorState.Recenter(player);
+		WorldTargetDescription description = WorldTargetDescriber.Describe(_cursorState.PrecisionTile, player);
+		AriadneMod.ScreenReader.Output($"Combat target released. Cursor recentered. {description.DetailedText}");
 	}
 
 	private static Point GetManualAimDirection(bool current)
@@ -590,6 +522,7 @@ internal sealed class WorldCursorSystem : ModSystem
 		string use = DescribeModBinding(AriadneMod.UseHeldItemKeybind);
 		string secondary = DescribeModBinding(AriadneMod.SecondaryUseKeybind);
 		string targetModifier = DescribeModBinding(AriadneMod.CombatTargetModifierKeybind);
+		string targetCycle = DescribeModBinding(AriadneMod.CombatTargetCycleKeybind);
 		string status = DescribeModBinding(AriadneMod.PlayerStatusKeybind);
 		string scanner = DescribeModBinding(AriadneMod.OpenScannerKeybind);
 		string wallTones = DescribeModBinding(AriadneMod.ToggleWallTonesKeybind);
@@ -599,8 +532,9 @@ internal sealed class WorldCursorSystem : ModSystem
 			$"Gameplay controls. Move with {movement}. Aim with {aiming}. " +
 			$"Use the held item with {use}, and secondary use or interact with {secondary}. " +
 			$"Terraria's Smart Cursor binding keeps its configured toggle or hold behavior. " +
-			$"Hold {targetModifier} with move left or move right to cycle combat targets; " +
-			$"hold {targetModifier} with move down to clear the target and recenter. " +
+			$"Press {targetCycle} to lock the nearest enemy, and press it again to step " +
+			$"outward to the next one; pressing it on the farthest enemy releases the lock " +
+			$"and recenters the cursor. " +
 			$"Manual aim always cancels combat lock. " +
 			$"Press {status} for a character status readout, {scanner} to scan the visible surroundings, and {wallTones} to toggle wall tones. " +
 			$"Hold {targetModifier} with {waypoints} to open waypoints. Hold {freecam} to move a free camera, and release it to return to your body. " +
@@ -654,7 +588,6 @@ internal sealed class WorldCursorSystem : ModSystem
 		_smartModeInitialized = false;
 		_wasSmartEnabled = false;
 		ClearSmartFeedbackTarget();
-		ResetTargetChordLatches();
 		_nativePrimaryTrigger = default;
 		_nativeSecondaryTrigger = default;
 	}
@@ -672,13 +605,6 @@ internal sealed class WorldCursorSystem : ModSystem
 		{
 			_spokenSmartSemanticKey = string.Empty;
 		}
-	}
-
-	private void ResetTargetChordLatches()
-	{
-		_targetLeftWasHeld = false;
-		_targetRightWasHeld = false;
-		_targetDownWasHeld = false;
 	}
 
 	private readonly record struct TriggerSnapshot(bool Current, bool JustPressed, bool JustReleased);

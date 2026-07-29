@@ -29,9 +29,13 @@ internal sealed class AccessibleInventoryController
 	internal const int HotbarSlotCount = 10;
 
 	private const int MenuPageSize = 10;
+	private const string InventoryBranchId = "inventory";
+	private const string ContainerCategoryId = "container";
+	private const string ContainerSlotId = "container-items";
 	private const int JourneyTimeCategory = 3;
 	private const int JourneyWeatherCategory = 4;
 	private const int JourneyPersonalPowersCategory = 6;
+	private static readonly string[] ContainerFocusPath = [InventoryBranchId, ContainerCategoryId, $"{ContainerSlotId}-0"];
 	private static readonly TimeSpan NavigationRepeatDelay = TimeSpan.FromMilliseconds(450);
 	private static readonly TimeSpan NavigationRepeatInterval = TimeSpan.FromMilliseconds(85);
 	private static readonly FieldInfo? ModAccessoryItemsField = typeof(ModAccessorySlotPlayer).GetField("exAccessorySlot", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -84,6 +88,7 @@ internal sealed class AccessibleInventoryController
 	private List<string>? _resumeFocusPath;
 	private bool _restoreFocusOnNextActivation;
 	private bool _suppressInventoryToggleUntilRelease;
+	private int _focusedContainer = -1;
 
 	internal AccessibleInventoryController(AccessibleMenuController menuController)
 	{
@@ -101,6 +106,7 @@ internal sealed class AccessibleInventoryController
 			{
 				ClearResumeFocus();
 			}
+			_focusedContainer = -1;
 			Deactivate();
 			return;
 		}
@@ -108,6 +114,13 @@ internal sealed class AccessibleInventoryController
 		if (!_active)
 		{
 			Activate(keyboard);
+			return;
+		}
+
+		if (ClaimContainerFocus())
+		{
+			FocusOpenedContainer();
+			_previousKeyboard = keyboard;
 			return;
 		}
 
@@ -174,6 +187,7 @@ internal sealed class AccessibleInventoryController
 			_branchFocus.Clear();
 			ClearResumeFocus();
 			_suppressInventoryToggleUntilRelease = false;
+			_focusedContainer = -1;
 		}
 	}
 
@@ -192,6 +206,7 @@ internal sealed class AccessibleInventoryController
 
 	private void Activate(KeyboardState keyboard)
 	{
+		bool openingContainer = ClaimContainerFocus();
 		bool resumingPreviousFocus = _restoreFocusOnNextActivation;
 		_active = true;
 		_previousKeyboard = keyboard;
@@ -204,7 +219,11 @@ internal sealed class AccessibleInventoryController
 		RebuildCategories();
 		RestoreResumeFocus();
 		_lastSemanticState = GetSemanticState();
-		if (resumingPreviousFocus)
+		if (openingContainer)
+		{
+			AriadneMod.ScreenReader.Output($"{GetContainerName(Main.LocalPlayer)}. {DescribeSelection()} {DescribeCurrentLevel()}");
+		}
+		else if (resumingPreviousFocus)
 		{
 			AriadneMod.ScreenReader.Output($"{DescribeSelection()} {DescribeCurrentLevel()}");
 		}
@@ -214,6 +233,47 @@ internal sealed class AccessibleInventoryController
 				$"{DescribeSelection()} {DescribeCurrentLevel()} " +
 				$"Use Up and Down Arrow keys to move between categories, letter keys to jump through matching entries alphabetically, Left and Right Arrow keys to change adjustable entries or navigate into and out of the tree, Control Tab to move sideways between panes such as the hotbar and the inventory, Enter to open or activate the focused entry, Home and End to move to the first and last category, Tab for actions on a focused item, and {ContextHelpChord.Name} for help.");
 		}
+	}
+
+	/// <summary>
+	/// Notes that a different container is open and queues focus for its pane.
+	/// Opening a chest is a request to work with that chest, so the listener starts
+	/// on its first slot instead of wherever the tree happened to be left.
+	/// </summary>
+	private bool ClaimContainerFocus()
+	{
+		int chest = Main.LocalPlayer.chest;
+		if (chest == _focusedContainer)
+		{
+			return false;
+		}
+
+		_focusedContainer = chest;
+		if (chest == -1)
+		{
+			return false;
+		}
+
+		_resumeFocusPath = [.. ContainerFocusPath];
+		_restoreFocusOnNextActivation = true;
+		return true;
+	}
+
+	private void FocusOpenedContainer()
+	{
+		_actionsPaneActive = false;
+		_actionSelection = 0;
+		_itemActions.Clear();
+		RebuildCategories();
+		RestoreResumeFocus();
+		if (_rootNodes.Count == 0)
+		{
+			return;
+		}
+
+		SoundEngine.PlaySound(SoundID.MenuOpen);
+		_lastSemanticState = GetSemanticState();
+		AriadneMod.ScreenReader.Output($"{GetContainerName(Main.LocalPlayer)}. {DescribeSelection()}");
 	}
 
 	private void RebuildCategories()
@@ -245,6 +305,7 @@ internal sealed class AccessibleInventoryController
 	private void AddPlayerInventoryCategories(Player player)
 	{
 		List<AccessibleInventoryNode> sections = [];
+		AddContainerCategory(player, sections);
 		AddItemCategory(sections, "hotbar", "Hotbar", player.inventory, ItemSlot.Context.InventoryItem, 0, HotbarSlotCount, HotbarSlotName, canFavorite: true);
 		List<AccessibleInventoryEntry> mainInventoryEntries = CreateItemEntries(
 			"main-inventory",
@@ -303,7 +364,7 @@ internal sealed class AccessibleInventoryController
 			() => "Consolidate and sort the ammo slots.",
 			ItemSorting.SortAmmo)));
 
-		AddBranch(_rootNodes, "inventory", "Inventory and Crafting", sections);
+		AddBranch(_rootNodes, InventoryBranchId, "Inventory and Crafting", sections);
 	}
 
 	internal void RequestSemanticFocusPath(IReadOnlyList<string> focusPath)
@@ -410,17 +471,6 @@ internal sealed class AccessibleInventoryController
 		List<AccessibleInventoryNode> interactions = [];
 		AddSignCategory(player, interactions);
 		AddNpcConversationCategory(player, interactions);
-
-		if (player.chest != -1)
-		{
-			ChestUI.GetContainerUsageInfo(out _, out Item[] container);
-			int context = player.chest >= 0 ? ItemSlot.Context.ChestItem : ItemSlot.Context.BankItem;
-			string containerName = GetContainerName(player);
-			List<AccessibleInventoryNode> containerSections = [];
-			AddItemCategory(containerSections, "container-items", "Items", container, context, 0, container.Length, index => $"row {index / 10 + 1}, column {index % 10 + 1}");
-			AddContainerActions(player, containerName, containerSections);
-			AddBranch(interactions, "container", containerName, containerSections);
-		}
 
 		if (Main.npcShop > 0)
 		{
@@ -877,7 +927,35 @@ internal sealed class AccessibleInventoryController
 			SaveAndExit)));
 	}
 
-	private void AddContainerActions(Player player, string containerName, List<AccessibleInventoryNode> destination)
+	/// <summary>
+	/// Builds the open container as one flat pane beside the hotbar and the main
+	/// inventory. A container is somewhere the player moves items to and from, so it
+	/// belongs on the same Control Tab ring as the panes it exchanges items with
+	/// rather than behind a separate interaction branch, and its slots are numbered
+	/// in one run so it reads exactly like the inventory pane does.
+	/// </summary>
+	private void AddContainerCategory(Player player, List<AccessibleInventoryNode> destination)
+	{
+		if (player.chest == -1)
+		{
+			return;
+		}
+
+		ChestUI.GetContainerUsageInfo(out _, out Item[] container);
+		int context = player.chest >= 0 ? ItemSlot.Context.ChestItem : ItemSlot.Context.BankItem;
+		string containerName = GetContainerName(player);
+		List<AccessibleInventoryEntry> entries = CreateItemEntries(
+			ContainerSlotId,
+			container,
+			context,
+			0,
+			container.Length,
+			index => $"slot {index + 1}");
+		entries.AddRange(BuildContainerActions(player, containerName));
+		AddCategory(destination, ContainerCategoryId, containerName, entries);
+	}
+
+	private List<AccessibleInventoryEntry> BuildContainerActions(Player player, string containerName)
 	{
 		ContainerTransferContext context = ContainerTransferContext.FromUnknown(player);
 		List<AccessibleInventoryEntry> actions =
@@ -900,7 +978,7 @@ internal sealed class AccessibleInventoryController
 				() => "Toggle whether overflow item pickups are sent to the Void Vault.",
 				() => player.IsVoidVaultEnabled = !player.IsVoidVaultEnabled));
 		}
-		AddCategory(destination, "container-actions", "Actions", actions);
+		return actions;
 	}
 
 	private void AddItemCategory(

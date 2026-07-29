@@ -25,29 +25,32 @@ internal static class WorldPositionFormatter
 
 	internal static string DescribeRelativePosition(Vector2 worldPosition)
 	{
-		Vector2 deltaTiles = (worldPosition - Main.LocalPlayer.Center) / TileSize;
+		Point tile = ToTile(worldPosition);
+		Point playerTile = ToTile(Main.LocalPlayer.Center);
+		Vector2 deltaTiles = new(tile.X - playerTile.X, tile.Y - playerTile.Y);
 		int distance = (int)MathF.Round(deltaTiles.Length());
 		string horizontal = MathF.Abs(deltaTiles.X) < SummaryDeadbandTiles
 			? Text("SameEastWest")
-			: HorizontalOffset((int)MathF.Round(deltaTiles.X));
+			: HorizontalOffset((int)deltaTiles.X);
 		string vertical = MathF.Abs(deltaTiles.Y) < SummaryDeadbandTiles
 			? Text("SameElevation")
-			: VerticalOffset((int)MathF.Round(deltaTiles.Y));
+			: VerticalOffset((int)deltaTiles.Y);
 		return Text("RelativeSummary", distance, horizontal, vertical);
 	}
 
 	internal static string DescribeCoordinates(Vector2 worldPosition)
 	{
-		int tileX = (int)MathF.Round(worldPosition.X / TileSize);
-		int tileY = (int)MathF.Round(worldPosition.Y / TileSize);
+		Point tile = ToTile(worldPosition);
+		int tileX = tile.X;
+		int tileY = tile.Y;
 		if (!ModContent.GetInstance<AriadneClientConfig>().RelativeCoordinateReadoutEnabled)
 		{
 			return Text("RawCoordinates", tileX, tileY, SpawnOffset(tileX));
 		}
 
-		Vector2 playerCenter = Main.LocalPlayer.Center;
-		int offsetX = tileX - (int)MathF.Round(playerCenter.X / TileSize);
-		int offsetY = tileY - (int)MathF.Round(playerCenter.Y / TileSize);
+		Point playerTile = ToTile(Main.LocalPlayer.Center);
+		int offsetX = tileX - playerTile.X;
+		int offsetY = tileY - playerTile.Y;
 		if (offsetX == 0 && offsetY == 0)
 		{
 			return Text("AtPlayer");
@@ -72,8 +75,9 @@ internal static class WorldPositionFormatter
 	/// </summary>
 	internal static string DescribeSelfLocation()
 	{
-		int tileX = (int)MathF.Round(Main.LocalPlayer.Center.X / TileSize);
-		int tileY = (int)MathF.Round(Main.LocalPlayer.Center.Y / TileSize);
+		Point playerTile = ToTile(Main.LocalPlayer.Center);
+		int tileX = playerTile.X;
+		int tileY = playerTile.Y;
 		if (!ModContent.GetInstance<AriadneClientConfig>().RelativeCoordinateReadoutEnabled)
 		{
 			return Text("RawCoordinates", tileX, tileY, SpawnOffset(tileX));
@@ -82,6 +86,20 @@ internal static class WorldPositionFormatter
 		int depth = tileY - Main.spawnTileY;
 		string vertical = depth == 0 ? Text("SpawnLevel") : VerticalOffset(depth);
 		return Text("SelfLocation", SpawnOffset(tileX), vertical);
+	}
+
+	/// <summary>
+	/// Converts a world position to the tile that contains it, the same truncation
+	/// Terraria's own ToTileCoordinates uses. Rounding instead would report the tile
+	/// boundary nearest the position, so a cursor sitting on the player's own tile
+	/// could land one tile away from the player and read as one tile above or below
+	/// when it is meant to be the neutral origin.
+	/// </summary>
+	private static Point ToTile(Vector2 worldPosition)
+	{
+		return new Point(
+			(int)MathF.Floor(worldPosition.X / TileSize),
+			(int)MathF.Floor(worldPosition.Y / TileSize));
 	}
 
 	private static string SpawnOffset(int tileX)

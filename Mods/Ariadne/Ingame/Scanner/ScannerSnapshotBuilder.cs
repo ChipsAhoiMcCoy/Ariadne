@@ -172,8 +172,8 @@ internal static class ScannerSnapshotBuilder
 		int width = Math.Max(1, data?.Width ?? 1);
 		int height = Math.Max(1, data?.Height ?? 1);
 		Rectangle bounds = new(root.X * 16, root.Y * 16, width * 16, height * 16);
-		string name = kind == ScannerTargetKind.Container
-			? GetContainerName(root, tile)
+		string name = ContainerNameResolver.IsContainer(tile.TileType)
+			? ContainerNameResolver.Describe(root, tile, GetTileName(root.X, root.Y, tile.TileType))
 			: GetTileName(x, y, tile.TileType);
 		objects[key] = new ObjectCandidate(root, tile.TileType, name, bounds, kind);
 	}
@@ -473,24 +473,6 @@ internal static class ScannerSnapshotBuilder
 			TileID.PalmTree or TileID.VanityTreeSakura or TileID.VanityTreeYellowWillow or TileID.TreeAsh or
 			TileID.TreeTopaz or TileID.TreeAmethyst or TileID.TreeSapphire or TileID.TreeEmerald or
 			TileID.TreeRuby or TileID.TreeDiamond or TileID.TreeAmber;
-	}
-
-	private static string GetContainerName(Point16 root, Tile tile)
-	{
-		int chestIndex = Chest.FindChest(root.X, root.Y);
-		if (chestIndex >= 0 && Main.chest[chestIndex] is Chest chest && !string.IsNullOrWhiteSpace(chest.name))
-		{
-			return chest.name;
-		}
-
-		string moddedName = TileLoader.DefaultContainerName(tile.TileType, tile.TileFrameX, tile.TileFrameY);
-		if (!string.IsNullOrWhiteSpace(moddedName))
-		{
-			return moddedName;
-		}
-
-		string mapName = GetTileName(root.X, root.Y, tile.TileType);
-		return string.IsNullOrWhiteSpace(mapName) ? "Container" : mapName;
 	}
 
 	private static string GetTileName(int x, int y, ushort type)
