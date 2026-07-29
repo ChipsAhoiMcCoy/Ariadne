@@ -141,7 +141,7 @@ internal static class WallToneTerrainProbe
 			true,
 			nearestDistance,
 			maximumDistance,
-			observer.NormalizeToViewport(nearestPoint));
+			observer.NormalizeToField(nearestPoint));
 	}
 
 	private static bool TrySelectAlignedSurface(
@@ -232,7 +232,7 @@ internal static class WallToneTerrainProbe
 			true,
 			weightedDistance / totalWeight,
 			maximumDistance,
-			observer.NormalizeToViewport(centroid));
+			observer.NormalizeToField(centroid));
 	}
 
 	private static bool TryRaycast(

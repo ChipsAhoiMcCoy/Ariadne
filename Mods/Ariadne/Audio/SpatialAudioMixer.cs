@@ -40,54 +40,29 @@ internal readonly record struct SpatialAudioTransform(
 	float LeftShadow,
 	float RightShadow);
 
-internal static class ViewportSpatialPosition
+internal static class SpatialFieldPosition
 {
 	/// <summary>
-	/// How little of the viewport a side may claim before its scale stops shrinking.
-	/// The body can sit on, or briefly past, a viewport edge while the camera catches
-	/// up, which would otherwise divide by zero or invert that side entirely.
-	/// </summary>
-	private const float MinimumReachFraction = 0.25f;
-
-	/// <summary>
-	/// Places a world position on the screen the listener is actually looking at: zero
-	/// is the body, and either extreme is that edge of the visible viewport. The body
-	/// stays the origin because Terraria clamps the camera near a world boundary, and
-	/// measuring from the rectangle's centre would pan a sound standing on the player
-	/// to one side for as long as the player stayed there. Each side is scaled by its
-	/// own distance to its own edge so that clamping cannot leave one half of the
-	/// screen saturated before its edge while the other half never reaches the extreme.
+	/// Places a world position in the listener's field: zero is the body, and either
+	/// extreme is that edge of the field. The body is the origin rather than the field
+	/// rectangle's centre so that a sound standing on the player always reads centred,
+	/// which is what lets the field be a fixed size instead of whatever the camera
+	/// happens to show.
 	/// </summary>
 	internal static Vector2 Normalize(
 		Vector2 worldPosition,
 		Vector2 bodyCenter,
-		Vector2 viewportPosition,
-		Vector2 viewportSize)
+		Vector2 fieldSize)
 	{
-		if (viewportSize.X <= 0f || viewportSize.Y <= 0f)
+		if (fieldSize.X <= 0f || fieldSize.Y <= 0f)
 		{
 			return Vector2.Zero;
 		}
 
+		Vector2 offset = worldPosition - bodyCenter;
 		return new(
-			NormalizeAxis(worldPosition.X, bodyCenter.X, viewportPosition.X, viewportSize.X),
-			NormalizeAxis(worldPosition.Y, bodyCenter.Y, viewportPosition.Y, viewportSize.Y));
-	}
-
-	private static float NormalizeAxis(
-		float world,
-		float body,
-		float viewportStart,
-		float viewportExtent)
-	{
-		float offset = world - body;
-		float reach = offset >= 0f
-			? viewportStart + viewportExtent - body
-			: body - viewportStart;
-		return MathHelper.Clamp(
-			offset / MathF.Max(reach, viewportExtent * MinimumReachFraction),
-			-1f,
-			1f);
+			MathHelper.Clamp(offset.X / (fieldSize.X * 0.5f), -1f, 1f),
+			MathHelper.Clamp(offset.Y / (fieldSize.Y * 0.5f), -1f, 1f));
 	}
 }
 

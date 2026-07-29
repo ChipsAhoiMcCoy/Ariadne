@@ -183,7 +183,7 @@ internal sealed class CursorEarconSound : IDisposable
 				// The cue is re-placed every tick rather than frozen at the position it
 				// was fired from, so freecam or a moving player carries it.
 				cue.Voice.Update(
-					SpatialObserverContext.Current.NormalizeToViewport(cue.WorldPosition),
+					SpatialObserverContext.Current.NormalizeToField(cue.WorldPosition),
 					settings,
 					CueVolume(config, cue.LoudnessTrim));
 			}
@@ -383,7 +383,7 @@ internal sealed class CursorEarconSound : IDisposable
 		AriadneClientConfig config)
 	{
 		Vector2 normalizedPosition =
-			SpatialObserverContext.Current.NormalizeToViewport(worldPosition);
+			SpatialObserverContext.Current.NormalizeToField(worldPosition);
 		SpatialAudioSettings settings = config.ToSpatialAudioSettings();
 		SpatialAudioTransform transform = SpatialAudioTransformCalculator.Calculate(
 			normalizedPosition.X,
@@ -451,7 +451,7 @@ internal sealed class CursorEarconSound : IDisposable
 		// This path hands the world position to Terraria, which pans it under its own
 		// law, so only the vertical offset below comes from the shared spatial field.
 		Vector2 normalizedPosition =
-			SpatialObserverContext.Current.NormalizeToViewport(worldPosition);
+			SpatialObserverContext.Current.NormalizeToField(worldPosition);
 		float verticalPitchOffset = -0.5f * normalizedPosition.Y;
 		return new SoundStyle(source.SoundPath, SoundType.Sound)
 		{

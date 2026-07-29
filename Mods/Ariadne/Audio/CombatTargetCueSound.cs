@@ -70,7 +70,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 		_voice = new SpatialOneShotVoice(
 			new TargetLockCueVoice(cueFrames, CueTrim),
 			cueFrames + DelayTailFrames,
-			SpatialObserverContext.Current.NormalizeToViewport(worldPosition),
+			SpatialObserverContext.Current.NormalizeToField(worldPosition),
 			config.ToSpatialAudioSettings(),
 			volume);
 		_bus.Add(_voice);
@@ -101,7 +101,7 @@ internal sealed class CombatTargetCueSound : IDisposable
 		// The cue follows the target rather than staying where it was fired, which a
 		// baked render could not do.
 		_voice.Update(
-			SpatialObserverContext.Current.NormalizeToViewport(_worldPosition),
+			SpatialObserverContext.Current.NormalizeToField(_worldPosition),
 			config.ToSpatialAudioSettings(),
 			volume);
 	}

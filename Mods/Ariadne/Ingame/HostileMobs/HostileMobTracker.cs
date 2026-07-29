@@ -35,17 +35,17 @@ internal sealed class HostileMobTracker
 		_builders.Clear();
 		_candidates.Clear();
 
-		Vector2 viewportPosition = observer.ViewportPosition;
-		Vector2 viewportSize = observer.ViewportSize;
-		if (viewportSize.X <= 0f || viewportSize.Y <= 0f)
+		Vector2 fieldPosition = observer.FieldPosition;
+		Vector2 fieldSize = SpatialObserverSnapshot.FieldSize;
+		if (fieldSize.X <= 0f || fieldSize.Y <= 0f)
 		{
 			return _candidates;
 		}
 
-		float viewportLeft = viewportPosition.X;
-		float viewportTop = viewportPosition.Y;
-		float viewportRight = viewportLeft + viewportSize.X;
-		float viewportBottom = viewportTop + viewportSize.Y;
+		float fieldLeft = fieldPosition.X;
+		float fieldTop = fieldPosition.Y;
+		float fieldRight = fieldLeft + fieldSize.X;
+		float fieldBottom = fieldTop + fieldSize.Y;
 		for (int index = 0; index < Main.maxNPCs; index++)
 		{
 			NPC npc = Main.npc[index];
@@ -54,12 +54,12 @@ internal sealed class HostileMobTracker
 				continue;
 			}
 
-			// The viewport only decides whether a mob is heard at all. Clipping the hitbox
-			// to it as well dragged a mob straddling an edge back toward the middle, so its
-			// cue retreated from that edge over the last stretch before it left the screen.
+			// The field only decides whether a mob is heard at all. Clipping the hitbox to
+			// it as well dragged a mob straddling an edge back toward the middle, so its
+			// cue retreated from that edge over the last stretch before it left the field.
 			Rectangle hitbox = npc.Hitbox;
-			if (MathF.Min(hitbox.Right, viewportRight) <= MathF.Max(hitbox.Left, viewportLeft) ||
-				MathF.Min(hitbox.Bottom, viewportBottom) <= MathF.Max(hitbox.Top, viewportTop))
+			if (MathF.Min(hitbox.Right, fieldRight) <= MathF.Max(hitbox.Left, fieldLeft) ||
+				MathF.Min(hitbox.Bottom, fieldBottom) <= MathF.Max(hitbox.Top, fieldTop))
 			{
 				continue;
 			}
@@ -79,10 +79,8 @@ internal sealed class HostileMobTracker
 			}
 		}
 
-		// The viewport decides whether a mob is heard; this range decides how loud. They
-		// were once the same length, which tied the level of every mob to the resolution
-		// and zoom of the screen it was drawn on, and put most of a wide monitor's field
-		// into the quietest part of the curve.
+		// The field decides whether a mob is heard; this range decides how loud. They are
+		// kept separate so that widening one does not silently reshape the other.
 		float safeRangePixels = MathF.Max(rangePixels, 1f);
 		foreach ((HostileMobIdentity identity, NearestSurfaceBuilder builder) in _builders)
 		{
@@ -92,7 +90,7 @@ internal sealed class HostileMobTracker
 				builder.IsBoss,
 				distanceSquared,
 				MathHelper.Clamp(1f - MathF.Sqrt(distanceSquared) / safeRangePixels, 0f, 1f),
-				observer.NormalizeToViewport(builder.Surface)));
+				observer.NormalizeToField(builder.Surface)));
 		}
 
 		return _candidates;

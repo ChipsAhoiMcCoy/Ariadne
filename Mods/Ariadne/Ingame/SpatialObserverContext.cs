@@ -1,6 +1,5 @@
 #nullable enable
 
-using System;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Ariadne.Audio;
@@ -9,7 +8,7 @@ using Ariadne.Ingame.Freecam;
 namespace Ariadne.Ingame;
 
 /// <summary>
-/// The body and viewport used by spatial awareness. Gameplay and semantic
+/// The body and field used by spatial awareness. Gameplay and semantic
 /// interaction systems deliberately continue to use <see cref="Main.LocalPlayer"/>.
 /// </summary>
 internal readonly record struct SpatialObserverSnapshot(
@@ -17,20 +16,30 @@ internal readonly record struct SpatialObserverSnapshot(
 	int Width,
 	int Height,
 	float GravityDirection,
-	Vector2 ViewportPosition,
-	Vector2 ViewportSize,
 	bool IsVirtual)
 {
 	/// <summary>
-	/// Places a world position on the observer's own screen: the body reads centred and
-	/// either visible edge reads hard over. The viewport rectangle is a poor origin
-	/// because Terraria clamps the camera near world boundaries, leaving the body
-	/// off center and every cue biased toward one ear for as long as it stays there,
-	/// so the body supplies the origin and the rectangle supplies each side's scale.
+	/// The field every spatial cue is measured against, in world pixels. Fixed rather
+	/// than taken from <see cref="Main.Camera"/> so that a cue means the same thing for
+	/// every player. The camera rectangle is the resolution divided by the game zoom,
+	/// which gave a player at 1280x720, or one holding the zoom slider at 2x, two thirds
+	/// of the default reach, and gave an ultrawide a vertical field a third shorter than
+	/// its horizontal one. This is 120 by 67.5 tiles, which is what the cue levels and
+	/// the default ranges were tuned against.
 	/// </summary>
-	internal Vector2 NormalizeToViewport(Vector2 worldPosition)
+	internal static readonly Vector2 FieldSize = new(1920f, 1080f);
+
+	/// <summary>
+	/// The field as a rectangle, for callers that test containment rather than
+	/// direction. It is always centred on the body and deliberately not clamped to the
+	/// world edge: nothing draws it, so letting it hang past the edge costs nothing and
+	/// keeps both sides the same length everywhere in the world.
+	/// </summary>
+	internal Vector2 FieldPosition => Center - FieldSize * 0.5f;
+
+	internal Vector2 NormalizeToField(Vector2 worldPosition)
 	{
-		return ViewportSpatialPosition.Normalize(worldPosition, Center, ViewportPosition, ViewportSize);
+		return SpatialFieldPosition.Normalize(worldPosition, Center, FieldSize);
 	}
 }
 
@@ -48,15 +57,7 @@ internal static class SpatialObserverContext
 				out int height,
 				out float gravityDirection))
 			{
-				(Vector2 viewportPosition, Vector2 viewportSize) = CalculateCenteredViewport(center);
-				return new(
-					center,
-					width,
-					height,
-					gravityDirection,
-					viewportPosition,
-					viewportSize,
-					IsVirtual: true);
+				return new(center, width, height, gravityDirection, IsVirtual: true);
 			}
 
 			Player player = Main.LocalPlayer;
@@ -65,38 +66,7 @@ internal static class SpatialObserverContext
 				player.width,
 				player.height,
 				player.gravDir < 0f ? -1f : 1f,
-				Main.Camera.ScaledPosition,
-				Main.Camera.ScaledSize,
 				IsVirtual: false);
 		}
-	}
-
-	internal static (Vector2 Position, Vector2 Size) CalculateCenteredViewport(Vector2 center)
-	{
-		Vector2 size = Main.Camera.ScaledSize;
-		if (size.X <= 0f || size.Y <= 0f)
-		{
-			size = new(Math.Max(1, Main.screenWidth), Math.Max(1, Main.screenHeight));
-		}
-
-		Vector2 desired = center - size * 0.5f;
-		float minimumX = Main.leftWorld + 656f;
-		float minimumY = Main.topWorld + 656f;
-		float maximumX = Main.rightWorld - size.X - 672f;
-		float maximumY = Main.bottomWorld - size.Y - 672f;
-		if (maximumX < minimumX)
-		{
-			maximumX = minimumX;
-		}
-		if (maximumY < minimumY)
-		{
-			maximumY = minimumY;
-		}
-
-		return (
-			new(
-				MathHelper.Clamp(desired.X, minimumX, maximumX),
-				MathHelper.Clamp(desired.Y, minimumY, maximumY)),
-			size);
 	}
 }

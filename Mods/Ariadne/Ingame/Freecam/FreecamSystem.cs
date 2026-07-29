@@ -385,22 +385,22 @@ internal sealed class FreecamSystem : ModSystem
 		}
 
 		SpatialObserverSnapshot observer = SpatialObserverContext.Current;
-		Vector2 beaconPosition = ProjectToViewportEdge(
+		Vector2 beaconPosition = ProjectToFieldEdge(
 			Main.LocalPlayer.Center,
-			observer.ViewportPosition,
-			observer.ViewportSize);
-		_beaconAudio?.UpdateTarget(observer.NormalizeToViewport(beaconPosition), config);
+			observer.FieldPosition,
+			SpatialObserverSnapshot.FieldSize);
+		_beaconAudio?.UpdateTarget(observer.NormalizeToField(beaconPosition), config);
 	}
 
-	private static Vector2 ProjectToViewportEdge(
+	private static Vector2 ProjectToFieldEdge(
 		Vector2 worldPosition,
-		Vector2 viewportPosition,
-		Vector2 viewportSize)
+		Vector2 fieldPosition,
+		Vector2 fieldSize)
 	{
-		float left = viewportPosition.X;
-		float top = viewportPosition.Y;
-		float right = left + viewportSize.X;
-		float bottom = top + viewportSize.Y;
+		float left = fieldPosition.X;
+		float top = fieldPosition.Y;
+		float right = left + fieldSize.X;
+		float bottom = top + fieldSize.Y;
 		if (worldPosition.X >= left &&
 			worldPosition.X <= right &&
 			worldPosition.Y >= top &&
@@ -409,7 +409,7 @@ internal sealed class FreecamSystem : ModSystem
 			return worldPosition;
 		}
 
-		Vector2 origin = viewportPosition + viewportSize * 0.5f;
+		Vector2 origin = fieldPosition + fieldSize * 0.5f;
 		Vector2 delta = worldPosition - origin;
 		if (delta.LengthSquared() <= 0.0001f)
 		{
@@ -484,10 +484,28 @@ internal sealed class FreecamSystem : ModSystem
 		_hasPreviousLivePlayerCenter = true;
 	}
 
+	/// <summary>
+	/// Puts the drawn camera on the freecam body. This is the one place that still wants
+	/// the real camera rectangle rather than the fixed spatial field: it is positioning
+	/// what the screen shows, so it takes its size from the resolution and zoom in play
+	/// and clamps to the same world margins Terraria itself clamps to.
+	/// </summary>
 	private static void CenterCameraOn(Vector2 center)
 	{
-		(Vector2 viewportPosition, _) =
-			SpatialObserverContext.CalculateCenteredViewport(center);
+		Vector2 size = Main.Camera.ScaledSize;
+		if (size.X <= 0f || size.Y <= 0f)
+		{
+			size = new(Math.Max(1, Main.screenWidth), Math.Max(1, Main.screenHeight));
+		}
+
+		Vector2 desired = center - size * 0.5f;
+		float minimumX = Main.leftWorld + 656f;
+		float minimumY = Main.topWorld + 656f;
+		float maximumX = Math.Max(Main.rightWorld - size.X - 672f, minimumX);
+		float maximumY = Math.Max(Main.bottomWorld - size.Y - 672f, minimumY);
+		Vector2 viewportPosition = new(
+			MathHelper.Clamp(desired.X, minimumX, maximumX),
+			MathHelper.Clamp(desired.Y, minimumY, maximumY));
 		Main.screenPosition = viewportPosition - Main.GameViewMatrix.Translation;
 	}
 
