@@ -41,7 +41,7 @@ internal sealed class LowHealthHeartbeatSystem : ModSystem
 
 	public override void Load()
 	{
-		_sound = HeartbeatSound.Create();
+		_sound = HeartbeatSound.Create(Mod);
 	}
 
 	public override void OnWorldLoad() => ResetTracking();

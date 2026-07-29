@@ -1,9 +1,8 @@
 #nullable enable
 
 using System;
-using Microsoft.Xna.Framework.Audio;
 using Terraria;
-using Terraria.Audio;
+using Terraria.ModLoader;
 
 namespace Ariadne.Audio;
 
@@ -33,42 +32,53 @@ internal sealed class WallBumpSoundBank : IDisposable
 	private static readonly ImpactToneDesign DoorDesign =
 		new(232f, 105f, 0.180f, 0.14f, 0.28f, 42f, 0.30f, 0x7E36_2A55u);
 
-	private readonly SoundEffect _terrainTone;
-	private readonly SoundEffect _doorTone;
+	private readonly AriadneAudioBus _bus;
+	private readonly float[] _terrainTone;
+	private readonly float[] _doorTone;
 	private bool _disposed;
 
-	private WallBumpSoundBank()
+	private WallBumpSoundBank(AriadneAudioBus bus)
 	{
+		_bus = bus;
 		_terrainTone = ImpactToneSynthesizer.Render(TerrainDesign);
 		_doorTone = ImpactToneSynthesizer.Render(DoorDesign);
 	}
 
-	internal static WallBumpSoundBank? Create()
+	internal static WallBumpSoundBank? Create(Mod owner)
 	{
-		return Main.dedServ || !SoundEngine.IsAudioSupported ? null : new WallBumpSoundBank();
+		if (Main.dedServ)
+		{
+			return null;
+		}
+
+		AriadneAudioBus? bus = AudioBusSystem.Bus;
+		if (bus is null)
+		{
+			owner.Logger.Warn("Movement bumps are unavailable because the audio bus could not be created.");
+			return null;
+		}
+
+		return new(bus);
 	}
 
 	internal void Play(float volume, float pitch, MovementBumpSurface surface)
 	{
-		float scaledVolume = Math.Clamp(volume * Main.soundVolume, 0f, 1f);
-		if (_disposed || scaledVolume <= 0f || SoundEngine.AreSoundsPaused)
+		// Terraria's sound slider and the listening gate are the bus's job now.
+		float scaledVolume = Math.Clamp(volume, 0f, 1f);
+		if (_disposed || scaledVolume <= 0f)
 		{
 			return;
 		}
 
-		SoundEffect tone = surface == MovementBumpSurface.Door ? _doorTone : _terrainTone;
-		tone.Play(scaledVolume, Math.Clamp(pitch, -1f, 1f), pan: 0f);
+		float[] tone = surface == MovementBumpSurface.Door ? _doorTone : _terrainTone;
+		_bus.Add(new MonoOneShotVoice(
+			tone,
+			FootstepSoundBank.PitchRatio(pitch),
+			scaledVolume));
 	}
 
 	public void Dispose()
 	{
-		if (_disposed)
-		{
-			return;
-		}
-
-		_terrainTone.Dispose();
-		_doorTone.Dispose();
 		_disposed = true;
 	}
 }

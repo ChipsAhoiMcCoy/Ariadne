@@ -83,16 +83,4 @@ internal static class AuthoredAudioLevels
 		}
 	}
 
-	internal static byte[] EncodeMono(ReadOnlySpan<float> samples)
-	{
-		byte[] pcm = new byte[samples.Length * sizeof(short)];
-		for (int index = 0; index < samples.Length; index++)
-		{
-			short encoded = (short)MathF.Round(
-				Math.Clamp(samples[index], -1f, 1f) * short.MaxValue);
-			pcm[index * 2] = (byte)encoded;
-			pcm[index * 2 + 1] = (byte)(encoded >> 8);
-		}
-		return pcm;
-	}
 }

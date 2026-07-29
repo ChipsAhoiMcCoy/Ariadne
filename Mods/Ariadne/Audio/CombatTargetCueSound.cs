@@ -2,9 +2,7 @@
 
 using System;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Audio;
 using Terraria;
-using Terraria.Audio;
 using Terraria.ModLoader;
 using Ariadne.Configs;
 using Ariadne.Ingame;
@@ -26,15 +24,14 @@ internal sealed class CombatTargetCueSound : IDisposable
 	/// </summary>
 	private static readonly float CueTrim = CalibrateCueTrim();
 
-	private readonly Mod _owner;
-	private SoundEffect? _soundEffect;
-	private SoundEffectInstance? _instance;
-	private bool _disabledAfterFailure;
+	private readonly AriadneAudioBus _bus;
+	private SpatialOneShotVoice? _voice;
+	private Vector2 _worldPosition;
 	private bool _disposed;
 
-	private CombatTargetCueSound(Mod owner)
+	private CombatTargetCueSound(AriadneAudioBus bus)
 	{
-		_owner = owner;
+		_bus = bus;
 	}
 
 	internal static CombatTargetCueSound? Create(Mod owner)
@@ -43,21 +40,22 @@ internal sealed class CombatTargetCueSound : IDisposable
 		{
 			return null;
 		}
-		if (!SoundEngine.IsAudioSupported)
+
+		AriadneAudioBus? bus = AudioBusSystem.Bus;
+		if (bus is null)
 		{
-			owner.Logger.Warn("Combat-target cues are unavailable because this client does not support audio.");
+			owner.Logger.Warn("Combat-target cues are unavailable because the audio bus could not be created.");
 			return null;
 		}
 
-		return new(owner);
+		return new(bus);
 	}
 
 	internal void Play(Vector2 worldPosition, AriadneClientConfig config)
 	{
-		float configuredVolume = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
-		float volume = configuredVolume * Math.Clamp(Main.soundVolume, 0f, 1f);
+		// Terraria's sound slider is applied once, by the bus, for the whole mix.
+		float volume = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
 		if (_disposed ||
-			_disabledAfterFailure ||
 			!config.HostileMobTonesEnabled ||
 			volume <= 0f ||
 			!GameplayAudioGate.CanListen())
@@ -66,56 +64,46 @@ internal sealed class CombatTargetCueSound : IDisposable
 			return;
 		}
 
-		try
-		{
-			StopCurrent();
-			Vector2 normalizedPosition =
-				SpatialObserverContext.Current.NormalizeToViewport(worldPosition);
-			byte[] pcm = CreatePcm(normalizedPosition, config.ToSpatialAudioSettings());
-			_soundEffect = new SoundEffect(
-				pcm,
-				SpatialAudioTransformCalculator.SampleRate,
-				AudioChannels.Stereo);
-			_instance = _soundEffect.CreateInstance();
-			_instance.Volume = volume;
-			_instance.Play();
-		}
-		catch (Exception exception)
-		{
-			DisableAfterFailure(exception);
-		}
+		StopCurrent();
+		_worldPosition = worldPosition;
+		int cueFrames = CueFrameCount();
+		_voice = new SpatialOneShotVoice(
+			new TargetLockCueVoice(cueFrames, CueTrim),
+			cueFrames + DelayTailFrames,
+			SpatialObserverContext.Current.NormalizeToViewport(worldPosition),
+			config.ToSpatialAudioSettings(),
+			volume);
+		_bus.Add(_voice);
 	}
 
 	internal void Update(AriadneClientConfig config)
 	{
-		if (_disposed || _instance is null)
+		if (_disposed || _voice is null)
 		{
 			return;
 		}
 
-		try
+		float volume = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
+		if (!config.HostileMobTonesEnabled ||
+			volume <= 0f ||
+			!GameplayAudioGate.CanListen())
 		{
-			float configuredVolume = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
-			float volume = configuredVolume * Math.Clamp(Main.soundVolume, 0f, 1f);
-			if (!config.HostileMobTonesEnabled ||
-				volume <= 0f ||
-				!GameplayAudioGate.CanListen())
-			{
-				StopCurrent();
-			}
-			else if (_instance.State == SoundState.Stopped)
-			{
-				DisposeCurrent();
-			}
-			else
-			{
-				_instance.Volume = volume;
-			}
+			StopCurrent();
+			return;
 		}
-		catch (Exception exception)
+
+		if (_voice.IsFinished)
 		{
-			DisableAfterFailure(exception);
+			_voice = null;
+			return;
 		}
+
+		// The cue follows the target rather than staying where it was fired, which a
+		// baked render could not do.
+		_voice.Update(
+			SpatialObserverContext.Current.NormalizeToViewport(_worldPosition),
+			config.ToSpatialAudioSettings(),
+			volume);
 	}
 
 	internal void StopAndReset()
@@ -161,73 +149,16 @@ internal sealed class CombatTargetCueSound : IDisposable
 			(int)MathF.Round(SpatialAudioTransformCalculator.SampleRate * DurationSeconds));
 	}
 
-	private static byte[] CreatePcm(
-		Vector2 normalizedPosition,
-		in SpatialAudioSettings settings)
-	{
-		int cueFrames = CueFrameCount();
-		int totalFrames = cueFrames + DelayTailFrames;
-		float[] left = new float[totalFrames];
-		float[] right = new float[totalFrames];
-		TargetLockCueVoice voice = new(cueFrames, CueTrim);
-		SpatialAudioEmitter emitter = new(gainAttackSeconds: 0.001f);
-		emitter.SetTargetImmediately(new(
-			normalizedPosition.X,
-			normalizedPosition.Y,
-			DistanceGain: 1f));
-		emitter.Render(voice, settings, left, right);
-
-		byte[] pcm = new byte[totalFrames * 2 * sizeof(short)];
-		for (int frame = 0; frame < totalFrames; frame++)
-		{
-			short leftSample = Encode(left[frame]);
-			short rightSample = Encode(right[frame]);
-			int byteIndex = frame * 4;
-			pcm[byteIndex] = (byte)leftSample;
-			pcm[byteIndex + 1] = (byte)(leftSample >> 8);
-			pcm[byteIndex + 2] = (byte)rightSample;
-			pcm[byteIndex + 3] = (byte)(rightSample >> 8);
-		}
-		return pcm;
-	}
-
 	private void StopCurrent()
 	{
-		try
+		if (_voice is null)
 		{
-			_instance?.Stop(immediate: true);
-		}
-		catch
-		{
-			// Cleanup must remain safe if the audio device disappears.
-		}
-		DisposeCurrent();
-	}
-
-	private void DisposeCurrent()
-	{
-		_instance?.Dispose();
-		_instance = null;
-		_soundEffect?.Dispose();
-		_soundEffect = null;
-	}
-
-	private void DisableAfterFailure(Exception exception)
-	{
-		if (!_disabledAfterFailure)
-		{
-			_owner.Logger.Warn(
-				$"Combat-target cue playback failed and has been disabled for this session: " +
-				$"{exception.GetBaseException().Message}");
+			return;
 		}
 
-		_disabledAfterFailure = true;
-		StopCurrent();
-	}
-
-	private static short Encode(float sample)
-	{
-		return (short)MathF.Round(Math.Clamp(sample, -1f, 1f) * short.MaxValue);
+		_voice.Stop();
+		_bus.Remove(_voice);
+		_voice = null;
 	}
 
 	private sealed class TargetLockCueVoice : ISpatialMonoSource

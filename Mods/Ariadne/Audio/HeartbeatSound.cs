@@ -1,9 +1,8 @@
 #nullable enable
 
 using System;
-using Microsoft.Xna.Framework.Audio;
 using Terraria;
-using Terraria.Audio;
+using Terraria.ModLoader;
 
 namespace Ariadne.Audio;
 
@@ -15,7 +14,6 @@ namespace Ariadne.Audio;
 /// </summary>
 internal sealed class HeartbeatSound : IDisposable
 {
-	private const int SampleRate = 44_100;
 	private const float BeatSeconds = 0.46f;
 	private const float ReleaseSeconds = 0.004f;
 	private const float AttackSeconds = 0.006f;
@@ -37,52 +35,65 @@ internal sealed class HeartbeatSound : IDisposable
 		DecaySeconds: 0.040f,
 		Amplitude: 0.74f);
 
-	private readonly SoundEffect _beat;
+	private readonly AriadneAudioBus _bus;
+	private readonly float[] _beat;
 	private bool _disposed;
 
-	private HeartbeatSound()
+	private HeartbeatSound(AriadneAudioBus bus)
 	{
+		_bus = bus;
 		_beat = CreateBeat();
 	}
 
-	internal static HeartbeatSound? Create()
+	internal static HeartbeatSound? Create(Mod owner)
 	{
-		return Main.dedServ || !SoundEngine.IsAudioSupported ? null : new HeartbeatSound();
+		if (Main.dedServ)
+		{
+			return null;
+		}
+
+		AriadneAudioBus? bus = AudioBusSystem.Bus;
+		if (bus is null)
+		{
+			owner.Logger.Warn("The low-health heartbeat is unavailable because the audio bus could not be created.");
+			return null;
+		}
+
+		return new(bus);
 	}
 
 	internal void Play(float volume, float pitch)
 	{
-		float scaledVolume = Math.Clamp(volume * Main.soundVolume, 0f, 1f);
-		if (_disposed || scaledVolume <= 0f || SoundEngine.AreSoundsPaused)
+		// Terraria's sound slider and the listening gate are the bus's job now.
+		float scaledVolume = Math.Clamp(volume, 0f, 1f);
+		if (_disposed || scaledVolume <= 0f)
 		{
 			return;
 		}
 
-		_beat.Play(scaledVolume, Math.Clamp(pitch, -1f, 1f), pan: 0f);
+		_bus.Add(new MonoOneShotVoice(
+			_beat,
+			FootstepSoundBank.PitchRatio(pitch),
+			scaledVolume));
 	}
 
 	public void Dispose()
 	{
-		if (_disposed)
-		{
-			return;
-		}
-
-		_beat.Dispose();
 		_disposed = true;
 	}
 
-	private static SoundEffect CreateBeat()
+	private static float[] CreateBeat()
 	{
-		int sampleCount = (int)MathF.Round(SampleRate * BeatSeconds);
-		int releaseSamples = Math.Max(2, (int)MathF.Round(SampleRate * ReleaseSeconds));
+		int sampleRate = SpatialAudioTransformCalculator.SampleRate;
+		int sampleCount = (int)MathF.Round(sampleRate * BeatSeconds);
+		int releaseSamples = Math.Max(2, (int)MathF.Round(sampleRate * ReleaseSeconds));
 		float[] samples = new float[sampleCount];
 		uint noiseState = 0x5D2E_C41Bu;
 		float filteredNoise = 0f;
 
 		for (int i = 0; i < sampleCount; i++)
 		{
-			float time = i / (float)SampleRate;
+			float time = i / (float)sampleRate;
 
 			noiseState ^= noiseState << 13;
 			noiseState ^= noiseState >> 17;
@@ -100,10 +111,7 @@ internal sealed class HeartbeatSound : IDisposable
 		}
 
 		AuthoredAudioLevels.NormalizeOneShot(samples);
-		return new SoundEffect(
-			AuthoredAudioLevels.EncodeMono(samples),
-			SampleRate,
-			AudioChannels.Mono);
+		return samples;
 	}
 
 	private static float Thump(ThumpDesign design, float time, float noise)

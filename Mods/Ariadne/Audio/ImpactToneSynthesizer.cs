@@ -1,7 +1,6 @@
 #nullable enable
 
 using System;
-using Microsoft.Xna.Framework.Audio;
 
 namespace Ariadne.Audio;
 
@@ -26,15 +25,15 @@ internal readonly record struct ImpactToneDesign(
 /// </summary>
 internal static class ImpactToneSynthesizer
 {
-	private const int SampleRate = 44_100;
 	private const float ImpactDecaySeconds = 0.0012f;
 	private const float PitchSweepSeconds = 0.008f;
 
-	internal static SoundEffect Render(in ImpactToneDesign design)
+	internal static float[] Render(in ImpactToneDesign design)
 	{
-		int sampleCount = (int)MathF.Round(SampleRate * design.DurationMilliseconds / 1_000f);
-		int attackSamples = Math.Max(1, (int)MathF.Round(SampleRate * design.AttackMilliseconds / 1_000f));
-		int releaseSamples = Math.Max(2, (int)MathF.Round(SampleRate * 0.9f / 1_000f));
+		int sampleRate = SpatialAudioTransformCalculator.SampleRate;
+		int sampleCount = (int)MathF.Round(sampleRate * design.DurationMilliseconds / 1_000f);
+		int attackSamples = Math.Max(1, (int)MathF.Round(sampleRate * design.AttackMilliseconds / 1_000f));
+		int releaseSamples = Math.Max(2, (int)MathF.Round(sampleRate * 0.9f / 1_000f));
 		float[] samples = new float[sampleCount];
 		uint noiseState = design.NoiseSeed;
 		float phaseOffset = (design.NoiseSeed & 0xFFu) / 255f * MathF.Tau;
@@ -44,7 +43,7 @@ internal static class ImpactToneSynthesizer
 
 		for (int i = 0; i < sampleCount; i++)
 		{
-			float time = i / (float)SampleRate;
+			float time = i / (float)sampleRate;
 			float settledPitch = 1f - MathF.Exp(-time / PitchSweepSeconds);
 			float sweptTime = time + design.PitchDrop * PitchSweepSeconds * settledPitch;
 			float angle = MathF.Tau * design.Frequency * sweptTime;
@@ -71,9 +70,6 @@ internal static class ImpactToneSynthesizer
 		}
 
 		AuthoredAudioLevels.NormalizeOneShot(samples);
-		return new SoundEffect(
-			AuthoredAudioLevels.EncodeMono(samples),
-			SampleRate,
-			AudioChannels.Mono);
+		return samples;
 	}
 }

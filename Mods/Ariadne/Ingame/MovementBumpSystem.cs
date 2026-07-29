@@ -40,7 +40,7 @@ internal sealed class MovementBumpSystem : ModSystem
 	public override void Load()
 	{
 		_instance = this;
-		_sounds = WallBumpSoundBank.Create();
+		_sounds = WallBumpSoundBank.Create(Mod);
 	}
 
 	public override void OnWorldLoad()

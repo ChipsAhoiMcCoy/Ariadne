@@ -24,7 +24,6 @@ internal sealed class CursorEarconSound : IDisposable
 {
 	private const int DelayTailFrames = 64;
 	private const float MaximumCueSeconds = 1f;
-	private const float TruncationFadeSeconds = 0.006f;
 	private const string CursorSoundIdentifierPrefix = "Ariadne/CursorEarcon/";
 
 	private static readonly string[] CommonNativeSoundPaths =
@@ -63,8 +62,9 @@ internal sealed class CursorEarconSound : IDisposable
 	private static bool _playSoundHookInstalled;
 
 	private readonly Mod _owner;
+	private readonly AriadneAudioBus _bus;
 	private readonly NativeSoundPcmCache _pcmCache;
-	private readonly List<RenderedCursorSound> _renderedSounds = [];
+	private readonly List<RenderedCursorCue> _renderedSounds = [];
 	private readonly List<SlotId> _fallbackSlots = [];
 	private readonly Dictionary<string, int> _nextVariantBySoundPath = [];
 	private readonly Dictionary<int, int> _nextLiquidSoundByType = [];
@@ -73,9 +73,10 @@ internal sealed class CursorEarconSound : IDisposable
 	private bool _disabledAfterFailure;
 	private bool _disposed;
 
-	private CursorEarconSound(Mod owner)
+	private CursorEarconSound(Mod owner, AriadneAudioBus bus)
 	{
 		_owner = owner;
+		_bus = bus;
 		_pcmCache = new(owner);
 		foreach (string soundPath in CommonNativeSoundPaths)
 		{
@@ -95,10 +96,17 @@ internal sealed class CursorEarconSound : IDisposable
 			return null;
 		}
 
+		AriadneAudioBus? bus = AudioBusSystem.Bus;
+		if (bus is null)
+		{
+			owner.Logger.Warn("Cursor earcons are unavailable because the audio bus could not be created.");
+			return null;
+		}
+
 		try
 		{
 			InstallPlaySoundHook();
-			return new(owner);
+			return new(owner, bus);
 		}
 		catch (Exception exception)
 		{
@@ -162,26 +170,22 @@ internal sealed class CursorEarconSound : IDisposable
 
 		try
 		{
-			float configuredVolume = Math.Clamp(
-				config.CursorEarconVolumePercent / 100f,
-				0f,
-				1f);
-			float gameVolume = Math.Clamp(Main.soundVolume, 0f, 1f);
+			SpatialAudioSettings settings = config.ToSpatialAudioSettings();
 			for (int index = _renderedSounds.Count - 1; index >= 0; index--)
 			{
-				RenderedCursorSound sound = _renderedSounds[index];
-				if (sound.Instance.State == SoundState.Stopped)
+				RenderedCursorCue cue = _renderedSounds[index];
+				if (cue.Voice.IsFinished)
 				{
-					sound.Dispose();
 					_renderedSounds.RemoveAt(index);
+					continue;
 				}
-				else
-				{
-					sound.Instance.Volume = Math.Clamp(
-						configuredVolume * gameVolume * sound.LoudnessTrim,
-						0f,
-						1f);
-				}
+
+				// The cue is re-placed every tick rather than frozen at the position it
+				// was fired from, so freecam or a moving player carries it.
+				cue.Voice.Update(
+					SpatialObserverContext.Current.NormalizeToViewport(cue.WorldPosition),
+					settings,
+					CueVolume(config, cue.LoudnessTrim));
 			}
 
 			for (int index = _fallbackSlots.Count - 1; index >= 0; index--)
@@ -399,35 +403,28 @@ internal sealed class CursorEarconSound : IDisposable
 			1,
 			(int)MathF.Ceiling(sourceFrameLimit / playbackRatio)) +
 			DelayTailFrames;
-		float[] left = new float[frameCount];
-		float[] right = new float[frameCount];
-		SpatialAudioEmitter emitter = new(gainAttackSeconds: 0.001f);
-		emitter.SetTargetImmediately(new(
-			normalizedPosition.X,
-			normalizedPosition.Y,
-			DistanceGain: 1f));
-		emitter.Render(
-			new NativePcmVoice(clip.Samples, sourceFrameLimit, nativePitchRatio),
+		SpatialOneShotVoice voice = new(
+			new PcmPlaybackVoice(clip.Samples, sourceFrameLimit, nativePitchRatio),
+			frameCount,
+			normalizedPosition,
 			settings,
-			left,
-			right);
+			CueVolume(config, clip.LoudnessTrim));
+		_bus.Add(voice);
+		_renderedSounds.Add(new(voice, worldPosition, clip.LoudnessTrim));
+	}
 
-		byte[] pcm = EncodeStereo(left, right);
-		SoundEffect effect = new(
-			pcm,
-			SpatialAudioTransformCalculator.SampleRate,
-			AudioChannels.Stereo);
-		SoundEffectInstance instance = effect.CreateInstance();
+	/// <summary>
+	/// Terraria's sound slider is applied once, by the bus. The clip's own trim is
+	/// still folded in here rather than into the samples, so a cue stays levelled
+	/// against the shared reference while the slider scales it.
+	/// </summary>
+	private static float CueVolume(AriadneClientConfig config, float loudnessTrim)
+	{
 		float configuredVolume = Math.Clamp(
 			config.CursorEarconVolumePercent / 100f,
 			0f,
 			1f);
-		instance.Volume = Math.Clamp(
-			configuredVolume * Main.soundVolume * clip.LoudnessTrim,
-			0f,
-			1f);
-		instance.Play();
-		_renderedSounds.Add(new(effect, instance, clip.LoudnessTrim));
+		return Math.Clamp(configuredVolume * loudnessTrim, 0f, 1f);
 	}
 
 	private SlotId PlayFallback(
@@ -489,28 +486,6 @@ internal sealed class CursorEarconSound : IDisposable
 		return true;
 	}
 
-	private static byte[] EncodeStereo(ReadOnlySpan<float> left, ReadOnlySpan<float> right)
-	{
-		byte[] pcm = new byte[left.Length * 2 * sizeof(short)];
-		for (int frame = 0; frame < left.Length; frame++)
-		{
-			short leftSample = Encode(left[frame]);
-			short rightSample = Encode(right[frame]);
-			int byteIndex = frame * 4;
-			pcm[byteIndex] = (byte)leftSample;
-			pcm[byteIndex + 1] = (byte)(leftSample >> 8);
-			pcm[byteIndex + 2] = (byte)rightSample;
-			pcm[byteIndex + 3] = (byte)(rightSample >> 8);
-		}
-		return pcm;
-	}
-
-	private static short Encode(float sample)
-	{
-		return (short)MathF.Round(
-			Math.Clamp(sample, -1f, 1f) * short.MaxValue);
-	}
-
 	private static bool CanPlay(AriadneClientConfig config)
 	{
 		return config.CursorEarconsEnabled &&
@@ -542,24 +517,10 @@ internal sealed class CursorEarconSound : IDisposable
 
 	private void StopCurrent()
 	{
-		foreach (RenderedCursorSound sound in _renderedSounds)
+		foreach (RenderedCursorCue cue in _renderedSounds)
 		{
-			try
-			{
-				sound.Instance.Stop(immediate: true);
-			}
-			catch
-			{
-				// Cleanup must remain safe if the audio device disappears.
-			}
-			try
-			{
-				sound.Dispose();
-			}
-			catch
-			{
-				// Cleanup must remain safe if the audio device disappears.
-			}
+			cue.Voice.Stop();
+			_bus.Remove(cue.Voice);
 		}
 		_renderedSounds.Clear();
 
@@ -593,91 +554,14 @@ internal sealed class CursorEarconSound : IDisposable
 		StopCurrent();
 	}
 
-	private sealed class NativePcmVoice : ISpatialMonoSource
-	{
-		private readonly float[] _samples;
-		private readonly int _frameLimit;
-		private readonly float _nativePitchRatio;
-		private readonly bool _isTruncated;
-		private double _position;
-
-		internal NativePcmVoice(
-			float[] samples,
-			int frameLimit,
-			float nativePitchRatio)
-		{
-			_samples = samples;
-			_frameLimit = frameLimit;
-			_nativePitchRatio = nativePitchRatio;
-			_isTruncated = frameLimit < samples.Length;
-		}
-
-		public float ReadSample(float pitchRatio)
-		{
-			if (_position >= _frameLimit)
-			{
-				return 0f;
-			}
-
-			int lower = (int)_position;
-			float fraction = (float)(_position - lower);
-			float sample = AudioInterpolation.Hermite(
-				SampleAt(lower - 1),
-				SampleAt(lower),
-				SampleAt(lower + 1),
-				SampleAt(lower + 2),
-				fraction);
-			if (_isTruncated)
-			{
-				float fadeFrames =
-					TruncationFadeSeconds * SpatialAudioTransformCalculator.SampleRate;
-				sample *= Math.Clamp((_frameLimit - (float)_position) / fadeFrames, 0f, 1f);
-			}
-			_position += Math.Max(0.05f, pitchRatio * _nativePitchRatio);
-			return sample;
-		}
-
-		private float SampleAt(int frame)
-		{
-			return _samples[Math.Clamp(frame, 0, _frameLimit - 1)];
-		}
-
-		public void Reset()
-		{
-			_position = 0d;
-		}
-	}
-
-	private sealed class RenderedCursorSound : IDisposable
-	{
-		internal RenderedCursorSound(
-			SoundEffect effect,
-			SoundEffectInstance instance,
-			float loudnessTrim)
-		{
-			Effect = effect;
-			Instance = instance;
-			LoudnessTrim = loudnessTrim;
-		}
-
-		internal SoundEffect Effect { get; }
-
-		internal SoundEffectInstance Instance { get; }
-
-		internal float LoudnessTrim { get; }
-
-		public void Dispose()
-		{
-			try
-			{
-				Instance.Dispose();
-			}
-			finally
-			{
-				Effect.Dispose();
-			}
-		}
-	}
+	/// <summary>
+	/// A cue still sounding on the bus, with the world position it belongs to so it
+	/// can be re-placed each tick, and the trim that keeps it on the shared reference.
+	/// </summary>
+	private readonly record struct RenderedCursorCue(
+		SpatialOneShotVoice Voice,
+		Vector2 WorldPosition,
+		float LoudnessTrim);
 
 	private readonly record struct ResolvedNativeSound(
 		string SoundPath,

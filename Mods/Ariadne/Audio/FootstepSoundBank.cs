@@ -1,9 +1,8 @@
 #nullable enable
 
 using System;
-using Microsoft.Xna.Framework.Audio;
 using Terraria;
-using Terraria.Audio;
+using Terraria.ModLoader;
 
 namespace Ariadne.Audio;
 
@@ -17,28 +16,43 @@ internal sealed class FootstepSoundBank : IDisposable
 		new(198f, 38.5f, 0.195f, 0.120f, 0.30f, 26.5f, 0.105f, 0x9C71_53B2u),
 	];
 
-	private readonly SoundEffect[] _tones;
+	private readonly AriadneAudioBus _bus;
+	private readonly float[][] _tones;
 	private int _lastToneIndex = -1;
 	private bool _disposed;
 
-	private FootstepSoundBank()
+	private FootstepSoundBank(AriadneAudioBus bus)
 	{
-		_tones = new SoundEffect[Designs.Length];
+		_bus = bus;
+		_tones = new float[Designs.Length][];
 		for (int i = 0; i < Designs.Length; i++)
 		{
 			_tones[i] = ImpactToneSynthesizer.Render(Designs[i]);
 		}
 	}
 
-	internal static FootstepSoundBank? Create()
+	internal static FootstepSoundBank? Create(Mod owner)
 	{
-		return Main.dedServ || !SoundEngine.IsAudioSupported ? null : new FootstepSoundBank();
+		if (Main.dedServ)
+		{
+			return null;
+		}
+
+		AriadneAudioBus? bus = AudioBusSystem.Bus;
+		if (bus is null)
+		{
+			owner.Logger.Warn("Footsteps are unavailable because the audio bus could not be created.");
+			return null;
+		}
+
+		return new(bus);
 	}
 
 	internal void Play(float volume, float pitch)
 	{
-		float scaledVolume = Math.Clamp(volume * Main.soundVolume, 0f, 1f);
-		if (_disposed || scaledVolume <= 0f || SoundEngine.AreSoundsPaused)
+		// Terraria's sound slider and the listening gate are the bus's job now.
+		float scaledVolume = Math.Clamp(volume, 0f, 1f);
+		if (_disposed || scaledVolume <= 0f)
 		{
 			return;
 		}
@@ -50,21 +64,23 @@ internal sealed class FootstepSoundBank : IDisposable
 		}
 
 		_lastToneIndex = nextToneIndex;
-		_tones[nextToneIndex].Play(scaledVolume, Math.Clamp(pitch, -1f, 1f), pan: 0f);
+		_bus.Add(new MonoOneShotVoice(
+			_tones[nextToneIndex],
+			PitchRatio(pitch),
+			scaledVolume));
+	}
+
+	/// <summary>
+	/// Terraria's pitch parameter is octaves, the same as the one these cues used when
+	/// they were played through a sound effect.
+	/// </summary>
+	internal static float PitchRatio(float pitch)
+	{
+		return MathF.Pow(2f, Math.Clamp(pitch, -1f, 1f));
 	}
 
 	public void Dispose()
 	{
-		if (_disposed)
-		{
-			return;
-		}
-
-		foreach (SoundEffect tone in _tones)
-		{
-			tone.Dispose();
-		}
-
 		_disposed = true;
 	}
 }

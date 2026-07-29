@@ -30,6 +30,9 @@ internal static class Program
 		MovingSourceStaysContinuous();
 		LoudnessTrimReachesItsReference();
 		HeadShadowLeavesACentredSourceAlone();
+		UnpitchedPlaybackReturnsTheBufferItWasGiven();
+		CentredCueReachesBothChannelsWhole();
+		OneShotRetiresItself();
 
 		Console.WriteLine();
 		Console.WriteLine(_failures == 0 ? "All checks passed." : $"{_failures} check(s) FAILED.");
@@ -224,6 +227,63 @@ internal static class Program
 			"Head shadow leaves a centred source untouched",
 			difference < 1e-6f,
 			$"difference at the midline {difference:E2}");
+	}
+
+	private static void UnpitchedPlaybackReturnsTheBufferItWasGiven()
+	{
+		// At a ratio of one the interpolator sits exactly on each sample, so a cue
+		// played at its authored pitch must come back bit for bit. Anything else would
+		// mean the pre-rendered banks are now being filtered on their way out.
+		float[] source = new float[64];
+		for (int index = 0; index < source.Length; index++)
+		{
+			source[index] = MathF.Sin(index * 0.37f) * 0.8f;
+		}
+
+		PcmPlaybackVoice voice = new(source, source.Length, 1f);
+		float worst = 0f;
+		for (int index = 0; index < source.Length; index++)
+		{
+			worst = MathF.Max(worst, MathF.Abs(voice.ReadSample(1f) - source[index]));
+		}
+
+		Report(
+			"Unpitched playback returns its buffer unchanged",
+			worst < 1e-6f,
+			$"worst deviation {worst:E2}");
+	}
+
+	private static void CentredCueReachesBothChannelsWhole()
+	{
+		// Footsteps, bumps and the heartbeat are levelled against the plain reference
+		// because they used to reach both channels at unity through a sound effect.
+		// Moving them onto the bus must not quietly cost them the three decibels the
+		// spatializer's pan would take.
+		float[] source = [1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f];
+		MonoOneShotVoice voice = new(source, 1f, volume: 0.5f);
+		float[] left = new float[8];
+		float[] right = new float[8];
+		voice.Render(left, right);
+		Report(
+			"Centred cue reaches both channels whole",
+			MathF.Abs(left[0] - 0.5f) < 1e-6f && MathF.Abs(right[0] - 0.5f) < 1e-6f,
+			$"left {left[0]:F6}, right {right[0]:F6}, expected 0.500000 in each");
+	}
+
+	private static void OneShotRetiresItself()
+	{
+		// A one-shot that never returns false would accumulate on the bus for the rest
+		// of the session, so this is the check that the frame budget actually expires.
+		float[] source = new float[500];
+		MonoOneShotVoice voice = new(source, 1f, volume: 1f);
+		float[] left = new float[256];
+		float[] right = new float[256];
+		bool first = voice.Render(left, right);
+		bool second = voice.Render(left, right);
+		Report(
+			"One-shot retires itself once its frames are spent",
+			first && !second && voice.IsFinished,
+			$"after one block {first}, after two {second}, finished {voice.IsFinished}");
 	}
 
 	private static (float[] Left, float[] Right) RenderImpulse(

@@ -29,7 +29,7 @@ internal sealed class FootstepSoundSystem : ModSystem
 
 	public override void Load()
 	{
-		_sounds = FootstepSoundBank.Create();
+		_sounds = FootstepSoundBank.Create(Mod);
 	}
 
 	public override void OnWorldLoad()

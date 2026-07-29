@@ -29,6 +29,8 @@
     <Compile Include="$(_ModRoot)\Audio\AudioLoudness.cs" Link="Linked\AudioLoudness.cs" />
     <Compile Include="$(_ModRoot)\Audio\AuthoredAudioLevels.cs" Link="Linked\AuthoredAudioLevels.cs" />
     <Compile Include="$(_ModRoot)\Audio\SpatialAudioMixer.cs" Link="Linked\SpatialAudioMixer.cs" />
+    <Compile Include="$(_ModRoot)\Audio\IAudioBusSource.cs" Link="Linked\IAudioBusSource.cs" />
+    <Compile Include="$(_ModRoot)\Audio\PcmPlaybackVoice.cs" Link="Linked\PcmPlaybackVoice.cs" />
   </ItemGroup>
 
   <ItemGroup>
