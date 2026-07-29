@@ -201,7 +201,7 @@ internal sealed class HostileMobToneSystem : ModSystem
 
 	private void Assign(int index, HostileMobCandidate candidate)
 	{
-		_audio?.ResetEmitter(index);
+		_audio?.RetireEmitter(index);
 		_assignments[index].HasCandidate = true;
 		_assignments[index].Candidate = candidate;
 	}
@@ -210,7 +210,7 @@ internal sealed class HostileMobToneSystem : ModSystem
 	{
 		if (_assignments[index].HasCandidate)
 		{
-			_audio?.ResetEmitter(index);
+			_audio?.RetireEmitter(index);
 		}
 		_assignments[index].HasCandidate = false;
 		_assignments[index].Candidate = default;

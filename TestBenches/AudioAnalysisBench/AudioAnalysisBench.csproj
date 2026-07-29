@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Ariadne.TestBenches.AudioAnalysis</RootNamespace>
+    <AssemblyName>AudioAnalysisBench</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Matches the mod's framework so the linked sources compile identically, but
+         runs on whatever runtime this machine actually has. -->
+    <RollForward>LatestMajor</RollForward>
+
+    <_TmlPath Condition="'$(TML_INSTALL_PATH)' != ''">$(TML_INSTALL_PATH)</_TmlPath>
+    <_TmlPath Condition="'$(_TmlPath)' == '' and '$(tMLSteamPath)' != ''">$(tMLSteamPath)</_TmlPath>
+    <_TmlPath Condition="'$(_TmlPath)' == ''">C:\Program Files (x86)\Steam\steamapps\common\tModLoader</_TmlPath>
+    <_ModRoot>$(MSBuildThisFileDirectory)..\..\Mods\Ariadne</_ModRoot>
+  </PropertyGroup>
+
+  <!-- The real signal path, compiled as-is. Everything the device actually receives
+       is produced by these files; the bench only supplies targets and measures the
+       result, so a copy here would test the copy rather than the mod. -->
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Measure.cs" />
+    <Compile Include="Scene.cs" />
+    <Compile Include="Swarm.cs" />
+    <Compile Include="Wav.cs" />
+    <Compile Include="TerrariaShim.cs" />
+    <Compile Include="$(_ModRoot)\Audio\AudioFormat.cs" Link="Linked\AudioFormat.cs" />
+    <Compile Include="$(_ModRoot)\Audio\AudioInterpolation.cs" Link="Linked\AudioInterpolation.cs" />
+    <Compile Include="$(_ModRoot)\Audio\AudioLoudness.cs" Link="Linked\AudioLoudness.cs" />
+    <Compile Include="$(_ModRoot)\Audio\AuthoredAudioLevels.cs" Link="Linked\AuthoredAudioLevels.cs" />
+    <Compile Include="$(_ModRoot)\Audio\AudioBusMixChain.cs" Link="Linked\AudioBusMixChain.cs" />
+    <Compile Include="$(_ModRoot)\Audio\SpatialAudioMixer.cs" Link="Linked\SpatialAudioMixer.cs" />
+    <Compile Include="$(_ModRoot)\Audio\IAudioBusSource.cs" Link="Linked\IAudioBusSource.cs" />
+    <Compile Include="$(_ModRoot)\Audio\PcmPlaybackVoice.cs" Link="Linked\PcmPlaybackVoice.cs" />
+    <Compile Include="$(_ModRoot)\Audio\SpatialOneShotVoice.cs" Link="Linked\SpatialOneShotVoice.cs" />
+    <Compile Include="$(_ModRoot)\Audio\ImpactToneSynthesizer.cs" Link="Linked\ImpactToneSynthesizer.cs" />
+    <Compile Include="$(_ModRoot)\Audio\ModulatedTriangleToneVoice.cs" Link="Linked\ModulatedTriangleToneVoice.cs" />
+    <Compile Include="$(_ModRoot)\Audio\HostileMobToneVoiceBank.cs" Link="Linked\HostileMobToneVoiceBank.cs" />
+    <Compile Include="$(_ModRoot)\Audio\CombatTargetCueVoice.cs" Link="Linked\CombatTargetCueVoice.cs" />
+    <Compile Include="$(_ModRoot)\Audio\WallToneVoice.cs" Link="Linked\WallToneVoice.cs" />
+    <Compile Include="$(_ModRoot)\Audio\BodyBeaconVoice.cs" Link="Linked\BodyBeaconVoice.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="FNA">
+      <HintPath>$(_TmlPath)\Libraries\FNA\1.0.0\FNA.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- FAudio is what AudioFormat asks for the endpoint rate, so the bench measures at
+       the same rate the game will actually synthesize at on this machine. -->
+  <ItemGroup>
+    <None Include="$(_TmlPath)\Libraries\Native\Windows\FAudio.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(_TmlPath)\Libraries\Native\Windows\SDL2.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+</Project>

@@ -10,20 +10,15 @@ using Ariadne.Ingame;
 namespace Ariadne.Audio;
 
 /// <summary>
-/// Plays a short authored lock-on cue through the same screen-relative ILD, ITD,
-/// and vertical-pitch transform used by Ariadne's continuous spatial audio.
+/// Plays the authored cues that mark a combat target being taken and lost, through the
+/// same screen-relative ILD, ITD, and vertical-pitch transform used by Ariadne's
+/// continuous spatial audio.
+///
+/// A loss sounds from where the target last was rather than from the middle of the
+/// field, so the cue says which direction the thing that vanished had been in.
 /// </summary>
 internal sealed class CombatTargetCueSound : IDisposable
 {
-	private const float DurationSeconds = 0.16f;
-	private const int DelayTailFrames = 64;
-
-	/// <summary>
-	/// The gain that puts the cue on the shared reference, measured once from the
-	/// voice itself rather than trimmed by ear.
-	/// </summary>
-	private static readonly float CueTrim = CalibrateCueTrim();
-
 	private readonly AriadneAudioBus _bus;
 	private SpatialOneShotVoice? _voice;
 	private Vector2 _worldPosition;
@@ -51,29 +46,16 @@ internal sealed class CombatTargetCueSound : IDisposable
 		return new(bus);
 	}
 
+	/// <summary>Sounds a target being taken.</summary>
 	internal void Play(Vector2 worldPosition, AriadneClientConfig config)
 	{
-		// Terraria's sound slider is applied once, by the bus, for the whole mix.
-		float volume = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
-		if (_disposed ||
-			!config.HostileMobTonesEnabled ||
-			volume <= 0f ||
-			!GameplayAudioGate.CanListen())
-		{
-			StopCurrent();
-			return;
-		}
+		Play(CombatTargetCue.Acquired, worldPosition, config);
+	}
 
-		StopCurrent();
-		_worldPosition = worldPosition;
-		int cueFrames = CueFrameCount();
-		_voice = new SpatialOneShotVoice(
-			new TargetLockCueVoice(cueFrames, CueTrim),
-			cueFrames + DelayTailFrames,
-			SpatialObserverContext.Current.NormalizeToField(worldPosition),
-			config.ToSpatialAudioSettings(),
-			volume);
-		_bus.Add(_voice);
+	/// <summary>Sounds a target being lost, from where it was last known to be.</summary>
+	internal void PlayLoss(Vector2 worldPosition, AriadneClientConfig config)
+	{
+		Play(CombatTargetCue.Lost, worldPosition, config);
 	}
 
 	internal void Update(AriadneClientConfig config)
@@ -126,27 +108,28 @@ internal sealed class CombatTargetCueSound : IDisposable
 		_disposed = true;
 	}
 
-	private static float CalibrateCueTrim()
+	private void Play(CombatTargetCue cue, Vector2 worldPosition, AriadneClientConfig config)
 	{
-		int cueFrames = CueFrameCount();
-		float[] samples = new float[cueFrames];
-		TargetLockCueVoice voice = new(cueFrames, gain: 1f);
-		for (int frame = 0; frame < cueFrames; frame++)
+		// Terraria's sound slider is applied once, by the bus, for the whole mix.
+		float volume = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
+		if (_disposed ||
+			!config.HostileMobTonesEnabled ||
+			volume <= 0f ||
+			!GameplayAudioGate.CanListen())
 		{
-			samples[frame] = voice.ReadSample(pitchRatio: 1f);
+			StopCurrent();
+			return;
 		}
 
-		return AuthoredAudioLevels.PeakLimitedTrim(
-			samples,
-			AuthoredAudioLevels.SpatialVoiceReferenceLoudness,
-			AuthoredAudioLevels.NormalizedSpatialVoicePeak);
-	}
-
-	private static int CueFrameCount()
-	{
-		return Math.Max(
-			1,
-			(int)MathF.Round(SpatialAudioTransformCalculator.SampleRate * DurationSeconds));
+		StopCurrent();
+		_worldPosition = worldPosition;
+		_voice = new SpatialOneShotVoice(
+			cue.CreateVoice(),
+			cue.BusFrameCount,
+			SpatialObserverContext.Current.NormalizeToField(worldPosition),
+			config.ToSpatialAudioSettings(),
+			volume);
+		_bus.Add(_voice);
 	}
 
 	private void StopCurrent()
@@ -159,50 +142,5 @@ internal sealed class CombatTargetCueSound : IDisposable
 		_voice.Stop();
 		_bus.Remove(_voice);
 		_voice = null;
-	}
-
-	private sealed class TargetLockCueVoice : ISpatialMonoSource
-	{
-		private const float AttackSeconds = 0.004f;
-		private readonly int _frameCount;
-		private readonly float _gain;
-		private float _phase;
-		private int _frame;
-
-		internal TargetLockCueVoice(int frameCount, float gain)
-		{
-			_frameCount = Math.Max(1, frameCount);
-			_gain = gain;
-		}
-
-		public float ReadSample(float pitchRatio)
-		{
-			if (_frame >= _frameCount)
-			{
-				return 0f;
-			}
-
-			float progress = _frame / (float)Math.Max(1, _frameCount - 1);
-			float time = _frame / (float)SpatialAudioTransformCalculator.SampleRate;
-			float attack = Math.Min(1f, time / AttackSeconds);
-			float release = MathF.Pow(Math.Max(0f, 1f - progress), 1.8f);
-			float frequency = Math.Clamp(
-				(620f + 520f * progress) * pitchRatio,
-				120f,
-				6_000f);
-			_phase += frequency / SpatialAudioTransformCalculator.SampleRate;
-			_phase -= MathF.Floor(_phase);
-			_frame++;
-
-			float angle = MathF.Tau * _phase;
-			float tone = MathF.Sin(angle) + 0.22f * MathF.Sin(angle * 2f);
-			return tone / 1.22f * attack * release * _gain;
-		}
-
-		public void Reset()
-		{
-			_phase = 0f;
-			_frame = 0;
-		}
 	}
 }

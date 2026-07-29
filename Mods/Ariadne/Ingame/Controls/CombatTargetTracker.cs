@@ -34,6 +34,7 @@ internal sealed class CombatTargetTracker
 	private int _selectedSegment = -1;
 	private Vector2 _lastAimPoint;
 	private Vector2? _pendingCuePosition;
+	private Vector2? _pendingLossPosition;
 
 	internal bool HasTarget => _selectedIdentity.HasValue && IsSelectedSegmentCurrent();
 
@@ -45,6 +46,24 @@ internal sealed class CombatTargetTracker
 		{
 			position = pending;
 			_pendingCuePosition = null;
+			return true;
+		}
+
+		position = default;
+		return false;
+	}
+
+	/// <summary>
+	/// Where a target was when it went away on its own, once. Only a lock the player
+	/// did not give up is reported: releasing one, aiming manually, or leaving the mode
+	/// are all deliberate, already spoken, and do not want a sound for having worked.
+	/// </summary>
+	internal bool TryTakeLossCue(out Vector2 position)
+	{
+		if (_pendingLossPosition is Vector2 pending)
+		{
+			position = pending;
+			_pendingLossPosition = null;
 			return true;
 		}
 
@@ -78,6 +97,7 @@ internal sealed class CombatTargetTracker
 		ClearSilently();
 		if (groupStillActive)
 		{
+			_pendingLossPosition = oldAimPoint;
 			AriadneMod.ScreenReader.Output("Combat target cleared because it is no longer visible or reachable.");
 			return;
 		}
@@ -87,6 +107,7 @@ internal sealed class CombatTargetTracker
 			.FirstOrDefault();
 		if (replacement is null)
 		{
+			_pendingLossPosition = oldAimPoint;
 			AriadneMod.ScreenReader.Output("Combat target lost.");
 			return;
 		}
@@ -104,7 +125,14 @@ internal sealed class CombatTargetTracker
 		CaptureCandidates(player);
 		if (_candidates.Count == 0)
 		{
+			// A lock held until this press is one the enemy ended, not the player.
+			bool heldATarget = _selectedIdentity.HasValue;
+			Vector2 oldAimPoint = _lastAimPoint;
 			ClearSilently();
+			if (heldATarget)
+			{
+				_pendingLossPosition = oldAimPoint;
+			}
 			AriadneMod.ScreenReader.Output("No eligible combat targets.");
 			return CombatTargetCycleResult.None;
 		}
@@ -170,6 +198,8 @@ internal sealed class CombatTargetTracker
 			.First();
 		_lastAimPoint = Main.npc[_selectedSegment].Center;
 		_pendingCuePosition = _lastAimPoint;
+		// A target handed straight to another one was replaced, not lost.
+		_pendingLossPosition = null;
 
 		string announcement = DescribeSelection(player, group, _selectedSegment);
 		AriadneMod.ScreenReader.Output(prefix is null ? announcement : $"{prefix} {announcement}");
@@ -358,6 +388,9 @@ internal sealed class CombatTargetTracker
 		_selectedIdentity = null;
 		_selectedSegment = -1;
 		_pendingCuePosition = null;
+		// Callers that mean "the enemy ended this" set the loss afterwards; clearing it
+		// here is what keeps a deliberate release from inheriting an earlier one.
+		_pendingLossPosition = null;
 	}
 
 	private sealed class CombatTargetGroup

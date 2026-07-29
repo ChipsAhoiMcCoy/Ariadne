@@ -110,6 +110,10 @@ internal sealed class WorldCursorSystem : ModSystem
 		{
 			_targetCue?.Play(targetCuePosition, config);
 		}
+		else if (_combatTargets.TryTakeLossCue(out Vector2 targetLossPosition))
+		{
+			_targetCue?.PlayLoss(targetLossPosition, config);
+		}
 
 		if (smartEnabled)
 		{

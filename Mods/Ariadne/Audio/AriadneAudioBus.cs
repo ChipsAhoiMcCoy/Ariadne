@@ -21,12 +21,7 @@ namespace Ariadne.Audio;
 /// </summary>
 internal sealed class AriadneAudioBus : IDisposable
 {
-	/// <summary>
-	/// Small enough that the queue below is a latency in the tens of milliseconds
-	/// rather than the seventy the separate streams carried, and large enough that a
-	/// block is worth the per-block work in the limiter.
-	/// </summary>
-	private const int FramesPerBuffer = 256;
+	private const int FramesPerBuffer = AudioBusMixChain.FramesPerBuffer;
 
 	/// <summary>
 	/// How much audio is kept queued ahead of the device. Buffers are submitted from
@@ -45,19 +40,12 @@ internal sealed class AriadneAudioBus : IDisposable
 
 	private const float QueueGrowthMilliseconds = 15f;
 
-	/// <summary>
-	/// How quickly the mix fades when the listening gate closes. A hard cut on a
-	/// running terrain bed is a click; this is short enough to still read as immediate.
-	/// </summary>
-	private const float GateFadeSeconds = 0.008f;
-
 	private readonly Mod _owner;
 	private readonly List<IAudioBusSource> _sources = [];
 	private readonly float[] _leftMix = new float[FramesPerBuffer];
 	private readonly float[] _rightMix = new float[FramesPerBuffer];
 	private readonly float[] _interleaved = new float[FramesPerBuffer * 2];
-	private readonly MasterLimiter _limiter = new(FramesPerBuffer);
-	private readonly float _gateFadeStep;
+	private readonly AudioBusMixChain _mixChain = new(FramesPerBuffer);
 	private readonly bool _submitsFloat;
 	private readonly byte[]? _pcmBuffer;
 	private DynamicSoundEffectInstance? _stream;
@@ -67,7 +55,6 @@ internal sealed class AriadneAudioBus : IDisposable
 	private int _loggedUnderrunCount;
 	private uint _lastPumpUpdateCount;
 	private bool _hasPumped;
-	private float _gateGain;
 	private bool _isRunning;
 	private bool _failureLogged;
 	private bool _disposed;
@@ -80,7 +67,6 @@ internal sealed class AriadneAudioBus : IDisposable
 		_pcmBuffer = submitsFloat ? null : new byte[FramesPerBuffer * 2 * sizeof(short)];
 		_targetQueuedBuffers = BuffersForMilliseconds(TargetQueueMilliseconds);
 		_maximumQueuedBuffers = BuffersForMilliseconds(MaximumQueueMilliseconds);
-		_gateFadeStep = 1f / MathF.Max(1f, GateFadeSeconds * SpatialAudioTransformCalculator.SampleRate);
 	}
 
 	internal static AriadneAudioBus? TryCreate(Mod owner)
@@ -267,8 +253,7 @@ internal sealed class AriadneAudioBus : IDisposable
 			}
 		}
 
-		ApplyMasterGain(masterGain, canListen);
-		_limiter.Process(_leftMix, _rightMix);
+		_mixChain.Process(_leftMix, _rightMix, masterGain, canListen);
 		for (int frame = 0; frame < FramesPerBuffer; frame++)
 		{
 			_interleaved[frame * 2] = _leftMix[frame];
@@ -294,25 +279,6 @@ internal sealed class AriadneAudioBus : IDisposable
 		stream.SubmitBuffer(_pcmBuffer);
 	}
 
-	/// <summary>
-	/// Applies Terraria's sound slider and the listening gate once, for the whole mix.
-	/// The gate is a ramp rather than a switch because a stream can be mid-cycle when
-	/// a menu opens.
-	/// </summary>
-	private void ApplyMasterGain(float masterGain, bool canListen)
-	{
-		float gateTarget = canListen ? 1f : 0f;
-		for (int frame = 0; frame < FramesPerBuffer; frame++)
-		{
-			_gateGain = _gateGain < gateTarget
-				? MathF.Min(gateTarget, _gateGain + _gateFadeStep)
-				: MathF.Max(gateTarget, _gateGain - _gateFadeStep);
-			float gain = masterGain * _gateGain;
-			_leftMix[frame] *= gain;
-			_rightMix[frame] *= gain;
-		}
-	}
-
 	private void DisableAfterFailure(Exception exception)
 	{
 		if (!_failureLogged)
@@ -333,63 +299,5 @@ internal sealed class AriadneAudioBus : IDisposable
 		}
 		_stream = null;
 		_isRunning = false;
-	}
-
-	/// <summary>
-	/// Holds the summed mix under a ceiling without the timbre change a per-sample
-	/// hyperbolic tangent imposes on everything that reaches it.
-	///
-	/// The mix is delayed by one block, and the gain a block needs is decided from its
-	/// own peak before that block is heard, so a transient is turned down ahead of
-	/// itself rather than squared off. Between blocks the gain moves linearly, and it
-	/// returns toward unity slowly enough that a single loud cue does not audibly duck
-	/// the terrain bed underneath it.
-	/// </summary>
-	private sealed class MasterLimiter
-	{
-		private const float Ceiling = 0.97f;
-		private const float ReleaseSeconds = 0.150f;
-
-		private readonly int _frameCount;
-		private readonly float[] _pendingLeft;
-		private readonly float[] _pendingRight;
-		private readonly float _releaseCoefficient;
-		private float _currentGain = 1f;
-
-		internal MasterLimiter(int frameCount)
-		{
-			_frameCount = frameCount;
-			_pendingLeft = new float[frameCount];
-			_pendingRight = new float[frameCount];
-			float blockSeconds = frameCount / (float)SpatialAudioTransformCalculator.SampleRate;
-			_releaseCoefficient = 1f - MathF.Exp(-blockSeconds / ReleaseSeconds);
-		}
-
-		internal void Process(Span<float> left, Span<float> right)
-		{
-			float peak = 0f;
-			for (int frame = 0; frame < _frameCount; frame++)
-			{
-				peak = MathF.Max(peak, MathF.Max(MathF.Abs(left[frame]), MathF.Abs(right[frame])));
-			}
-
-			float required = peak > Ceiling ? Ceiling / peak : 1f;
-			float released = _currentGain + (1f - _currentGain) * _releaseCoefficient;
-			float nextGain = MathF.Min(required, released);
-			float step = (nextGain - _currentGain) / _frameCount;
-
-			for (int frame = 0; frame < _frameCount; frame++)
-			{
-				float gain = _currentGain + step * frame;
-				float outputLeft = _pendingLeft[frame] * gain;
-				float outputRight = _pendingRight[frame] * gain;
-				_pendingLeft[frame] = left[frame];
-				_pendingRight[frame] = right[frame];
-				left[frame] = outputLeft;
-				right[frame] = outputRight;
-			}
-
-			_currentGain = nextGain;
-		}
 	}
 }
