@@ -35,6 +35,8 @@ internal sealed class CombatTargetTracker
 	private Vector2 _lastAimPoint;
 	private Vector2? _pendingCuePosition;
 	private Vector2? _pendingLossPosition;
+	private CombatTargetIdentity? _reacquireIdentity;
+	private Vector2 _reacquireAimPoint;
 
 	internal bool HasTarget => _selectedIdentity.HasValue && IsSelectedSegmentCurrent();
 
@@ -54,9 +56,9 @@ internal sealed class CombatTargetTracker
 	}
 
 	/// <summary>
-	/// Where a target was when it went away on its own, once. Only a lock the player
-	/// did not give up is reported: releasing one, aiming manually, or leaving the mode
-	/// are all deliberate, already spoken, and do not want a sound for having worked.
+	/// Where a target was when the lock ended, once. Every ending reports, whether the
+	/// enemy left on its own, the lock was stepped past, or manual aim took the cursor
+	/// back: the cue is what tells the player the lock is no longer theirs.
 	/// </summary>
 	internal bool TryTakeLossCue(out Vector2 position)
 	{
@@ -76,6 +78,7 @@ internal sealed class CombatTargetTracker
 		CaptureCandidates(player);
 		if (_selectedIdentity is not CombatTargetIdentity identity)
 		{
+			TryReacquire(player);
 			return;
 		}
 
@@ -94,10 +97,12 @@ internal sealed class CombatTargetTracker
 
 		bool groupStillActive = IsGroupStillActive(identity);
 		Vector2 oldAimPoint = _lastAimPoint;
-		ClearSilently();
+		ClearTarget();
 		if (groupStillActive)
 		{
-			_pendingLossPosition = oldAimPoint;
+			// Still alive, only out of sight. The player was part way through killing it,
+			// so it stays the one to take back the moment it can be hit again.
+			RememberForReacquire(identity, oldAimPoint);
 			AriadneMod.ScreenReader.Output("Combat target cleared because it is no longer visible or reachable.");
 			return;
 		}
@@ -107,7 +112,6 @@ internal sealed class CombatTargetTracker
 			.FirstOrDefault();
 		if (replacement is null)
 		{
-			_pendingLossPosition = oldAimPoint;
 			AriadneMod.ScreenReader.Output("Combat target lost.");
 			return;
 		}
@@ -126,12 +130,12 @@ internal sealed class CombatTargetTracker
 		if (_candidates.Count == 0)
 		{
 			// A lock held until this press is one the enemy ended, not the player.
-			bool heldATarget = _selectedIdentity.HasValue;
+			CombatTargetIdentity? held = _selectedIdentity;
 			Vector2 oldAimPoint = _lastAimPoint;
-			ClearSilently();
-			if (heldATarget)
+			ClearTarget();
+			if (held is CombatTargetIdentity abandoned)
 			{
-				_pendingLossPosition = oldAimPoint;
+				RememberForReacquire(abandoned, oldAimPoint);
 			}
 			AriadneMod.ScreenReader.Output("No eligible combat targets.");
 			return CombatTargetCycleResult.None;
@@ -145,7 +149,7 @@ internal sealed class CombatTargetTracker
 			: -1;
 		if (currentIndex == ordered.Count - 1)
 		{
-			ClearSilently();
+			ClearTarget();
 			return CombatTargetCycleResult.Released;
 		}
 
@@ -155,14 +159,25 @@ internal sealed class CombatTargetTracker
 
 	internal void CancelForManualAim()
 	{
-		ClearSilently();
+		ClearTarget();
 	}
 
+	/// <summary>
+	/// Sets the lock aside for the free camera. The target is kept as the one to take
+	/// back, so returning to the body resumes the fight rather than sounding a loss the
+	/// camera swap would mute before it could be heard.
+	/// </summary>
 	internal bool Clear()
 	{
-		bool hadTarget = _selectedIdentity.HasValue;
-		ClearSilently();
-		return hadTarget;
+		CombatTargetIdentity? held = _selectedIdentity;
+		Vector2 oldAimPoint = _lastAimPoint;
+		ClearTarget();
+		_pendingLossPosition = null;
+		if (held is CombatTargetIdentity setAside)
+		{
+			RememberForReacquire(setAside, oldAimPoint);
+		}
+		return held.HasValue;
 	}
 
 	internal void Reset()
@@ -172,7 +187,9 @@ internal sealed class CombatTargetTracker
 		Array.Clear(_generations);
 		_groups.Clear();
 		_candidates.Clear();
-		ClearSilently();
+		ClearTarget();
+		// No world left to sound into.
+		_pendingLossPosition = null;
 		_lastAimPoint = Vector2.Zero;
 	}
 
@@ -200,9 +217,42 @@ internal sealed class CombatTargetTracker
 		_pendingCuePosition = _lastAimPoint;
 		// A target handed straight to another one was replaced, not lost.
 		_pendingLossPosition = null;
+		// Whatever the player is fighting now is the target; an older one stops waiting.
+		_reacquireIdentity = null;
 
 		string announcement = DescribeSelection(player, group, _selectedSegment);
 		AriadneMod.ScreenReader.Output(prefix is null ? announcement : $"{prefix} {announcement}");
+	}
+
+	/// <summary>
+	/// Takes back a target the player never gave up. An enemy that leaves the view and
+	/// comes back is the one already part way to dead, so it outranks anything else on
+	/// screen and the lock resumes without another key press.
+	/// </summary>
+	private void TryReacquire(Player player)
+	{
+		if (_reacquireIdentity is not CombatTargetIdentity wanted)
+		{
+			return;
+		}
+
+		if (!IsGroupStillActive(wanted))
+		{
+			_reacquireIdentity = null;
+			return;
+		}
+
+		CombatTargetGroup? group = _candidates.FirstOrDefault(candidate => candidate.Identity == wanted);
+		if (group is not null)
+		{
+			SelectGroup(group, player, _reacquireAimPoint, "Combat target reacquired.");
+		}
+	}
+
+	private void RememberForReacquire(CombatTargetIdentity identity, Vector2 aimPoint)
+	{
+		_reacquireIdentity = identity;
+		_reacquireAimPoint = aimPoint;
 	}
 
 	private void CaptureCandidates(Player player)
@@ -383,14 +433,25 @@ internal sealed class CombatTargetTracker
 		return direction.LengthSquared() < 0.001f ? Vector2.UnitX : Vector2.Normalize(direction);
 	}
 
-	private void ClearSilently()
+	/// <summary>
+	/// Ends the lock. A lock that was actually held always queues the loss cue, because
+	/// the sound answers "am I still on something?" and that question does not care how
+	/// the lock ended. Callers that mean "set this aside" drop the cue afterwards.
+	/// </summary>
+	private void ClearTarget()
 	{
+		if (_selectedIdentity.HasValue)
+		{
+			_pendingLossPosition = _lastAimPoint;
+		}
+		else
+		{
+			_pendingLossPosition = null;
+		}
 		_selectedIdentity = null;
 		_selectedSegment = -1;
 		_pendingCuePosition = null;
-		// Callers that mean "the enemy ended this" set the loss afterwards; clearing it
-		// here is what keeps a deliberate release from inheriting an earlier one.
-		_pendingLossPosition = null;
+		_reacquireIdentity = null;
 	}
 
 	private sealed class CombatTargetGroup

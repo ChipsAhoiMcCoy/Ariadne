@@ -539,6 +539,7 @@ internal sealed class WorldCursorSystem : ModSystem
 			$"Press {targetCycle} to lock the nearest enemy, and press it again to step " +
 			$"outward to the next one; pressing it on the farthest enemy releases the lock " +
 			$"and recenters the cursor. " +
+			$"A locked enemy that goes out of reach is taken back automatically when it returns. " +
 			$"Manual aim always cancels combat lock. " +
 			$"Press {status} for a character status readout, {scanner} to scan the visible surroundings, and {wallTones} to toggle wall tones. " +
 			$"Hold {targetModifier} with {waypoints} to open waypoints. Hold {freecam} to move a free camera, and release it to return to your body. " +
