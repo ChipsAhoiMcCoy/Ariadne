@@ -186,30 +186,33 @@ internal static class SoundGuideCatalog
 			new SoundGuideEntry(
 				"HostileMobTones",
 				config => config.HostileMobToneVolumePercent,
-				new("CloseRight", (player, config) => player.SustainHostileMobTones(
-					[new(Rightward, 0.12f)],
+				new("CloseRight", (player, config) => player.SustainHostileMobTone(
+					new(Rightward, 0.12f),
+					isLocked: false,
 					config)),
-				new("HalfwayRight", (player, config) => player.SustainHostileMobTones(
-					[new(Rightward, 0.5f)],
+				new("HalfwayRight", (player, config) => player.SustainHostileMobTone(
+					new(Rightward, 0.5f),
+					isLocked: false,
 					config)),
-				new("EdgeRight", (player, config) => player.SustainHostileMobTones(
-					[new(Rightward, 0.9f)],
+				new("EdgeRight", (player, config) => player.SustainHostileMobTone(
+					new(Rightward, 0.9f),
+					isLocked: false,
 					config)),
-				new("CloseLeft", (player, config) => player.SustainHostileMobTones(
-					[new(Leftward, 0.12f)],
+				new("CloseLeft", (player, config) => player.SustainHostileMobTone(
+					new(Leftward, 0.12f),
+					isLocked: false,
 					config)),
-				new("Above", (player, config) => player.SustainHostileMobTones(
-					[new(Upward, 0.12f)],
+				new("Above", (player, config) => player.SustainHostileMobTone(
+					new(Upward, 0.12f),
+					isLocked: false,
 					config)),
-				new("Below", (player, config) => player.SustainHostileMobTones(
-					[new(Downward, 0.12f)],
+				new("Below", (player, config) => player.SustainHostileMobTone(
+					new(Downward, 0.12f),
+					isLocked: false,
 					config)),
-				new("Crowd", (player, config) => player.SustainHostileMobTones(
-					[
-						new(Rightward, 0.15f),
-						new(Leftward, 0.45f),
-						new(Upward, 0.3f),
-					],
+				new("Held", (player, config) => player.SustainHostileMobTone(
+					new(Rightward, 0.12f),
+					isLocked: true,
 					config))),
 
 			new SoundGuideEntry(

@@ -203,9 +203,6 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 			() => _pending.HostileMobTonesEnabled, value => _pending.HostileMobTonesEnabled = value);
 		AddPercentSlider(entries, nameof(AriadneClientConfig.HostileMobToneVolumePercent),
 			() => _pending.HostileMobToneVolumePercent, value => _pending.HostileMobToneVolumePercent = value);
-		AddSlider(entries, nameof(AriadneClientConfig.HostileMobMaximumEmitters),
-			() => _pending.HostileMobMaximumEmitters, value => _pending.HostileMobMaximumEmitters = value,
-			minimum: 1, maximum: 4, step: 1, format: value => $"{value} enemies");
 		AddPercentSlider(entries, nameof(AriadneClientConfig.FreecamBeaconVolumePercent),
 			() => _pending.FreecamBeaconVolumePercent, value => _pending.FreecamBeaconVolumePercent = value);
 		AddToggle(entries, nameof(AriadneClientConfig.SpatialAudioItdEnabled),

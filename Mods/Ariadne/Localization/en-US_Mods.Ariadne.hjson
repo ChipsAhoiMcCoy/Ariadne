@@ -138,13 +138,13 @@ SoundGuide: {
 	Label: "{0}: {1}"
 	VariantPosition: Variant {0} of {1}.
 	ControlHint: Enter: play
-	Instructions: Press Enter to play the sound the focused option names. Each press then moves that option on to its next variant, so pressing Enter repeatedly hears all of them. Left and Right Arrow keys choose a variant without playing it. Everything plays at the volumes you have set, so this is what the world will sound like.
+	Instructions: Press Enter to play the sound the focused option names. Each press then moves that option on to its next variant and says which one, so pressing Enter repeatedly hears all of them. Left and Right Arrow keys choose a variant without playing it. Everything plays at the volumes you have set, so this is what the world will sound like.
 	Unavailable: Nothing can be played because Ariadne's audio bus is unavailable. See the tModLoader client log.
 	GameVolumeOff: Nothing will be heard until Terraria's Sound volume is raised above zero.
 	CueVolumeOff: Nothing will be heard until this cue's volume is raised above zero in Ariadne's settings.
 
 	Help: {
-		Enter: Play the sound the focused option names, then move that option on to its next variant. Pressing Enter repeatedly walks every variant of a cue and returns to the first. The option's own name always says what the next press will play.
+		Enter: Play the sound the focused option names, then move that option on to its next variant and speak it. Pressing Enter repeatedly walks every variant of a cue and returns to the first. What is spoken after each press is what the next press will play.
 		VariantsControl: Left and Right Arrow keys
 		Variants: Choose which variant of the focused cue Enter will play. The variant is spoken but nothing is played, so you can pick one deliberately instead of stepping through them.
 		VolumesControl: Volumes
@@ -303,23 +303,23 @@ SoundGuide: {
 		}
 
 		HostileMobTones: {
-			Name: Hostile enemy tones
-			Description: A continuous ticking tone for each prioritised hostile within the field, several at once with bosses taking priority. Loudness and tick rate both rise as an enemy closes, from about one and a half ticks a second at the edge of its range to twelve at your position, while horizontal direction sets the stereo position and the far-ear delay and screen height alone sets the pitch. An enemy is heard from the point of it nearest you rather than from its middle, so a worm sounds from whichever coil is closest. Distances here are fractions of your configured hostile mob tone range.
+			Name: Hostile enemy tone
+			Description: One continuous square tone for one enemy: the enemy you are holding with the combat target key, or with nothing held whichever enemy is nearest, whether or not you could hit it yet. Loudness alone carries distance, rising evenly from silence at the edge of its range to full at your position, while horizontal direction sets the stereo position and the far-ear delay and screen height alone sets the pitch. A held enemy sounds a perfect fifth above an unheld one, so the tone says at every moment whether what you are hearing is yours. An enemy is heard from the point of it nearest you rather than from its middle, so a worm sounds from whichever coil is closest. Distances here are fractions of your configured hostile mob tone range.
 
 			Variants: {
 				CloseRight: {
 					Name: Close, on your right
-					Detail: Loud and ticking quickly. This is an enemy nearly on top of you.
+					Detail: Loud and hard to your right. This is an enemy nearly on top of you.
 				}
 
 				HalfwayRight: {
 					Name: Halfway to you, on your right
-					Detail: Half the level and about half the tick rate of the close cue.
+					Detail: The same tone at half the level. Nothing but loudness has changed, because nothing but loudness carries distance.
 				}
 
 				EdgeRight: {
 					Name: At the edge of its range, on your right
-					Detail: Quiet and slow. This is what an enemy sounds like as it first becomes audible.
+					Detail: Almost silent. This is what an enemy sounds like as it first becomes audible.
 				}
 
 				CloseLeft: {
@@ -329,7 +329,7 @@ SoundGuide: {
 
 				Above: {
 					Name: Close, above you
-					Detail: Height alone raises the pitch; the carrier itself never changes, so a high tone always means a high enemy.
+					Detail: Height alone raises the pitch; nothing else moves it, so a high tone always means a high enemy.
 				}
 
 				Below: {
@@ -337,9 +337,9 @@ SoundGuide: {
 					Detail: The same tone dropped by the same amount it was raised above you.
 				}
 
-				Crowd: {
-					Name: Three enemies at once
-					Detail: One close on your right, one further off on your left, and one above. How many are actually heard is limited by your maximum hostile mob emitters setting.
+				Held: {
+					Name: The enemy you are holding
+					Detail: The close right enemy again, this time held by the combat target key: a perfect fifth above the unheld tone. It stays on that enemy however many others close in, and drops back to the lower pitch the moment the lock ends.
 				}
 			}
 		}
@@ -533,7 +533,7 @@ Configs: {
 
 		HostileMobTonesEnabled: {
 			Label: Hostile and target cues
-			Tooltip: Play continuous modulated triangle tones for prioritized hostile NPCs on screen and a separate cue when selecting a combat target. Tones become louder and more rapidly modulated as an enemy approaches, while screen height alone controls pitch.
+			Tooltip: Play one continuous square tone for the enemy you are holding, or for the nearest enemy on screen when nothing is held, plus a separate cue when a target is taken or lost. The tone becomes louder as that enemy approaches, screen height alone controls its pitch, and a held enemy sounds a perfect fifth higher than an unheld one.
 		}
 
 		HostileMobToneVolumePercent: {
@@ -544,11 +544,6 @@ Configs: {
 		HostileMobToneRangeTiles: {
 			Label: Hostile mob tone range
 			Tooltip: Set the distance in tiles at which a hostile mob tone reaches silence. Loudness rises evenly from there to full at the player, so a shorter range makes each tile of approach a larger change.
-		}
-
-		HostileMobMaximumEmitters: {
-			Label: Maximum hostile mob emitters
-			Tooltip: Set how many on-screen enemies can emit continuous proximity tones at once. Bosses have priority, followed by enemies nearest the player.
 		}
 
 		FreecamBeaconVolumePercent: {

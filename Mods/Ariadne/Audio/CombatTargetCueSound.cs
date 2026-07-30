@@ -141,6 +141,11 @@ internal sealed class CombatTargetCueSound : IDisposable
 		_bus.Add(_voice);
 	}
 
+	/// <summary>
+	/// Hands the sounding cue its fade and forgets it. It is left on the bus to retire
+	/// itself, because a boss part answers several times a second and a cue pulled out
+	/// mid-waveform to make room for the next one is a click each time.
+	/// </summary>
 	private void StopCurrent()
 	{
 		if (_voice is null)
@@ -149,7 +154,6 @@ internal sealed class CombatTargetCueSound : IDisposable
 		}
 
 		_voice.Stop();
-		_bus.Remove(_voice);
 		_voice = null;
 	}
 }

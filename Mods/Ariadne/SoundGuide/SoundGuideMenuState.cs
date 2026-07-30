@@ -17,11 +17,11 @@ namespace Ariadne.SoundGuide;
 /// The Ariadne Sound Guide: one option per cue the mod makes, with what the cue
 /// means and a way to hear it.
 ///
-/// Enter plays the variant the focused option names and then moves that option on to
-/// the next one, so a listener who only ever presses Enter still hears every variant
-/// of a cue; the label always says what the next press will play. Left and Right
-/// choose a variant deliberately and speak its name, which is the same idiom every
-/// other adjustable option in Ariadne uses.
+/// Enter plays the variant the focused option names, moves that option on to the next
+/// one, and says which one that is, so a listener who only ever presses Enter hears
+/// every variant of a cue and always knows what the next press will play. Left and
+/// Right choose a variant deliberately and speak its name, which is the same idiom
+/// every other adjustable option in Ariadne uses.
 /// </summary>
 internal sealed class SoundGuideMenuState : AccessibleMenuState
 {
@@ -72,13 +72,13 @@ internal sealed class SoundGuideMenuState : AccessibleMenuState
 			return;
 		}
 
-		AriadneClientConfig config = ModContent.GetInstance<AriadneClientConfig>();
+		// Only the stop belongs to the screen. Advancing the player is
+		// SoundGuideSystem's job, because a release has to outlive this screen.
 		if (SelectedIndex != _lastSelectedIndex)
 		{
 			_lastSelectedIndex = SelectedIndex;
-			_player.Stop(config);
+			_player.Stop(ModContent.GetInstance<AriadneClientConfig>());
 		}
-		_player.Update(config);
 	}
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
@@ -105,7 +105,8 @@ internal sealed class SoundGuideMenuState : AccessibleMenuState
 		}
 
 		// Claimed here rather than left to the base, whose activation would speak the
-		// whole option again over the cue it had just started.
+		// whole option — name, description and all — over the cue it had just started.
+		// The variant name alone is what a press actually changes.
 		Main.chatRelease = false;
 		PlaySelection();
 		return true;
@@ -145,6 +146,10 @@ internal sealed class SoundGuideMenuState : AccessibleMenuState
 
 		_variants[cueIndex] = (_variants[cueIndex] + 1) % cue.Variants.Count;
 		RebuildEntries();
+		// The option has just moved on, so it says where it moved to, exactly as Left
+		// and Right do. Only the variant name: the option's own name has not changed
+		// and the cue it names is already sounding underneath the speech.
+		Announce(cue.VariantName(_variants[cueIndex]));
 	}
 
 	private void CycleVariant(int cueIndex, int direction)

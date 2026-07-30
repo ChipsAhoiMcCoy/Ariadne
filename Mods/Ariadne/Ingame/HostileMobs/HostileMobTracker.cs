@@ -9,15 +9,16 @@ namespace Ariadne.Ingame.HostileMobs;
 
 internal readonly record struct HostileMobIdentity(int RootNpcIndex, uint Generation);
 
+/// <summary>One enemy the tone could follow, and where it sits in the listener's field.</summary>
 internal readonly record struct HostileMobCandidate(
 	HostileMobIdentity Identity,
-	bool IsBoss,
 	float DistanceSquared,
 	float Proximity,
 	Vector2 NormalizedPosition);
 
 /// <summary>
-/// Builds one visible emitter candidate per hostile NPC health-group and tracks NPC-slot reuse.
+/// Builds one candidate per hostile NPC health-group within the field and tracks
+/// NPC-slot reuse.
 /// </summary>
 internal sealed class HostileMobTracker
 {
@@ -27,14 +28,27 @@ internal sealed class HostileMobTracker
 	private readonly Dictionary<HostileMobIdentity, NearestSurfaceBuilder> _builders = [];
 	private readonly List<HostileMobCandidate> _candidates = [];
 
+	/// <summary>
+	/// Every enemy in the field that could be sounded. <paramref name="heldNpcIndex"/> is
+	/// the enemy the player holds, or a negative index if none is held; it is captured
+	/// whether or not it passes the test below, because a lock and this test do not agree
+	/// on everything. Vanilla's chase test wants a chaseable, mortal NPC with more than
+	/// five life, while the lock deliberately accepts boss structure that fails parts of
+	/// that. A held enemy that could not be heard would be the one case where the tone
+	/// and the targeting key disagreed about the fight in progress.
+	/// </summary>
 	internal IReadOnlyList<HostileMobCandidate> Capture(
 		SpatialObserverSnapshot observer,
-		float rangePixels)
+		float rangePixels,
+		int heldNpcIndex)
 	{
 		UpdateSlotGenerations();
 		_builders.Clear();
 		_candidates.Clear();
 
+		int heldRootIndex = (uint)heldNpcIndex < Main.maxNPCs && Main.npc[heldNpcIndex].active
+			? ResolveRootIndex(Main.npc[heldNpcIndex], heldNpcIndex)
+			: -1;
 		Vector2 fieldPosition = observer.FieldPosition;
 		Vector2 fieldSize = SpatialObserverSnapshot.FieldSize;
 		if (fieldSize.X <= 0f || fieldSize.Y <= 0f)
@@ -49,7 +63,7 @@ internal sealed class HostileMobTracker
 		for (int index = 0; index < Main.maxNPCs; index++)
 		{
 			NPC npc = Main.npc[index];
-			if (!npc.active || npc.life <= 0 || !npc.CanBeChasedBy(ignoreDontTakeDamage: true))
+			if (!npc.active || npc.life <= 0)
 			{
 				continue;
 			}
@@ -65,17 +79,21 @@ internal sealed class HostileMobTracker
 			}
 
 			int rootIndex = ResolveRootIndex(npc, index);
+			if (rootIndex != heldRootIndex && !npc.CanBeChasedBy(ignoreDontTakeDamage: true))
+			{
+				continue;
+			}
+
 			HostileMobIdentity identity = new(rootIndex, _generations[rootIndex]);
-			bool isBoss = npc.boss || rootIndex != index && Main.npc[rootIndex].boss;
 			Vector2 surface = NearestSurfacePoint(hitbox, observer.Center);
 			float surfaceDistanceSquared = Vector2.DistanceSquared(observer.Center, surface);
 			if (_builders.TryGetValue(identity, out NearestSurfaceBuilder? builder))
 			{
-				builder.Include(surface, surfaceDistanceSquared, isBoss);
+				builder.Include(surface, surfaceDistanceSquared);
 			}
 			else
 			{
-				_builders.Add(identity, new(surface, surfaceDistanceSquared, isBoss));
+				_builders.Add(identity, new(surface, surfaceDistanceSquared));
 			}
 		}
 
@@ -87,13 +105,39 @@ internal sealed class HostileMobTracker
 			float distanceSquared = builder.DistanceSquared;
 			_candidates.Add(new(
 				identity,
-				builder.IsBoss,
 				distanceSquared,
 				MathHelper.Clamp(1f - MathF.Sqrt(distanceSquared) / safeRangePixels, 0f, 1f),
 				observer.NormalizeToField(builder.Surface)));
 		}
 
 		return _candidates;
+	}
+
+	/// <summary>
+	/// The candidate one NPC belongs to, out of the capture just taken. A held enemy is
+	/// known by the segment the player locked, and a lock is held on the whole animal:
+	/// locking one coil of a worm and hearing the tone from a different coil is the same
+	/// enemy, so the segment is resolved to its health group before it is looked up.
+	/// </summary>
+	internal bool TryFindContaining(int npcIndex, out HostileMobCandidate candidate)
+	{
+		candidate = default;
+		if ((uint)npcIndex >= Main.maxNPCs)
+		{
+			return false;
+		}
+
+		int rootIndex = ResolveRootIndex(Main.npc[npcIndex], npcIndex);
+		foreach (HostileMobCandidate held in _candidates)
+		{
+			if (held.Identity.RootNpcIndex == rootIndex)
+			{
+				candidate = held;
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	internal void Reset()
@@ -160,27 +204,25 @@ internal sealed class HostileMobTracker
 	/// </summary>
 	private sealed class NearestSurfaceBuilder
 	{
-		internal NearestSurfaceBuilder(Vector2 surface, float distanceSquared, bool isBoss)
+		internal NearestSurfaceBuilder(Vector2 surface, float distanceSquared)
 		{
 			Surface = surface;
 			DistanceSquared = distanceSquared;
-			IsBoss = isBoss;
 		}
 
 		internal Vector2 Surface { get; private set; }
 
 		internal float DistanceSquared { get; private set; }
 
-		internal bool IsBoss { get; private set; }
-
-		internal void Include(Vector2 surface, float distanceSquared, bool isBoss)
+		internal void Include(Vector2 surface, float distanceSquared)
 		{
-			if (distanceSquared < DistanceSquared)
+			if (distanceSquared >= DistanceSquared)
 			{
-				Surface = surface;
-				DistanceSquared = distanceSquared;
+				return;
 			}
-			IsBoss |= isBoss;
+
+			Surface = surface;
+			DistanceSquared = distanceSquared;
 		}
 	}
 }

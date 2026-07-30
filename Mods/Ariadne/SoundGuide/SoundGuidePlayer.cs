@@ -52,18 +52,24 @@ internal sealed class SoundGuidePlayer : IDisposable
 	private const float TileSize = 16f;
 
 	/// <summary>
-	/// How long a bed is held. Long enough for the hostile-mob cadence to be counted
-	/// at the far end of its range, where it ticks about once and a half a second.
+	/// How long a bed is held: three seconds. Long enough to hear a sustained tone settle
+	/// and to place it, rather than only to notice that something sounded.
 	/// </summary>
 	private const int BedSustainTicks = 180;
 
 	/// <summary>
-	/// How long a released bed is left to fade before its signal state is reset. The
-	/// emitters carry distance gain to silence on a sixth-of-a-second time constant,
-	/// which this leaves about three of; a reset any sooner is a step in the waveform
-	/// and is heard as a click.
+	/// How long a released bed is left to fade before its signal state is reset.
+	///
+	/// The emitters carry distance gain to silence on an exponential release, so the
+	/// bed is never actually silent, only quiet: half a second of it left about a
+	/// twentieth of the bed still sounding, and a twentieth of a terrain bed cut
+	/// mid-waveform is exactly the faint tick that ended every bed audition. Eight
+	/// time constants put it under a thousandth, where the reset cannot be heard.
 	/// </summary>
-	internal const int BedReleaseTicks = 30;
+	internal static readonly int BedReleaseTicks = (int)MathF.Ceiling(
+		SpatialAudioEmitter.GainReleaseSeconds * 8f * TicksPerSecond);
+
+	private const float TicksPerSecond = 60f;
 
 	/// <summary>Matches the cursor earcon's own limit on a long native clip.</summary>
 	private const float MaximumCursorCueSeconds = 1f;
@@ -79,16 +85,20 @@ internal sealed class SoundGuidePlayer : IDisposable
 	private readonly FreecamBodyBeaconAudioStream? _beacon;
 	private readonly NativeSoundPcmCache _pcmCache;
 	private readonly List<SpatialOneShotVoice> _spatialVoices = [];
-	private readonly HostileMobToneTarget[] _mobTargets =
-		new HostileMobToneTarget[HostileMobToneVoiceBank.SlotCount];
 	private readonly Dictionary<string, int> _nextVariantBySoundPath = [];
+
+	/// <summary>
+	/// Resets waiting on a release, one per bed. A list rather than a single pending
+	/// reset because auditioning a second bed while the first is still fading leaves
+	/// two of them in flight, and the one that was overwritten never came back.
+	/// </summary>
+	private readonly List<(Action Reset, int TicksRemaining)> _pendingBedResets = [];
 
 	private Action<AriadneClientConfig>? _bedRefresh;
 	private Action<AriadneClientConfig>? _bedSilence;
 	private Action? _bedReset;
 	private Action<AriadneClientConfig>? _repeatedShot;
 	private int _bedTicksRemaining;
-	private int _bedResetTicksRemaining;
 	private int _repeatsRemaining;
 	private int _repeatIntervalTicks;
 	private int _ticksUntilNextRepeat;
@@ -134,7 +144,12 @@ internal sealed class SoundGuidePlayer : IDisposable
 		return new(owner, bus);
 	}
 
-	/// <summary>Advances every audition that outlives the frame it started on.</summary>
+	/// <summary>
+	/// Advances every audition that outlives the frame it started on. Driven from
+	/// <see cref="SoundGuideSystem"/> rather than from the screen, because a bed
+	/// released as the screen closes still has its whole fade left to run and the
+	/// screen is no longer being updated to carry it.
+	/// </summary>
 	internal void Update(AriadneClientConfig config)
 	{
 		if (_disposed)
@@ -151,6 +166,7 @@ internal sealed class SoundGuidePlayer : IDisposable
 			}
 		}
 
+		AdvancePendingBedResets();
 		if (_repeatsRemaining > 0 && --_ticksUntilNextRepeat <= 0)
 		{
 			_repeatedShot?.Invoke(config);
@@ -165,19 +181,13 @@ internal sealed class SoundGuidePlayer : IDisposable
 			{
 				ReleaseBed(config);
 			}
-			return;
-		}
-
-		if (_bedResetTicksRemaining > 0 && --_bedResetTicksRemaining == 0)
-		{
-			ResetBed();
 		}
 	}
 
 	/// <summary>
 	/// Ends whatever is sounding. A bed is handed to its own release rather than cut,
-	/// and one-shots already on the bus are left to ring out because they are shorter
-	/// than the fade that stopping them cleanly would need.
+	/// and a one-shot is given its fade and left on the bus to retire itself, which is
+	/// what keeps a second press from clicking over the first.
 	/// </summary>
 	internal void Stop(AriadneClientConfig config)
 	{
@@ -191,9 +201,7 @@ internal sealed class SoundGuidePlayer : IDisposable
 		foreach (SpatialOneShotVoice voice in _spatialVoices)
 		{
 			voice.Stop();
-			_bus.Remove(voice);
 		}
-		_spatialVoices.Clear();
 
 		if (_bedTicksRemaining > 0)
 		{
@@ -214,9 +222,11 @@ internal sealed class SoundGuidePlayer : IDisposable
 		foreach (SpatialOneShotVoice voice in _spatialVoices)
 		{
 			voice.Stop();
-			_bus.Remove(voice);
 		}
 		_spatialVoices.Clear();
+		// The streams below reset themselves as they are disposed, so a reset still
+		// waiting on a release has nothing left to do.
+		_pendingBedResets.Clear();
 		_wallTones?.Dispose();
 		_mobTones?.Dispose();
 		_beacon?.Dispose();
@@ -351,12 +361,12 @@ internal sealed class SoundGuidePlayer : IDisposable
 	}
 
 	/// <summary>
-	/// Holds the hostile-mob bed for as many enemies at once as the listener's
-	/// maximum-emitter setting allows, each placed at a fraction of the configured
-	/// tone range.
+	/// Holds the hostile-enemy tone on one enemy placed at a fraction of the configured
+	/// tone range, either as the nearest enemy or as the one the player holds.
 	/// </summary>
-	internal void SustainHostileMobTones(
-		IReadOnlyList<SpatialAudition> enemies,
+	internal void SustainHostileMobTone(
+		SpatialAudition enemy,
+		bool isLocked,
 		AriadneClientConfig config)
 	{
 		Stop(config);
@@ -365,40 +375,23 @@ internal sealed class SoundGuidePlayer : IDisposable
 			return;
 		}
 
-		SpatialAudition[] captured = [.. enemies];
 		SustainBed(
 			bedConfig =>
 			{
-				int limit = Math.Clamp(
-					bedConfig.HostileMobMaximumEmitters,
-					1,
-					HostileMobToneVoiceBank.SlotCount);
-				for (int slot = 0; slot < _mobTargets.Length; slot++)
-				{
-					if (slot >= limit || slot >= captured.Length)
-					{
-						_mobTargets[slot] = default;
-						continue;
-					}
-
-					SpatialAudition enemy = captured[slot];
-					Vector2 normalized = NormalizeAtRange(
-						enemy.Direction,
-						enemy.FractionOfRange,
-						bedConfig.HostileMobToneRangeTiles);
-					_mobTargets[slot] = new(
+				Vector2 normalized = NormalizeAtRange(
+					enemy.Direction,
+					enemy.FractionOfRange,
+					bedConfig.HostileMobToneRangeTiles);
+				_mobTones.UpdateTarget(
+					new(
 						true,
+						isLocked,
 						normalized.X,
 						normalized.Y,
-						Math.Clamp(1f - enemy.FractionOfRange, 0f, 1f));
-				}
-				_mobTones.UpdateTargets(_mobTargets, bedConfig);
+						Math.Clamp(1f - enemy.FractionOfRange, 0f, 1f)),
+					bedConfig);
 			},
-			bedConfig =>
-			{
-				Array.Clear(_mobTargets);
-				_mobTones.UpdateTargets(_mobTargets, bedConfig);
-			},
+			bedConfig => _mobTones.UpdateTarget(default, bedConfig),
 			_mobTones.StopAndReset,
 			config);
 	}
@@ -536,10 +529,13 @@ internal sealed class SoundGuidePlayer : IDisposable
 		Action reset,
 		AriadneClientConfig config)
 	{
+		// This bed is about to sound again, so any reset its last release left waiting
+		// has to be dropped: resetting a stream that has just been given a live target
+		// is the step the release was scheduled to avoid in the first place.
+		_pendingBedResets.RemoveAll(pending => pending.Reset.Equals(reset));
 		_bedRefresh = refresh;
 		_bedSilence = silence;
 		_bedReset = reset;
-		_bedResetTicksRemaining = 0;
 		_bedTicksRemaining = BedSustainTicks;
 		refresh(config);
 	}
@@ -549,13 +545,26 @@ internal sealed class SoundGuidePlayer : IDisposable
 		_bedRefresh = null;
 		_bedSilence?.Invoke(config);
 		_bedSilence = null;
-		_bedResetTicksRemaining = BedReleaseTicks;
+		if (_bedReset is not null)
+		{
+			_pendingBedResets.Add((_bedReset, BedReleaseTicks));
+			_bedReset = null;
+		}
 	}
 
-	private void ResetBed()
+	private void AdvancePendingBedResets()
 	{
-		_bedResetTicksRemaining = 0;
-		_bedReset?.Invoke();
-		_bedReset = null;
+		for (int index = _pendingBedResets.Count - 1; index >= 0; index--)
+		{
+			(Action reset, int ticksRemaining) = _pendingBedResets[index];
+			if (--ticksRemaining > 0)
+			{
+				_pendingBedResets[index] = (reset, ticksRemaining);
+				continue;
+			}
+
+			_pendingBedResets.RemoveAt(index);
+			reset();
+		}
 	}
 }

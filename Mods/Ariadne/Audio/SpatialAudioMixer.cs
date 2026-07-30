@@ -192,8 +192,16 @@ internal sealed class SpatialAudioEmitter
 	private const float ShadowedEarCutoffHertz = 2_200f;
 	private const float OpenEarCutoffHertz = 20_000f;
 
+	/// <summary>
+	/// The time constant a silenced emitter falls away on. Exposed because it is an
+	/// exponential rather than a ramp: a caller that silences a cue and then resets
+	/// its signal state has to wait out several of these, or the reset lands on audio
+	/// that has not finished getting quiet and is heard as a step.
+	/// </summary>
+	internal const float GainReleaseSeconds = 0.160f;
+
 	private static readonly float PositionSmoothing = SmoothingCoefficient(0.025f);
-	private static readonly float GainReleaseSmoothing = SmoothingCoefficient(0.160f);
+	private static readonly float GainReleaseSmoothing = SmoothingCoefficient(GainReleaseSeconds);
 
 	private readonly float[] _delayBuffer = new float[DelayBufferLength];
 	private readonly float _gainAttackSmoothing;

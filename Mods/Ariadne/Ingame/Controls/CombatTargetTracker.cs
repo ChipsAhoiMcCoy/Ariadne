@@ -141,6 +141,7 @@ internal sealed class CombatTargetTracker
 			}
 			_lastAimPoint = Main.npc[_selectedSegment].Center;
 			UpdateVulnerability(Main.npc[_selectedSegment]);
+			PublishLock();
 			return;
 		}
 
@@ -276,9 +277,26 @@ internal sealed class CombatTargetTracker
 		// Whatever the player is fighting now is the target; an older one stops waiting.
 		_reacquireIdentity = null;
 
+		PublishLock();
 		string announcement = DescribeSelection(player, group, _selectedSegment);
 		AriadneMod.ScreenReader.Output(
 			prefix is null ? announcement : Language.GetTextValue(Key("WithPrefix"), prefix, announcement));
+	}
+
+	/// <summary>
+	/// Makes the held enemy readable outside the targeting controls. The hostile-enemy
+	/// tone is what reads it: a held enemy keeps the tone whatever else closes in, and it
+	/// is followed from a different update hook than this one.
+	/// </summary>
+	private void PublishLock()
+	{
+		if (HasTarget)
+		{
+			CombatTargetContext.Publish(_selectedSegment, Main.npc[_selectedSegment].netID);
+			return;
+		}
+
+		CombatTargetContext.Clear();
 	}
 
 	/// <summary>
@@ -372,7 +390,7 @@ internal sealed class CombatTargetTracker
 				_towerOnField[towerSlot] = true;
 			}
 
-			if (!IsEligible(player, npc))
+			if (!CombatTargetEligibility.CanLockOn(player, npc))
 			{
 				continue;
 			}
@@ -459,60 +477,6 @@ internal sealed class CombatTargetTracker
 			_wasActive[index] = true;
 			_lastNetIds[index] = npc.netID;
 		}
-	}
-
-	/// <summary>
-	/// Whether a living NPC already known to be on the field can be locked.
-	/// </summary>
-	private static bool IsEligible(Player player, NPC npc)
-	{
-		if (npc.friendly ||
-			npc.isLikeATownNPC ||
-			npc.immortal ||
-			npc.CountsAsACritter)
-		{
-			return false;
-		}
-
-		// Deliberately no test for whether the thing can be hurt right now. Vanilla's
-		// lock-on refuses anything holding dontTakeDamage, and that single flag is how
-		// vanilla builds most boss structure: a Lunar pillar holds it until its shield is
-		// spent, Moon Lord's core holds it until all three eyes are dead, and Moon Lord's
-		// hands and head raise and drop it every time their eye shuts. Copying that rule
-		// made those parts unreachable, which for a sighted player is a small annoyance
-		// and here is the whole fight missing. They are offered instead, and the state is
-		// spoken and sounded.
-		//
-		// What that rule did usefully was keep scenery out, so scenery is excluded
-		// directly: something nothing can hurt and nothing will chase is not a target.
-		if (npc.dontTakeDamage && !npc.chaseable)
-		{
-			return false;
-		}
-
-		// Vanilla's own lock-on rule, and worth keeping: a mimic still shaped like a chest
-		// has not revealed itself yet.
-		if (npc.aiStyle == NPCAIStyleID.Mimic && npc.ai[0] == 0f)
-		{
-			return false;
-		}
-
-		// Vanilla also requires the target to be lit. That is a sighted affordance, and
-		// the hostile-mob tones already deliberately omit it, so a mob heard in the dark
-		// would otherwise be one that cannot be locked. Line of sight below is the test
-		// that actually answers whether it can be hit.
-		Item item = player.HeldItem;
-		if ((uint)item.type < ItemID.Sets.LockOnIgnoresCollision.Length &&
-			ItemID.Sets.LockOnIgnoresCollision[item.type])
-		{
-			return true;
-		}
-
-		Vector2 predicted = CombatTargetAim.Resolve(player, npc.whoAmI);
-		return Collision.CanHit(player.Center, 0, 0, predicted, 0, 0) ||
-			Collision.CanHitLine(player.Center, 0, 0, predicted, 0, 0) ||
-			Collision.CanHit(player.Center, 0, 0, npc.Center, 0, 0) ||
-			Collision.CanHitLine(player.Center, 0, 0, npc.Center, 0, 0);
 	}
 
 	private bool IsGroupStillActive(CombatTargetIdentity identity)
@@ -648,6 +612,7 @@ internal sealed class CombatTargetTracker
 		_selectedCanBeHit = true;
 		_vulnerabilitySpeechCooldown = 0;
 		_reacquireIdentity = null;
+		CombatTargetContext.Clear();
 	}
 
 	private static string Text(string key) => Language.GetTextValue(Key(key));

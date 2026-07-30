@@ -517,10 +517,12 @@ internal sealed class CursorEarconSound : IDisposable
 
 	private void StopCurrent()
 	{
+		// Each cue is faded and left on the bus to retire itself. The cursor replaces
+		// its earcon every time it moves, and pulling the last one out mid-waveform
+		// turned a swept cursor into a run of clicks.
 		foreach (RenderedCursorCue cue in _renderedSounds)
 		{
 			cue.Voice.Stop();
-			_bus.Remove(cue.Voice);
 		}
 		_renderedSounds.Clear();
 

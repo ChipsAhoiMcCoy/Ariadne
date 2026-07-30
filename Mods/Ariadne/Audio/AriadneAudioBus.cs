@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Microsoft.Xna.Framework.Audio;
 using Terraria;
 using Terraria.Audio;
@@ -40,12 +41,29 @@ internal sealed class AriadneAudioBus : IDisposable
 
 	private const float QueueGrowthMilliseconds = 15f;
 
+	/// <summary>
+	/// How long a gap between pumps is taken to mean the pump was away rather than the
+	/// machine having stalled inside one frame.
+	///
+	/// The question this answers is whether an empty queue is the mod's fault. It used
+	/// to be asked of <see cref="Main.GameUpdateCount"/>, which only advances inside
+	/// Terraria's world pass, so on the title screen and while paused the counter never
+	/// moved and no pump ever looked consecutive: underruns went uncounted and the
+	/// queue never deepened, in exactly the place the sound guide is used. Wall time
+	/// answers the same question everywhere. Half a second is far longer than any frame
+	/// worth deepening the queue over, and far shorter than a world load or the time
+	/// spent with the window unfocused, which are the gaps that must not be blamed on
+	/// the machine.
+	/// </summary>
+	private const long MaximumPumpGapMilliseconds = 500L;
+
 	private readonly Mod _owner;
 	private readonly List<IAudioBusSource> _sources = [];
 	private readonly float[] _leftMix = new float[FramesPerBuffer];
 	private readonly float[] _rightMix = new float[FramesPerBuffer];
 	private readonly float[] _interleaved = new float[FramesPerBuffer * 2];
 	private readonly AudioBusMixChain _mixChain = new(FramesPerBuffer);
+	private readonly Stopwatch _pumpClock = Stopwatch.StartNew();
 	private readonly bool _submitsFloat;
 	private readonly byte[]? _pcmBuffer;
 	private DynamicSoundEffectInstance? _stream;
@@ -53,7 +71,7 @@ internal sealed class AriadneAudioBus : IDisposable
 	private int _maximumQueuedBuffers;
 	private int _underrunCount;
 	private int _loggedUnderrunCount;
-	private uint _lastPumpUpdateCount;
+	private long _lastPumpMilliseconds;
 	private bool _hasPumped;
 	private bool _isRunning;
 	private bool _failureLogged;
@@ -162,15 +180,16 @@ internal sealed class AriadneAudioBus : IDisposable
 
 		try
 		{
-			// The world pass this runs from does not tick in menus, so an empty queue
-			// after a gap is the pump having been away rather than the machine failing
-			// to keep up. Only a gap-free frame can report a real underrun.
-			uint updateCount = Main.GameUpdateCount;
-			bool pumpedLastFrame = _hasPumped && updateCount == _lastPumpUpdateCount + 1;
-			_lastPumpUpdateCount = updateCount;
+			// An empty queue after a long gap is the pump having been away rather than
+			// the machine failing to keep up. Only a pump that followed close behind the
+			// last one can report a real underrun.
+			long nowMilliseconds = _pumpClock.ElapsedMilliseconds;
+			bool followedLastPump = _hasPumped &&
+				nowMilliseconds - _lastPumpMilliseconds <= MaximumPumpGapMilliseconds;
+			_lastPumpMilliseconds = nowMilliseconds;
 			_hasPumped = true;
 
-			if (_isRunning && pumpedLastFrame && _stream.PendingBufferCount == 0)
+			if (_isRunning && followedLastPump && _stream.PendingBufferCount == 0)
 			{
 				NoteUnderrun();
 			}

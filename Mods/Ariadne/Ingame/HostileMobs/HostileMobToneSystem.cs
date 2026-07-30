@@ -1,27 +1,36 @@
 #nullable enable
 
-using System;
 using System.Collections.Generic;
 using Terraria;
 using Terraria.ModLoader;
 using Ariadne.Audio;
 using Ariadne.Configs;
+using Ariadne.Ingame.Controls;
 
 namespace Ariadne.Ingame.HostileMobs;
 
+/// <summary>
+/// Chooses the one enemy the hostile-enemy tone follows.
+///
+/// One at a time. A bed of several enemies at once was a wall of tone in any crowd, and
+/// a listener cannot pull four positions out of it anyway. Which one is answered by the
+/// lock the player already has in their hands: while a target is held the tone stays on
+/// it however many others close in, and with nothing held it follows whichever enemy is
+/// nearest.
+///
+/// Nearest, not nearest reachable. Requiring line of sight was tried and is wrong: what
+/// the tone answers is "what is closing on me", and something tunnelling toward you
+/// through dirt is the case where that question matters most. Whether it can be hit yet
+/// is the targeting key's business, and the key says so itself.
+/// </summary>
 [Autoload(Side = ModSide.Client)]
 internal sealed class HostileMobToneSystem : ModSystem
 {
-	private const int MaximumEmitterCount = 4;
-	private const float ReplacementDistanceRatio = 0.8f;
 	private const float TileSize = 16f;
 
 	private readonly HostileMobTracker _tracker = new();
-	private readonly EmitterAssignment[] _assignments = [new(), new(), new(), new()];
-	private readonly HostileMobToneTarget[] _audioTargets = new HostileMobToneTarget[MaximumEmitterCount];
-	private readonly Dictionary<HostileMobIdentity, HostileMobCandidate> _candidatesByIdentity = [];
-	private readonly List<HostileMobCandidate> _orderedCandidates = [];
 	private HostileMobToneAudioStream? _audio;
+	private HostileMobIdentity? _current;
 	private uint _observerRevision;
 	private bool _hasObserverRevision;
 	private bool _isReset = true;
@@ -57,28 +66,36 @@ internal sealed class HostileMobToneSystem : ModSystem
 			return;
 		}
 
+		bool hasHeld = CombatTargetContext.TryGetSegment(out int heldSegment);
 		IReadOnlyList<HostileMobCandidate> candidates = _tracker.Capture(
 			SpatialObserverContext.Current,
-			config.HostileMobToneRangeTiles * TileSize);
-		int maximumEmitters = Math.Clamp(config.HostileMobMaximumEmitters, 1, MaximumEmitterCount);
-		ReconcileAssignments(candidates, maximumEmitters);
-		for (int index = 0; index < MaximumEmitterCount; index++)
+			config.HostileMobToneRangeTiles * TileSize,
+			hasHeld ? heldSegment : -1);
+		bool found = TrySelect(
+			hasHeld,
+			heldSegment,
+			candidates,
+			out HostileMobCandidate selected,
+			out bool isLocked);
+		HostileMobIdentity? chosen = found ? selected.Identity : null;
+		if (chosen != _current)
 		{
-			if (index < maximumEmitters && _assignments[index].HasCandidate)
-			{
-				HostileMobCandidate candidate = _assignments[index].Candidate;
-				_audioTargets[index] = new(
-					true,
-					candidate.NormalizedPosition.X,
-					candidate.NormalizedPosition.Y,
-					candidate.Proximity);
-			}
-			else
-			{
-				_audioTargets[index] = default;
-			}
+			// A different enemy, or none. The voice is faded off the old one rather than
+			// dragged across to the new one, which would sound like something moving.
+			_audio?.Handoff();
+			_current = chosen;
 		}
-		_audio?.UpdateTargets(_audioTargets, config);
+
+		_audio?.UpdateTarget(
+			found
+				? new(
+					true,
+					isLocked,
+					selected.NormalizedPosition.X,
+					selected.NormalizedPosition.Y,
+					selected.Proximity)
+				: default,
+			config);
 		_isReset = false;
 	}
 
@@ -102,142 +119,53 @@ internal sealed class HostileMobToneSystem : ModSystem
 		ResetAwareness();
 	}
 
-	private void ReconcileAssignments(IReadOnlyList<HostileMobCandidate> candidates, int maximumEmitters)
+	/// <summary>
+	/// Which enemy sounds this frame, and whether it is the one the player holds.
+	///
+	/// A held enemy is taken whatever its distance, because the lock outranks proximity
+	/// for as long as the player keeps it. It still fades out past the configured range,
+	/// since level is what carries distance and at that range there is no level left, and
+	/// the tone falls back to the nearest enemy if the held one leaves the field
+	/// entirely, which is also the point at which the lock ends.
+	/// </summary>
+	private bool TrySelect(
+		bool hasHeld,
+		int heldSegment,
+		IReadOnlyList<HostileMobCandidate> candidates,
+		out HostileMobCandidate selected,
+		out bool isLocked)
 	{
-		_candidatesByIdentity.Clear();
-		for (int index = 0; index < candidates.Count; index++)
+		if (hasHeld && _tracker.TryFindContaining(heldSegment, out selected))
 		{
-			_candidatesByIdentity[candidates[index].Identity] = candidates[index];
+			isLocked = true;
+			return true;
 		}
 
-		for (int index = 0; index < MaximumEmitterCount; index++)
-		{
-			if (index >= maximumEmitters)
-			{
-				ClearAssignment(index);
-			}
-			else if (_assignments[index].HasCandidate &&
-				_candidatesByIdentity.TryGetValue(_assignments[index].Candidate.Identity, out HostileMobCandidate updated))
-			{
-				_assignments[index].Candidate = updated;
-			}
-			else if (_assignments[index].HasCandidate)
-			{
-				ClearAssignment(index);
-			}
-		}
-
-		_orderedCandidates.Clear();
-		for (int index = 0; index < candidates.Count; index++)
-		{
-			_orderedCandidates.Add(candidates[index]);
-		}
-		_orderedCandidates.Sort(static (left, right) =>
-		{
-			int bossComparison = right.IsBoss.CompareTo(left.IsBoss);
-			return bossComparison != 0
-				? bossComparison
-				: left.DistanceSquared.CompareTo(right.DistanceSquared);
-		});
-
-		foreach (HostileMobCandidate challenger in _orderedCandidates)
-		{
-			if (FindAssignment(challenger.Identity, maximumEmitters) >= 0)
-			{
-				continue;
-			}
-
-			int openIndex = FindOpenAssignment(maximumEmitters);
-			if (openIndex >= 0)
-			{
-				Assign(openIndex, challenger);
-				continue;
-			}
-
-			int replacementIndex = FindReplacement(challenger, maximumEmitters);
-			if (replacementIndex >= 0)
-			{
-				Assign(replacementIndex, challenger);
-			}
-		}
+		isLocked = false;
+		return TryFindNearest(candidates, out selected);
 	}
 
-	private int FindReplacement(HostileMobCandidate challenger, int maximumEmitters)
+	/// <summary>
+	/// The enemy nearest the listener. Distance is already measured from the point of
+	/// each enemy nearest the listener rather than from its middle, so this is the
+	/// nearest surface on the field and not the nearest centre.
+	/// </summary>
+	private static bool TryFindNearest(
+		IReadOnlyList<HostileMobCandidate> candidates,
+		out HostileMobCandidate selected)
 	{
-		int farthestMatchingPriority = -1;
-		int farthestNonBoss = -1;
-		for (int index = 0; index < maximumEmitters; index++)
+		selected = default;
+		bool found = false;
+		foreach (HostileMobCandidate candidate in candidates)
 		{
-			HostileMobCandidate incumbent = _assignments[index].Candidate;
-			if (!incumbent.IsBoss &&
-				(farthestNonBoss < 0 || incumbent.DistanceSquared > _assignments[farthestNonBoss].Candidate.DistanceSquared))
+			if (!found || candidate.DistanceSquared < selected.DistanceSquared)
 			{
-				farthestNonBoss = index;
-			}
-			if (incumbent.IsBoss == challenger.IsBoss &&
-				(farthestMatchingPriority < 0 || incumbent.DistanceSquared > _assignments[farthestMatchingPriority].Candidate.DistanceSquared))
-			{
-				farthestMatchingPriority = index;
-			}
-		}
-
-		if (challenger.IsBoss && farthestNonBoss >= 0)
-		{
-			return farthestNonBoss;
-		}
-		if (farthestMatchingPriority < 0)
-		{
-			return -1;
-		}
-
-		float incumbentDistance = _assignments[farthestMatchingPriority].Candidate.DistanceSquared;
-		if (challenger.IsBoss)
-		{
-			return challenger.DistanceSquared < incumbentDistance ? farthestMatchingPriority : -1;
-		}
-		float replacementThreshold = incumbentDistance * ReplacementDistanceRatio * ReplacementDistanceRatio;
-		return challenger.DistanceSquared <= replacementThreshold ? farthestMatchingPriority : -1;
-	}
-
-	private void Assign(int index, HostileMobCandidate candidate)
-	{
-		_audio?.RetireEmitter(index);
-		_assignments[index].HasCandidate = true;
-		_assignments[index].Candidate = candidate;
-	}
-
-	private void ClearAssignment(int index)
-	{
-		if (_assignments[index].HasCandidate)
-		{
-			_audio?.RetireEmitter(index);
-		}
-		_assignments[index].HasCandidate = false;
-		_assignments[index].Candidate = default;
-	}
-
-	private int FindAssignment(HostileMobIdentity identity, int maximumEmitters)
-	{
-		for (int index = 0; index < maximumEmitters; index++)
-		{
-			if (_assignments[index].HasCandidate && _assignments[index].Candidate.Identity == identity)
-			{
-				return index;
+				selected = candidate;
+				found = true;
 			}
 		}
-		return -1;
-	}
 
-	private int FindOpenAssignment(int maximumEmitters)
-	{
-		for (int index = 0; index < maximumEmitters; index++)
-		{
-			if (!_assignments[index].HasCandidate)
-			{
-				return index;
-			}
-		}
-		return -1;
+		return found;
 	}
 
 	private static bool ShouldRun(AriadneClientConfig config)
@@ -255,15 +183,8 @@ internal sealed class HostileMobToneSystem : ModSystem
 			return;
 		}
 
-		for (int index = 0; index < MaximumEmitterCount; index++)
-		{
-			_assignments[index].HasCandidate = false;
-			_assignments[index].Candidate = default;
-			_audioTargets[index] = default;
-		}
+		_current = null;
 		_tracker.Reset();
-		_candidatesByIdentity.Clear();
-		_orderedCandidates.Clear();
 		_isReset = true;
 	}
 
@@ -278,11 +199,5 @@ internal sealed class HostileMobToneSystem : ModSystem
 
 		_observerRevision = revision;
 		_hasObserverRevision = true;
-	}
-
-	private sealed class EmitterAssignment
-	{
-		internal bool HasCandidate;
-		internal HostileMobCandidate Candidate;
 	}
 }

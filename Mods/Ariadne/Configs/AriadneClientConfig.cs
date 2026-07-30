@@ -107,12 +107,6 @@ public sealed class AriadneClientConfig : ModConfig
 	[Slider]
 	public int HostileMobToneRangeTiles { get; set; } = DefaultHostileMobToneRangeTiles;
 
-	[DefaultValue(3)]
-	[Range(1, 4)]
-	[Increment(1)]
-	[Slider]
-	public int HostileMobMaximumEmitters { get; set; } = 3;
-
 	[DefaultValue(DefaultVolumePercent)]
 	[Range(0, 100)]
 	[Increment(5)]

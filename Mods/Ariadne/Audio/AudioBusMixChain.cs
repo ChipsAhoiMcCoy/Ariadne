@@ -97,6 +97,7 @@ internal sealed class AudioBusMixChain
 		private readonly float[] _pendingRight;
 		private readonly float _releaseCoefficient;
 		private float _currentGain = 1f;
+		private float _pendingRequiredGain = 1f;
 
 		internal MasterLimiter(int frameCount)
 		{
@@ -117,9 +118,13 @@ internal sealed class AudioBusMixChain
 				peak = MathF.Max(peak, MathF.Max(MathF.Abs(left[frame]), MathF.Abs(right[frame])));
 			}
 
+			// The block about to be output is the one measured on the previous call, so
+			// the release must not lift the gain above what that block itself needed.
+			// Without this the recovery from a loud cue began during the loud cue, and
+			// its own peak came back out just over the ceiling.
 			float required = peak > Ceiling ? Ceiling / peak : 1f;
 			float released = _currentGain + (1f - _currentGain) * _releaseCoefficient;
-			float nextGain = MathF.Min(required, released);
+			float nextGain = MathF.Min(MathF.Min(required, released), _pendingRequiredGain);
 			float step = (nextGain - _currentGain) / _frameCount;
 
 			for (int frame = 0; frame < _frameCount; frame++)
@@ -134,6 +139,7 @@ internal sealed class AudioBusMixChain
 			}
 
 			_currentGain = nextGain;
+			_pendingRequiredGain = required;
 		}
 	}
 }

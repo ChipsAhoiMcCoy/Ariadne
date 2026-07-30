@@ -19,7 +19,7 @@ namespace Ariadne.SoundGuide;
 [Autoload(Side = ModSide.Client)]
 internal sealed class SoundGuideSystem : ModSystem
 {
-	private const int RetirementTicks = SoundGuidePlayer.BedReleaseTicks + 4;
+	private static readonly int RetirementTicks = SoundGuidePlayer.BedReleaseTicks + 4;
 
 	private static SoundGuidePlayer? _player;
 	private static int _retirementTicks;
@@ -45,15 +45,26 @@ internal sealed class SoundGuideSystem : ModSystem
 	/// <summary>
 	/// Runs on the title screen as well as in the world, which is where most of the
 	/// guide's life is spent.
+	///
+	/// The player is advanced from here rather than from the screen so that a release
+	/// outlives the screen that started it. A bed handed its fade by
+	/// <see cref="Close"/> needs most of a second of updates to finish getting quiet,
+	/// and by then the screen is gone and would never have delivered them.
 	/// </summary>
 	public override void PostUpdateInput()
 	{
+		if (_player is null)
+		{
+			return;
+		}
+
+		_player.Update(ModContent.GetInstance<AriadneClientConfig>());
 		if (_retirementTicks <= 0 || --_retirementTicks > 0)
 		{
 			return;
 		}
 
-		_player?.Dispose();
+		_player.Dispose();
 		_player = null;
 	}
 
