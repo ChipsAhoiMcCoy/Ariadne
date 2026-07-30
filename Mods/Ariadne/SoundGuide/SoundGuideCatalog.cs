@@ -184,6 +184,35 @@ internal static class SoundGuideCatalog
 					config))),
 
 			new SoundGuideEntry(
+				"Radar",
+				config => config.RadarVolumePercent,
+				new("Ore", (player, config) => player.PlayRadarPing(
+					RadarPing.ForPipCount(1),
+					Vector2.Zero,
+					proximity: 1f,
+					config)),
+				new("Container", (player, config) => player.PlayRadarPing(
+					RadarPing.ForPipCount(2),
+					Vector2.Zero,
+					proximity: 1f,
+					config)),
+				new("Creature", (player, config) => player.PlayRadarPing(
+					RadarPing.ForPipCount(3),
+					Vector2.Zero,
+					proximity: 1f,
+					config)),
+				new("Other", (player, config) => player.PlayRadarPing(
+					RadarPing.ForPipCount(4),
+					Vector2.Zero,
+					proximity: 1f,
+					config)),
+				new("Distant", (player, config) => player.PlayRadarPing(
+					RadarPing.ForPipCount(1),
+					Rightward * 0.8f,
+					proximity: 0.25f,
+					config))),
+
+			new SoundGuideEntry(
 				"HostileMobTones",
 				config => config.HostileMobToneVolumePercent,
 				new("CloseRight", (player, config) => player.SustainHostileMobTone(

@@ -38,6 +38,49 @@ internal static class WorldPositionFormatter
 		return Text("RelativeSummary", distance, horizontal, vertical);
 	}
 
+	/// <summary>
+	/// Which way a position lies from the player, without the straight-line total that
+	/// <see cref="DescribeRelativePosition"/> leads with.
+	///
+	/// The two components already say how far in the only sense that helps someone walk
+	/// there, and the total mostly repeats them. That repetition is affordable when one
+	/// thing is being described, which is the cursor's case, and not when several are in
+	/// a row: a radar sweep and a scanner row both carry more than the position alone.
+	/// </summary>
+	internal static string DescribeDirection(Vector2 worldPosition)
+	{
+		Point tile = ToTile(worldPosition);
+		Point playerTile = ToTile(Main.LocalPlayer.Center);
+		int offsetX = tile.X - playerTile.X;
+		int offsetY = tile.Y - playerTile.Y;
+		bool alongside = Math.Abs(offsetX) < SummaryDeadbandTiles;
+		bool level = Math.Abs(offsetY) < SummaryDeadbandTiles;
+		if (alongside && level)
+		{
+			return Text("AtPlayerDirection");
+		}
+
+		return Text(
+			"DirectionSummary",
+			alongside ? Text("SameEastWest") : HorizontalOffset(offsetX),
+			level ? Text("SameElevation") : VerticalOffset(offsetY));
+	}
+
+	/// <summary>
+	/// Raw tile numbers, whatever the relative-readout preference says.
+	///
+	/// The preference exists because an offset is the more useful answer while moving,
+	/// and that stays true. A scanner result is the case it does not cover: the snapshot
+	/// is fixed, the player may act on it after walking somewhere else, and the raw
+	/// numbers are the part that is still true when they do. Waypoint names already keep
+	/// their coordinates for the same reason.
+	/// </summary>
+	internal static string DescribeRawCoordinates(Vector2 worldPosition)
+	{
+		Point tile = ToTile(worldPosition);
+		return Text("TileCoordinates", tile.X, tile.Y);
+	}
+
 	internal static string DescribeCoordinates(Vector2 worldPosition)
 	{
 		Point tile = ToTile(worldPosition);

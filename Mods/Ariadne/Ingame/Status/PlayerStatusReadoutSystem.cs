@@ -26,6 +26,14 @@ internal sealed class PlayerStatusReadoutSystem : ModSystem
 
 	public override void PostUpdateInput()
 	{
+		// Reading a mod keybind before PlayerInput has taken the mod's triggers into its
+		// key status throws, and the exception costs every system that runs after this one
+		// in the same update. The world gate below would catch it, but only after the read.
+		if (Main.gameMenu)
+		{
+			return;
+		}
+
 		if (_idleTicks < SequenceIdleResetTicks)
 		{
 			_idleTicks++;

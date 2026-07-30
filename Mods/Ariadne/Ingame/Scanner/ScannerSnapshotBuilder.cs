@@ -33,9 +33,23 @@ internal static class ScannerSnapshotBuilder
 		(0, -1), (-1, 0), (1, 0), (0, 1),
 	];
 
-	internal static ScannerSnapshot Capture()
+	/// <summary>Every category, for callers that want the whole picture.</summary>
+	internal static readonly IReadOnlySet<ScannerCategoryKind> AllCategories =
+		new HashSet<ScannerCategoryKind>(Enum.GetValues<ScannerCategoryKind>());
+
+	/// <summary>The lit contents of the visible screen, in full.</summary>
+	internal static ScannerSnapshot Capture() => Capture(GetViewport(), AllCategories);
+
+	/// <summary>
+	/// The lit contents of an arbitrary world rectangle, narrowed to the categories asked
+	/// for. The radar sweeps a range of its own rather than the camera, and wants only the
+	/// few categories it is armed with, so skipping the rest keeps a twice-a-second sweep
+	/// from paying for eight passes it would throw away.
+	/// </summary>
+	internal static ScannerSnapshot Capture(
+		Rectangle worldBounds,
+		IReadOnlySet<ScannerCategoryKind> categories)
 	{
-		Rectangle viewport = GetViewport();
 		Vector2 playerPosition = Main.LocalPlayer.Center;
 		Dictionary<ScannerCategoryKind, List<ScannerTarget>> targets = [];
 		foreach (ScannerCategoryKind kind in Enum.GetValues<ScannerCategoryKind>())
@@ -43,11 +57,11 @@ internal static class ScannerSnapshotBuilder
 			targets[kind] = [];
 		}
 
-		ScanTiles(viewport, targets);
-		ScanNpcs(viewport, targets);
-		ScanItems(viewport, targets);
+		ScanTiles(worldBounds, categories, targets);
+		ScanNpcs(worldBounds, categories, targets);
+		ScanItems(worldBounds, categories, targets);
 
-		List<ScannerCategory> categories = [];
+		List<ScannerCategory> found = [];
 		foreach ((ScannerCategoryKind kind, List<ScannerTarget> categoryTargets) in targets)
 		{
 			if (categoryTargets.Count == 0)
@@ -56,10 +70,10 @@ internal static class ScannerSnapshotBuilder
 			}
 
 			categoryTargets.Sort((left, right) => CompareTargets(left, right, playerPosition));
-			categories.Add(new ScannerCategory(kind, CategoryName(kind), categoryTargets.ToImmutableArray()));
+			found.Add(new ScannerCategory(kind, CategoryName(kind), categoryTargets.ToImmutableArray()));
 		}
 
-		categories.Sort((left, right) =>
+		found.Sort((left, right) =>
 		{
 			float leftDistance = DistanceSquared(left.Targets[0].WorldPosition, playerPosition);
 			float rightDistance = DistanceSquared(right.Targets[0].WorldPosition, playerPosition);
@@ -69,7 +83,7 @@ internal static class ScannerSnapshotBuilder
 				: StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name);
 		});
 
-		return new ScannerSnapshot(viewport, playerPosition, categories.ToImmutableArray());
+		return new ScannerSnapshot(worldBounds, playerPosition, found.ToImmutableArray());
 	}
 
 	private static Rectangle GetViewport()
@@ -83,8 +97,21 @@ internal static class ScannerSnapshotBuilder
 			Math.Max(1, (int)MathF.Ceiling(size.Y)));
 	}
 
-	private static void ScanTiles(Rectangle viewport, Dictionary<ScannerCategoryKind, List<ScannerTarget>> targets)
+	private static void ScanTiles(
+		Rectangle viewport,
+		IReadOnlySet<ScannerCategoryKind> categories,
+		Dictionary<ScannerCategoryKind, List<ScannerTarget>> targets)
 	{
+		bool wantResources = categories.Contains(ScannerCategoryKind.OresAndValuables);
+		bool wantLiquids = categories.Contains(ScannerCategoryKind.Liquids);
+		bool wantTrees = categories.Contains(ScannerCategoryKind.TreesAndLargePlants);
+		bool wantContainers = categories.Contains(ScannerCategoryKind.Containers);
+		bool wantObjects = categories.Contains(ScannerCategoryKind.PlacedObjects);
+		if (!wantResources && !wantLiquids && !wantTrees && !wantContainers && !wantObjects)
+		{
+			return;
+		}
+
 		int firstX = Math.Clamp((int)MathF.Floor(viewport.Left / 16f), 1, Main.maxTilesX - 2);
 		int lastX = Math.Clamp((int)MathF.Ceiling(viewport.Right / 16f) - 1, 1, Main.maxTilesX - 2);
 		int firstY = Math.Clamp((int)MathF.Floor(viewport.Top / 16f), 1, Main.maxTilesY - 2);
@@ -104,8 +131,11 @@ internal static class ScannerSnapshotBuilder
 					continue;
 				}
 
+				// A tile the caller did not ask for still falls out of the classification
+				// here rather than at the collection below it, so an unwanted chest is
+				// dropped instead of being read as an ordinary placed object.
 				Tile tile = Main.tile[x, y];
-				if (tile.LiquidAmount > 0)
+				if (wantLiquids && tile.LiquidAmount > 0)
 				{
 					liquids[(x, y)] = new LiquidTile(x, y, tile.LiquidType);
 				}
@@ -118,24 +148,43 @@ internal static class ScannerSnapshotBuilder
 				ushort type = tile.TileType;
 				if (IsTreeOrLargePlant(type))
 				{
-					trees[(x, y)] = new TreeTile(x, y, type, GetTileName(x, y, type));
+					if (wantTrees)
+					{
+						trees[(x, y)] = new TreeTile(x, y, type, GetTileName(x, y, type));
+					}
 					continue;
 				}
 
-				TileObjectData? objectData = TileObjectData.GetTileData(tile);
-				bool isContainer = type < TileID.Sets.IsAContainer.Length && TileID.Sets.IsAContainer[type];
-				if (isContainer)
+				if (type < TileID.Sets.IsAContainer.Length && TileID.Sets.IsAContainer[type])
 				{
-					AddObjectCandidate(objects, x, y, tile, objectData, ScannerTargetKind.Container);
+					if (wantContainers)
+					{
+						AddObjectCandidate(
+							objects,
+							x,
+							y,
+							tile,
+							TileObjectData.GetTileData(tile),
+							ScannerTargetKind.Container);
+					}
 					continue;
 				}
 
 				if (Main.IsTileSpelunkable(x, y))
 				{
-					resources[(x, y)] = new ResourceTile(x, y, type, GetTileName(x, y, type));
+					if (wantResources)
+					{
+						resources[(x, y)] = new ResourceTile(x, y, type, GetTileName(x, y, type));
+					}
 					continue;
 				}
 
+				if (!wantObjects)
+				{
+					continue;
+				}
+
+				TileObjectData? objectData = TileObjectData.GetTileData(tile);
 				if (objectData is not null)
 				{
 					AddObjectCandidate(objects, x, y, tile, objectData, ScannerTargetKind.PlacedObject);
@@ -327,8 +376,18 @@ internal static class ScannerSnapshotBuilder
 		}
 	}
 
-	private static void ScanNpcs(Rectangle viewport, Dictionary<ScannerCategoryKind, List<ScannerTarget>> targets)
+	private static void ScanNpcs(
+		Rectangle viewport,
+		IReadOnlySet<ScannerCategoryKind> categories,
+		Dictionary<ScannerCategoryKind, List<ScannerTarget>> targets)
 	{
+		if (!categories.Contains(ScannerCategoryKind.Npcs) &&
+			!categories.Contains(ScannerCategoryKind.Enemies) &&
+			!categories.Contains(ScannerCategoryKind.PassiveCreatures))
+		{
+			return;
+		}
+
 		Dictionary<int, List<NPC>> visibleGroups = [];
 		for (int index = 0; index < Main.maxNPCs; index++)
 		{
@@ -369,6 +428,11 @@ internal static class ScannerSnapshotBuilder
 				kind = ScannerTargetKind.PassiveCreature;
 			}
 
+			if (!categories.Contains(category))
+			{
+				continue;
+			}
+
 			Rectangle bounds = visibleSegments[0].Hitbox;
 			for (int index = 1; index < visibleSegments.Count; index++)
 			{
@@ -393,8 +457,16 @@ internal static class ScannerSnapshotBuilder
 		}
 	}
 
-	private static void ScanItems(Rectangle viewport, Dictionary<ScannerCategoryKind, List<ScannerTarget>> targets)
+	private static void ScanItems(
+		Rectangle viewport,
+		IReadOnlySet<ScannerCategoryKind> categories,
+		Dictionary<ScannerCategoryKind, List<ScannerTarget>> targets)
 	{
+		if (!categories.Contains(ScannerCategoryKind.DroppedItems))
+		{
+			return;
+		}
+
 		for (int index = 0; index < Main.maxItems; index++)
 		{
 			Item item = Main.item[index];

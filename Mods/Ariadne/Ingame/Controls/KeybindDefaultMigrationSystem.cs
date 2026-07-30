@@ -16,7 +16,7 @@ namespace Ariadne.Ingame.Controls;
 [Autoload(Side = ModSide.Client)]
 internal sealed class KeybindDefaultMigrationSystem : ModSystem
 {
-	private const int CurrentMigrationVersion = 5;
+	private const int CurrentMigrationVersion = 7;
 	private const string MigrationMarkerFileName = "default-bindings.version";
 	private const string LegacyVersionOneMarkerFileName = "default-bindings-v1.applied";
 
@@ -115,13 +115,24 @@ internal sealed class KeybindDefaultMigrationSystem : ModSystem
 				}
 
 				List<string> assignedKeys = keyboard.KeyStatus[binding.FullName];
-				if (assignedKeys.Count != 0)
+				if (assignedKeys.Count == 0)
 				{
+					assignedKeys.Add(binding.Key);
+					assignedCount++;
 					continue;
 				}
 
-				assignedKeys.Add(binding.Key);
-				assignedCount++;
+				// A default that supersedes an earlier one moves a profile still holding
+				// exactly that earlier key across. Anything else in the slot is a choice
+				// the player made, and stays. Requiring a single assignment keeps a
+				// player who added a second key to the old one out of it as well.
+				if (binding.ReplacesKey is not null &&
+					assignedKeys.Count == 1 &&
+					assignedKeys[0] == binding.ReplacesKey)
+				{
+					assignedKeys[0] = binding.Key;
+					assignedCount++;
+				}
 			}
 		}
 		return assignedCount;

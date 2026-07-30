@@ -538,9 +538,13 @@ internal sealed class AccessibleKeyBindingsMenuState : AccessibleSettingsPageSta
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
 		KeyConfiguration configuration = PlayerInput.CurrentProfile.InputModes[_inputMode];
+		// Ordered by the name that is spoken, not by the internal trigger name behind it.
+		// Sorting by the latter put "Radar Sweep" directly before "Secondary Use or
+		// Interact" purely because both begin "Ariadne/", which is an invisible reason for
+		// two unrelated controls to be neighbours in a list navigated one row at a time.
 		foreach (string trigger in configuration.KeyStatus.Keys
 			.Where(key => !DisabledMapTriggers.Contains(key))
-			.OrderBy(key => key, StringComparer.CurrentCultureIgnoreCase))
+			.OrderBy(FriendlyTriggerName, StringComparer.CurrentCultureIgnoreCase))
 		{
 			string capturedTrigger = trigger;
 			entries.Add(new(
@@ -657,12 +661,14 @@ internal sealed class AccessibleKeyCaptureState : UIState
 
 	private void Bind(Keys key)
 	{
-		List<string> bindings = PlayerInput.CurrentProfile.InputModes[_inputMode].KeyStatus[_trigger];
+		KeyConfiguration configuration = PlayerInput.CurrentProfile.InputModes[_inputMode];
+		List<string> bindings = configuration.KeyStatus[_trigger];
 		bindings.Clear();
 		if (key != Keys.Delete && key != Keys.Back)
 		{
 			bindings.Add(key.ToString());
-			AriadneMod.ScreenReader.Output($"{TriggerName} bound to {key}.");
+			AriadneMod.ScreenReader.Output(
+				$"{TriggerName} bound to {key}.{DescribeSharedControls(configuration, key)}");
 		}
 		else
 		{
@@ -670,6 +676,29 @@ internal sealed class AccessibleKeyCaptureState : UIState
 		}
 		PlayerInput.Save();
 		_controller.Back();
+	}
+
+	/// <summary>
+	/// Names anything else that now answers to the same key.
+	///
+	/// Terraria allows a key to drive several controls at once and says nothing about it, so
+	/// a mistyped or misplaced binding is silent twice over: the control the player meant to
+	/// set is still on its old key, and the one they hit instead is now doubled onto a key
+	/// that keeps doing its first job as well. That is a state a listener cannot discover
+	/// without walking the whole list and holding it in their head, and it is exactly what
+	/// this screen is in a position to say out loud.
+	/// </summary>
+	private string DescribeSharedControls(KeyConfiguration configuration, Keys key)
+	{
+		string keyName = key.ToString();
+		List<string> shared = configuration.KeyStatus
+			.Where(entry => entry.Key != _trigger && entry.Value.Contains(keyName))
+			.Select(entry => AccessibleKeyBindingsMenuState.FriendlyTriggerName(entry.Key))
+			.OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+			.ToList();
+		return shared.Count == 0
+			? string.Empty
+			: $" Warning: {key} also stays bound to {string.Join(", ", shared)}.";
 	}
 }
 

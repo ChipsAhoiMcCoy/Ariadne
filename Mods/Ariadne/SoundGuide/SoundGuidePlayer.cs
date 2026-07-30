@@ -291,6 +291,26 @@ internal sealed class SoundGuidePlayer : IDisposable
 	}
 
 	/// <summary>
+	/// Sounds one radar contact. Proximity is given rather than derived, because a menu
+	/// has no world to measure a distance in and level is the whole of what distance says.
+	/// </summary>
+	internal void PlayRadarPing(
+		RadarPing ping,
+		Vector2 normalizedPosition,
+		float proximity,
+		AriadneClientConfig config)
+	{
+		Stop(config);
+		AddSpatialVoice(new SpatialOneShotVoice(
+			ping.CreateVoice(),
+			ping.BusFrameCount,
+			normalizedPosition,
+			config.ToSpatialAudioSettings(),
+			Math.Clamp(config.RadarVolumePercent / 100f, 0f, 1f) *
+				SpatialAudioDistanceGain.FromProximity(proximity)));
+	}
+
+	/// <summary>
 	/// Sounds the earcon a tile of this kind answers with. Terraria's installed PCM is
 	/// used when the cache holds it, which is the path the cursor normally takes; a
 	/// press made while a clip is still being decoded falls back to Terraria's own

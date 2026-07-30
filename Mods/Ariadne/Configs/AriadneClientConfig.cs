@@ -24,6 +24,13 @@ public sealed class AriadneClientConfig : ModConfig
 	/// </summary>
 	private const int DefaultHostileMobToneRangeTiles = 80;
 
+	/// <summary>
+	/// How far the radar reaches. It stays inside both the fixed spatial field and the
+	/// screen at default zoom, so the radar never pings something the scanner would then
+	/// refuse to list.
+	/// </summary>
+	private const int DefaultRadarRangeTiles = 30;
+
 	public override ConfigScope Mode => ConfigScope.ClientSide;
 
 	[DefaultValue(true)]
@@ -112,6 +119,53 @@ public sealed class AriadneClientConfig : ModConfig
 	[Increment(5)]
 	[Slider]
 	public int FreecamBeaconVolumePercent { get; set; } = DefaultVolumePercent;
+
+	[DefaultValue(true)]
+	public bool RadarEnabled { get; set; } = true;
+
+	[DefaultValue(DefaultVolumePercent)]
+	[Range(0, 100)]
+	[Increment(5)]
+	[Slider]
+	public int RadarVolumePercent { get; set; } = DefaultVolumePercent;
+
+	[DefaultValue(DefaultRadarRangeTiles)]
+	[Range(10, 60)]
+	[Increment(5)]
+	[Slider]
+	public int RadarRangeTiles { get; set; } = DefaultRadarRangeTiles;
+
+	[DefaultValue(true)]
+	public bool RadarSweepSpeechEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
+	public bool RadarDetectsOresAndValuables { get; set; } = true;
+
+	[DefaultValue(true)]
+	public bool RadarDetectsContainers { get; set; } = true;
+
+	[DefaultValue(true)]
+	public bool RadarDetectsCreatures { get; set; } = true;
+
+	/// <summary>
+	/// Off because the hostile-enemy tone already follows the nearest enemy continuously.
+	/// A radar contact for the same thing would be a second answer to a question that is
+	/// already being answered.
+	/// </summary>
+	[DefaultValue(false)]
+	public bool RadarDetectsEnemies { get; set; }
+
+	[DefaultValue(false)]
+	public bool RadarDetectsDroppedItems { get; set; }
+
+	[DefaultValue(false)]
+	public bool RadarDetectsLiquids { get; set; }
+
+	[DefaultValue(false)]
+	public bool RadarDetectsTreesAndPlants { get; set; }
+
+	[DefaultValue(false)]
+	public bool RadarDetectsPlacedObjects { get; set; }
 
 	[DefaultValue(true)]
 	public bool FootstepSoundsEnabled { get; set; } = true;

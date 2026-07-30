@@ -8,6 +8,7 @@ using Terraria.DataStructures;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Terraria.ObjectData;
+using Ariadne.Ingame.Controls;
 using Ariadne.Ingame.Teleport;
 
 namespace Ariadne.Ingame.Scanner;
@@ -322,22 +323,12 @@ internal sealed class ScannerTeleportCoordinator
 		switch (target.Interaction)
 		{
 			case ScannerInteractionKind.TalkToNpc when resolved.Npc is NPC npc:
-				Main.CancelHairWindow();
-				Main.SetNPCShopIndex(0);
-				Main.InGuideCraftMenu = false;
-				Main.InReforgeMenu = false;
-				player.dropItemCheck();
-				Main.npcChatCornerItem = 0;
-				player.sign = -1;
-				Main.editSign = false;
-				player.SetTalkNPC(npc.whoAmI);
-				player.chest = -1;
-				Recipe.FindRecipes();
-				Main.npcChatText = npc.GetChat();
 				// Match native NPC interaction. AccessibleIngameMenuSystem promotes the
 				// resulting conversation to its focused semantic menu on the next input
-				// update without exposing the full player inventory.
-				Main.playerInventory = false;
+				// update without exposing the full player inventory. Silent, unlike the
+				// keyboard interact key: a scanner activation was already spoken, and the
+				// chat sound would land on top of that answer.
+				NpcConversation.Begin(npc, player, playChatSound: false);
 				break;
 			case ScannerInteractionKind.RightClickTile:
 				PerformNativeRightClick(player, resolved.TilePosition);

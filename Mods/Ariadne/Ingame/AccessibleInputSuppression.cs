@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -88,6 +89,39 @@ internal static class AccessibleInputSuppression
 		ConsumeKeyRange(keyboard, bindings, current, justPressed, Keys.F1, Keys.F12);
 	}
 
+	/// <summary>
+	/// Clears the native triggers a single key is bound to, leaving every mod keybind on
+	/// that key alone.
+	///
+	/// A gameplay chord needs this because the modifier in front of it means nothing to
+	/// Terraria: the vanilla binding on the second key fires regardless. Holding Alt and
+	/// pressing E to step the hotbar would otherwise also throw the grappling hook.
+	/// Clearing by key rather than by trigger name keeps a rebind covered, and it is
+	/// applied for as long as the key is held rather than on the press edge alone,
+	/// because several native triggers keep acting while down.
+	///
+	/// Mod keybinds have to be exempt, and not merely as a courtesy. They share the one
+	/// trigger table with Terraria's own, so clearing by key would take out the chord's
+	/// own binding alongside the one it came to suppress. Worse, it would not simply
+	/// silence it: <c>TriggersPack.Reset</c> copies the current set into the old one, so a
+	/// trigger cleared while its key is still held reads as newly pressed again on the
+	/// very next frame, and a chord meant to step one slot would run away.
+	/// </summary>
+	internal static void ConsumeNativeTriggersBoundTo(Keys key)
+	{
+		if (!PlayerInput.CurrentProfile.InputModes.TryGetValue(InputMode.Keyboard, out KeyConfiguration? bindings))
+		{
+			return;
+		}
+
+		ConsumeKey(
+			bindings,
+			PlayerInput.Triggers.Current,
+			PlayerInput.Triggers.JustPressed,
+			key,
+			nativeOnly: true);
+	}
+
 	private static void ConsumeKeyRange(
 		KeyboardState keyboard,
 		KeyConfiguration bindings,
@@ -104,22 +138,39 @@ internal static class AccessibleInputSuppression
 				continue;
 			}
 
-			string keyName = key.ToString();
-			foreach ((string triggerName, List<string> keys) in bindings.KeyStatus)
-			{
-				if (!keys.Contains(keyName))
-				{
-					continue;
-				}
+			ConsumeKey(bindings, current, justPressed, key);
+		}
+	}
 
-				if (current.KeyStatus.ContainsKey(triggerName))
-				{
-					current.KeyStatus[triggerName] = false;
-				}
-				if (justPressed.KeyStatus.ContainsKey(triggerName))
-				{
-					justPressed.KeyStatus[triggerName] = false;
-				}
+	private static void ConsumeKey(
+		KeyConfiguration bindings,
+		TriggersSet current,
+		TriggersSet justPressed,
+		Keys key,
+		bool nativeOnly = false)
+	{
+		string keyName = key.ToString();
+		foreach ((string triggerName, List<string> keys) in bindings.KeyStatus)
+		{
+			if (!keys.Contains(keyName))
+			{
+				continue;
+			}
+
+			// A mod keybind is registered under "ModName/Name"; no Terraria trigger
+			// carries a slash, which makes it the boundary between the two.
+			if (nativeOnly && triggerName.Contains('/', StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			if (current.KeyStatus.ContainsKey(triggerName))
+			{
+				current.KeyStatus[triggerName] = false;
+			}
+			if (justPressed.KeyStatus.ContainsKey(triggerName))
+			{
+				justPressed.KeyStatus[triggerName] = false;
 			}
 		}
 	}

@@ -83,18 +83,34 @@ internal sealed class ScannerRootMenuState : AccessibleMenuState
 			ScannerTargetKind.Tree => "Tree or large plant",
 			_ => "Placed object",
 		};
-		string action = InteractionAction(target);
-		return $"{kind}. {DescribeTarget(target)}. {WorldPositionFormatter.DescribeCoordinates(target.WorldPosition)}{action}";
+		return $"{kind}. {DescribeTarget(target)}.{InteractionAction(target)} {DescribeTargetCoordinates(target)}";
 	}
 
 	internal static string DescribeTargetSelectionDetails(ScannerTarget target)
 	{
-		return $"{DescribeTargetContext(target)}. {WorldPositionFormatter.DescribeCoordinates(target.WorldPosition)}{InteractionAction(target)}";
+		return $"{DescribeTargetContext(target)}.{InteractionAction(target)} {DescribeTargetCoordinates(target)}";
+	}
+
+	/// <summary>
+	/// The target's raw tile numbers, spoken last.
+	///
+	/// They come after the interaction sentence rather than in the middle of the
+	/// description because they are the part a listener is least often waiting for and
+	/// most often wants to write down; putting them last means the useful half of the
+	/// line is never held up behind five digits. They are given as raw numbers whatever
+	/// the relative-readout preference says, because a scanner result is a fixed snapshot
+	/// that may be acted on after the player has moved, and an offset would not survive
+	/// that. Which way it lies has already been said, relative to where they stand now.
+	/// </summary>
+	private static string DescribeTargetCoordinates(ScannerTarget target)
+	{
+		return WorldPositionFormatter.DescribeRawCoordinates(target.WorldPosition);
 	}
 
 	internal static string ScannerHelpText() =>
 		"Visible surroundings scanner help. The root contains only nonempty categories and each category contains the lit targets captured when the scanner opened. " +
 		"Up and Down move, Home and End jump to the list edges, Page Up and Page Down move by a page, and letter keys jump by name. " +
+		"Every result says which way it lies from where you stand and ends with its own tile coordinates, which stay true after you move. " +
 		"Right Arrow or Enter opens a category. Left Arrow or Escape returns or closes. Enter on a target searches for a safe landing, closes the scanner, teleports, and performs its supported native interaction; if no landing is found the scanner stays open and reports why. " +
 		$"Control R rereads focused details and {ContextHelpChord.Name} repeats this help. Scanner navigation keys are consumed while this screen is open and do not also control the player. " +
 		"Close and press Open Scanner again to refresh the fixed snapshot.";
@@ -103,7 +119,10 @@ internal sealed class ScannerRootMenuState : AccessibleMenuState
 	private static string VisibleTiles(int count) => count == 1 ? "1 visible tile" : $"{count} visible tiles";
 	private static string DescribeTargetContext(ScannerTarget target)
 	{
-		string position = WorldPositionFormatter.DescribeRelativePosition(target.WorldPosition);
+		// Direction without the straight-line total. A row already carries the size or
+		// health of the thing and now its coordinates as well, so the one part of the
+		// position that merely restates the other two is what gives way.
+		string position = WorldPositionFormatter.DescribeDirection(target.WorldPosition);
 		return target.Kind switch
 		{
 			ScannerTargetKind.Resource or ScannerTargetKind.Liquid =>

@@ -25,6 +25,9 @@ public sealed class AriadneMod : Mod
 	internal static ModKeybind? FreecamModifierKeybind { get; private set; }
 	internal static ModKeybind? PlayerStatusKeybind { get; private set; }
 	internal static ModKeybind? OpenWaypointsKeybind { get; private set; }
+	internal static ModKeybind? RadarSweepKeybind { get; private set; }
+	internal static ModKeybind? HotbarPreviousKeybind { get; private set; }
+	internal static ModKeybind? HotbarNextKeybind { get; private set; }
 	internal static IReadOnlyList<RegisteredKeybindDefault> KeybindDefaults => RegisteredDefaults;
 
 	public override void Load()
@@ -45,6 +48,19 @@ public sealed class AriadneMod : Mod
 		// Held with CombatTargetModifier, which doubles as Ariadne's command prefix.
 		OpenWaypointsKeybind = RegisterKeybind("OpenWaypoints", Keys.W, introducedVersion: 4);
 		CombatTargetCycleKeybind = RegisterKeybind("CombatTargetCycle", Keys.Tab, introducedVersion: 5);
+		// Sits directly right of the aim-right key, at the outer edge of the gameplay
+		// cluster the hand already rests on. Held with the modifier it switches passive
+		// discovery off for the session. It shipped once on Delete, which the migration
+		// re-points for any profile still holding that.
+		RadarSweepKeybind = RegisterKeybind(
+			"RadarSweep",
+			Keys.OemQuotes,
+			introducedVersion: 7,
+			replacesKey: Keys.Delete);
+		// Both are chords with CombatTargetModifier. E is Grapple in every stock profile,
+		// which HotbarCycleSystem withholds for the frames the chord owns.
+		HotbarPreviousKeybind = RegisterKeybind("HotbarPrevious", Keys.Q, introducedVersion: 6);
+		HotbarNextKeybind = RegisterKeybind("HotbarNext", Keys.E, introducedVersion: 6);
 	}
 
 	public override void Unload()
@@ -64,13 +80,32 @@ public sealed class AriadneMod : Mod
 		FreecamModifierKeybind = null;
 		PlayerStatusKeybind = null;
 		OpenWaypointsKeybind = null;
+		RadarSweepKeybind = null;
+		HotbarPreviousKeybind = null;
+		HotbarNextKeybind = null;
 		RegisteredDefaults.Clear();
 	}
 
-	private ModKeybind RegisterKeybind(string name, Keys defaultBinding, int introducedVersion)
+	/// <summary>
+	/// Declares one control and the default it should reach a profile with.
+	/// </summary>
+	/// <param name="replacesKey">
+	/// A default this one supersedes. A profile still holding exactly that earlier key is
+	/// moved across; a profile holding anything else has been rebound deliberately and is
+	/// left alone.
+	/// </param>
+	private ModKeybind RegisterKeybind(
+		string name,
+		Keys defaultBinding,
+		int introducedVersion,
+		Keys? replacesKey = null)
 	{
 		ModKeybind keybind = KeybindLoader.RegisterKeybind(this, name, defaultBinding);
-		RegisteredDefaults.Add(new($"{Name}/{name}", defaultBinding.ToString(), introducedVersion));
+		RegisteredDefaults.Add(new(
+			$"{Name}/{name}",
+			defaultBinding.ToString(),
+			introducedVersion,
+			replacesKey?.ToString()));
 		return keybind;
 	}
 }
@@ -78,4 +113,5 @@ public sealed class AriadneMod : Mod
 internal readonly record struct RegisteredKeybindDefault(
 	string FullName,
 	string Key,
-	int IntroducedVersion);
+	int IntroducedVersion,
+	string? ReplacesKey = null);

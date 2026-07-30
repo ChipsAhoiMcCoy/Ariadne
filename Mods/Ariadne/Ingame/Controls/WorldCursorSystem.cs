@@ -537,6 +537,9 @@ internal sealed class WorldCursorSystem : ModSystem
 		string wallTones = DescribeModBinding(AriadneMod.ToggleWallTonesKeybind);
 		string waypoints = DescribeModBinding(AriadneMod.OpenWaypointsKeybind);
 		string freecam = DescribeModBinding(AriadneMod.FreecamModifierKeybind);
+		string radar = DescribeModBinding(AriadneMod.RadarSweepKeybind);
+		string hotbarPrevious = DescribeModBinding(AriadneMod.HotbarPreviousKeybind);
+		string hotbarNext = DescribeModBinding(AriadneMod.HotbarNextKeybind);
 		AriadneMod.ScreenReader.Output(
 			$"Gameplay controls. Move with {movement}. Aim with {aiming}. " +
 			$"Use the held item with {use}, and secondary use or interact with {secondary}. " +
@@ -549,6 +552,10 @@ internal sealed class WorldCursorSystem : ModSystem
 			$"says the target has opened, and a short high fall says it has closed again. " +
 			$"Manual aim always cancels combat lock. " +
 			$"Press {status} for a character status readout, {scanner} to scan the visible surroundings, and {wallTones} to toggle wall tones. " +
+			$"The radar sounds a bell for anything the scanner would list as it comes into range: one strike for ore, " +
+			$"two for a container, three for a creature, four for anything else you have armed. " +
+			$"Press {radar} to sound everything in range and name it, or hold {targetModifier} with {radar} to switch passive radar off for this session. " +
+			$"Hold {targetModifier} with {hotbarPrevious} or {hotbarNext} to step through the hotbar. " +
 			$"Hold {targetModifier} with {waypoints} to open waypoints. Hold {freecam} to move a free camera, and release it to return to your body. " +
 			$"Press {ContextHelpChord.Name} to repeat this help.");
 	}
