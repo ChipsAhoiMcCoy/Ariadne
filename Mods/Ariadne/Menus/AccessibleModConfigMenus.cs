@@ -9,6 +9,7 @@ using Terraria;
 using Terraria.Localization;
 using Terraria.ModLoader;
 using Terraria.ModLoader.Config;
+using Terraria.ModLoader.Config.UI;
 using Ariadne.Configs;
 
 namespace Ariadne.Menus;
@@ -182,6 +183,18 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 			() => _pending.HotbarAnnouncementsEnabled, value => _pending.HotbarAnnouncementsEnabled = value);
 		AddToggle(entries, nameof(AriadneClientConfig.ItemPickupAnnouncementsEnabled),
 			() => _pending.ItemPickupAnnouncementsEnabled, value => _pending.ItemPickupAnnouncementsEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.SummonAnnouncementsEnabled),
+			() => _pending.SummonAnnouncementsEnabled, value => _pending.SummonAnnouncementsEnabled = value);
+		AddColumnSlider(entries, nameof(AriadneClientConfig.InventoryColumnCount),
+			() => _pending.InventoryColumnCount, value => _pending.InventoryColumnCount = value);
+		AddColumnSlider(entries, nameof(AriadneClientConfig.HotbarColumnCount),
+			() => _pending.HotbarColumnCount, value => _pending.HotbarColumnCount = value);
+		AddColumnSlider(entries, nameof(AriadneClientConfig.CraftingColumnCount),
+			() => _pending.CraftingColumnCount, value => _pending.CraftingColumnCount = value);
+		AddColumnSlider(entries, nameof(AriadneClientConfig.StorageColumnCount),
+			() => _pending.StorageColumnCount, value => _pending.StorageColumnCount = value);
+		AddColumnSlider(entries, nameof(AriadneClientConfig.ShopColumnCount),
+			() => _pending.ShopColumnCount, value => _pending.ShopColumnCount = value);
 		AddToggle(entries, nameof(AriadneClientConfig.FootstepSoundsEnabled),
 			() => _pending.FootstepSoundsEnabled, value => _pending.FootstepSoundsEnabled = value);
 		AddPercentSlider(entries, nameof(AriadneClientConfig.FootstepVolumePercent),
@@ -197,8 +210,26 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 		AddSlider(entries, nameof(AriadneClientConfig.WallToneRangeTiles),
 			() => _pending.WallToneRangeTiles, value => _pending.WallToneRangeTiles = value,
 			minimum: 4, maximum: 30, step: 1, format: value => $"{value} tiles");
-		AddToggle(entries, nameof(AriadneClientConfig.FallTonesEnabled),
-			() => _pending.FallTonesEnabled, value => _pending.FallTonesEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.SpatialAudioDistanceAttenuationEnabled),
+			() => _pending.SpatialAudioDistanceAttenuationEnabled, value => _pending.SpatialAudioDistanceAttenuationEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.ElevationMovementCuesEnabled),
+			() => _pending.ElevationMovementCuesEnabled, value => _pending.ElevationMovementCuesEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.ElevationMovementCueVolumePercent),
+			() => _pending.ElevationMovementCueVolumePercent, value => _pending.ElevationMovementCueVolumePercent = value);
+		AddToggle(entries, nameof(AriadneClientConfig.DropWarningsEnabled),
+			() => _pending.DropWarningsEnabled, value => _pending.DropWarningsEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.DropWarningVolumePercent),
+			() => _pending.DropWarningVolumePercent, value => _pending.DropWarningVolumePercent = value);
+		AddSlider(entries, nameof(AriadneClientConfig.DropDetectionRangeTiles),
+			() => _pending.DropDetectionRangeTiles, value => _pending.DropDetectionRangeTiles = value,
+			minimum: 3, maximum: 60, step: 1, format: value => $"{value} tiles");
+		AddSlider(entries, nameof(AriadneClientConfig.DropWarningLookaheadTiles),
+			() => _pending.DropWarningLookaheadTiles, value => _pending.DropWarningLookaheadTiles = value,
+			minimum: 1, maximum: 12, step: 1, format: value => $"{value} tiles");
+		AddToggle(entries, nameof(AriadneClientConfig.TraversalLandmarkCuesEnabled),
+			() => _pending.TraversalLandmarkCuesEnabled, value => _pending.TraversalLandmarkCuesEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.TraversalLandmarkCueVolumePercent),
+			() => _pending.TraversalLandmarkCueVolumePercent, value => _pending.TraversalLandmarkCueVolumePercent = value);
 		AddToggle(entries, nameof(AriadneClientConfig.HostileMobTonesEnabled),
 			() => _pending.HostileMobTonesEnabled, value => _pending.HostileMobTonesEnabled = value);
 		AddPercentSlider(entries, nameof(AriadneClientConfig.HostileMobToneVolumePercent),
@@ -283,6 +314,16 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 		AddSlider(entries, field, read, write, 0, 100, 5, value => $"{value} percent");
 	}
 
+	private void AddColumnSlider(
+		List<AccessibleMenuEntry> entries,
+		string field,
+		Func<int> read,
+		Action<int> write)
+	{
+		AddSlider(entries, field, read, write, 1, 10, 1,
+			value => $"{value} {(value == 1 ? "column" : "columns")}");
+	}
+
 	private void AddSlider(
 		List<AccessibleMenuEntry> entries,
 		string field,
@@ -357,7 +398,8 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 	private void DiscardAndGoBack()
 	{
 		_pending = Clone(_active);
-		Controller.Back();
+		// This leaves both the confirmation and editor, but is one user action.
+		Controller.Back(playSound: false);
 		Controller.Back();
 	}
 
@@ -368,9 +410,23 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 
 	private bool HasChanges()
 	{
-		// tModLoader's own deep comparison sees every property, so an option cannot
-		// be edited without Save changes noticing it.
-		return !ConfigManager.ObjectEquals(_pending, _active);
+		// ObjectEquals on the two top-level ModConfig objects uses ordinary reference
+		// equality and would therefore report a change even immediately after a
+		// successful save. Compare the actual Ariadne setting members instead, while
+		// retaining tModLoader's recursive comparison for member values.
+		foreach (PropertyFieldWrapper member in ConfigManager.GetFieldsAndProperties(typeof(AriadneClientConfig)))
+		{
+			if (!member.CanWrite || member.MemberInfo.DeclaringType != typeof(AriadneClientConfig))
+			{
+				continue;
+			}
+			if (!ConfigManager.ObjectEquals(member.GetValue(_pending), member.GetValue(_active)))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private string SaveDescription()

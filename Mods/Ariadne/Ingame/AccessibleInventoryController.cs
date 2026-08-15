@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.Audio;
 using Terraria.DataStructures;
+using Terraria.GameContent;
 using Terraria.GameContent.Achievements;
 using Terraria.GameContent.Creative;
 using Terraria.GameContent.UI.States;
@@ -20,7 +21,10 @@ using Terraria.ModLoader.Default;
 using Terraria.Social.Steam;
 using Terraria.UI;
 using Ariadne.Accessibility;
+using Ariadne.Configs;
 using Ariadne.Menus;
+using Ariadne.Ingame.Housing;
+using Ariadne.Logic;
 
 namespace Ariadne.Ingame;
 
@@ -306,7 +310,7 @@ internal sealed class AccessibleInventoryController
 	{
 		List<AccessibleInventoryNode> sections = [];
 		AddContainerCategory(player, sections);
-		AddItemCategory(sections, "hotbar", "Hotbar", player.inventory, ItemSlot.Context.InventoryItem, 0, HotbarSlotCount, HotbarSlotName, canFavorite: true);
+		AddItemCategory(sections, "hotbar", "Hotbar", player.inventory, ItemSlot.Context.InventoryItem, 0, HotbarSlotCount, HotbarSlotName, canFavorite: true, layout: AccessibleInventoryLayout.Hotbar);
 		List<AccessibleInventoryEntry> mainInventoryEntries = CreateItemEntries(
 			"main-inventory",
 			player.inventory,
@@ -323,7 +327,7 @@ internal sealed class AccessibleInventoryController
 			() => RightClickTrash(player),
 			selectionDetails: () => DescribeItemDetails(player.trashItem, includeSummary: false),
 			firstLetterName: () => NavigationName(player.trashItem)));
-		AddCategory(sections, "main-inventory", "Main Inventory", mainInventoryEntries);
+		AddCategory(sections, "main-inventory", "Main Inventory", mainInventoryEntries, AccessibleInventoryLayout.Inventory);
 
 		AddCraftingCategory(sections);
 
@@ -335,7 +339,7 @@ internal sealed class AccessibleInventoryController
 			int captured = index;
 			coinEntries.Add(ItemEntry($"coin-{captured}", () => $"Coin slot {captured - 49}", player.inventory, ItemSlot.Context.InventoryCoin, captured, canFavorite: true));
 		}
-		AddCategory(sections, "coins", "Coins", coinEntries);
+		AddCategory(sections, "coins", "Coins", coinEntries, AccessibleInventoryLayout.Inventory);
 
 		List<AccessibleInventoryEntry> ammoEntries = [];
 		for (int index = 54; index < 58; index++)
@@ -343,7 +347,7 @@ internal sealed class AccessibleInventoryController
 			int captured = index;
 			ammoEntries.Add(ItemEntry($"ammo-{captured}", () => $"Ammo slot {captured - 53}", player.inventory, ItemSlot.Context.InventoryAmmo, captured, canFavorite: true));
 		}
-		AddCategory(sections, "ammo", "Ammo", ammoEntries);
+		AddCategory(sections, "ammo", "Ammo", ammoEntries, AccessibleInventoryLayout.Inventory);
 
 		if (player.chest == -1 && Main.npcShop == 0)
 		{
@@ -487,7 +491,7 @@ internal sealed class AccessibleInventoryController
 					captured,
 					extraDetails: () => DescribeShopPrice(shopItems[captured])));
 			}
-			AddCategory(interactions, "shop", "Shop", entries);
+			AddCategory(interactions, "shop", "Shop", entries, AccessibleInventoryLayout.Shop);
 		}
 
 		if (Main.InGuideCraftMenu)
@@ -586,7 +590,6 @@ internal sealed class AccessibleInventoryController
 				() =>
 				{
 					Main.npcChatText = player.currentShoppingSettings.HappinessReport;
-					SoundEngine.PlaySound(SoundID.MenuTick);
 				}));
 		}
 
@@ -622,13 +625,24 @@ internal sealed class AccessibleInventoryController
 			new AccessibleInventoryEntry(
 				"housing-query",
 				() => "Housing query tool",
-				() => "Select Terraria's housing query cursor. Using the cursor on a room still requires world targeting.",
-				() => Main.instance.SetMouseNPC_ToHousingQuery()),
+				() => "Open a semantic cursor over the enclosed rooms currently visible on screen.",
+				HousingQuerySystem.RequestOpen),
 		];
 		HashSet<int> includedNpcTypes = [];
 		foreach (NPC npc in Main.npc)
 		{
-			if (!npc.active || !npc.townNPC || !includedNpcTypes.Add(npc.type) || npc.ModNPC?.TownNPCStayingHomeless == true)
+			if (!npc.active ||
+				!npc.townNPC ||
+				npc.ModNPC?.TownNPCStayingHomeless == true)
+			{
+				continue;
+			}
+
+			int headIndex = TownNPCProfiles.GetHeadIndexSafe(npc);
+			if (headIndex < 0 ||
+				headIndex < NPCHeadID.Sets.CannotBeDrawnInHousingUI.Length &&
+					NPCHeadID.Sets.CannotBeDrawnInHousingUI[headIndex] ||
+				!includedNpcTypes.Add(npc.type))
 			{
 				continue;
 			}
@@ -905,7 +919,7 @@ internal sealed class AccessibleInventoryController
 				() => SelectOrCraftRecipe(captured),
 				firstLetterName: () => NavigationName(Main.recipe[Main.availableRecipe[captured]].createItem)));
 		}
-		AddCategory(destination, "crafting", Main.InGuideCraftMenu ? "Guide Recipes" : "Crafting", entries);
+		AddCategory(destination, "crafting", Main.InGuideCraftMenu ? "Guide Recipes" : "Crafting", entries, AccessibleInventoryLayout.Crafting);
 	}
 
 	private void AddSettingsEntry()
@@ -952,7 +966,7 @@ internal sealed class AccessibleInventoryController
 			container.Length,
 			index => $"slot {index + 1}");
 		entries.AddRange(BuildContainerActions(player, containerName));
-		AddCategory(destination, ContainerCategoryId, containerName, entries);
+		AddCategory(destination, ContainerCategoryId, containerName, entries, AccessibleInventoryLayout.Storage);
 	}
 
 	private List<AccessibleInventoryEntry> BuildContainerActions(Player player, string containerName)
@@ -991,9 +1005,10 @@ internal sealed class AccessibleInventoryController
 		int count,
 		Func<int, string> slotName,
 		bool canFavorite = false,
-		Func<int, bool>? enabled = null)
+		Func<int, bool>? enabled = null,
+		AccessibleInventoryLayout layout = AccessibleInventoryLayout.None)
 	{
-		AddCategory(destination, id, name, CreateItemEntries(id, items, context, start, count, slotName, canFavorite, enabled));
+		AddCategory(destination, id, name, CreateItemEntries(id, items, context, start, count, slotName, canFavorite, enabled), layout);
 	}
 
 	private static List<AccessibleInventoryEntry> CreateItemEntries(
@@ -1046,16 +1061,26 @@ internal sealed class AccessibleInventoryController
 			firstLetterName: () => NavigationName(items[index]));
 	}
 
-	private static void AddCategory(List<AccessibleInventoryNode> destination, string id, string name, List<AccessibleInventoryEntry> entries)
+	private static void AddCategory(
+		List<AccessibleInventoryNode> destination,
+		string id,
+		string name,
+		List<AccessibleInventoryEntry> entries,
+		AccessibleInventoryLayout layout = AccessibleInventoryLayout.None)
 	{
-		AddBranch(destination, id, name, entries.Select(AccessibleInventoryNode.FromEntry).ToList());
+		AddBranch(destination, id, name, entries.Select(AccessibleInventoryNode.FromEntry).ToList(), layout);
 	}
 
-	private static void AddBranch(List<AccessibleInventoryNode> destination, string id, string name, List<AccessibleInventoryNode> children)
+	private static void AddBranch(
+		List<AccessibleInventoryNode> destination,
+		string id,
+		string name,
+		List<AccessibleInventoryNode> children,
+		AccessibleInventoryLayout layout = AccessibleInventoryLayout.None)
 	{
 		if (children.Count > 0)
 		{
-			destination.Add(new AccessibleInventoryNode(id, () => name, children));
+			destination.Add(new AccessibleInventoryNode(id, () => name, children, layout));
 		}
 	}
 
@@ -1082,11 +1107,53 @@ internal sealed class AccessibleInventoryController
 
 	private int CurrentLevelCount => CurrentLevelNodes.Count;
 
+	private bool CurrentLevelHasTrashFooter
+	{
+		get
+		{
+			if (CurrentLevel == 0 || CurrentLevelCount != 41)
+			{
+				return false;
+			}
+
+			IReadOnlyList<AccessibleInventoryNode> parents = LevelNodes(CurrentLevel - 1);
+			AccessibleInventoryNode parent = parents[_selectionPath[CurrentLevel - 1]];
+			return parent.Id == "main-inventory" && CurrentLevelNodes[^1].Id == "trash-slot";
+		}
+	}
+
+	private int CurrentGridItemCount => CurrentLevelHasTrashFooter
+		? CurrentLevelCount - 1
+		: CurrentLevelCount;
+
+	private AccessibleInventoryLayout CurrentLevelLayout
+	{
+		get
+		{
+			if (CurrentLevel == 0)
+			{
+				return AccessibleInventoryLayout.None;
+			}
+
+			IReadOnlyList<AccessibleInventoryNode> parents = LevelNodes(CurrentLevel - 1);
+			int parentIndex = _selectionPath[CurrentLevel - 1];
+			return parents[parentIndex].Layout;
+		}
+	}
+
+	private int CurrentGridColumnCount => GridColumnCount(
+		CurrentGridItemCount,
+		ConfiguredColumnCount(CurrentLevelLayout));
+
 	private bool HandleInventoryTreeInput(KeyboardState keyboard)
 	{
 		if (CurrentNode.IsAction && CurrentEntry.IsAdjustable && NavigationTriggered(keyboard, Keys.Left))
 		{
 			AdjustCurrentEntry(forward: false);
+		}
+		else if (NavigationTriggered(keyboard, Keys.Left) && CurrentGridColumnCount > 1)
+		{
+			MoveHorizontal(-1);
 		}
 		else if (Pressed(keyboard, Keys.Left) && CurrentLevel > 0)
 		{
@@ -1095,6 +1162,10 @@ internal sealed class AccessibleInventoryController
 		else if (CurrentNode.IsAction && CurrentEntry.IsAdjustable && NavigationTriggered(keyboard, Keys.Right))
 		{
 			AdjustCurrentEntry(forward: true);
+		}
+		else if (NavigationTriggered(keyboard, Keys.Right) && CurrentGridColumnCount > 1)
+		{
+			MoveHorizontal(1);
 		}
 		else if (Pressed(keyboard, Keys.Right) && CurrentNode.OpensSubmenu)
 		{
@@ -1304,7 +1375,108 @@ internal sealed class AccessibleInventoryController
 		{
 			return;
 		}
+
+		int columns = CurrentGridColumnCount;
+		if (columns > 1)
+		{
+			GridPosition position = LocateCurrentGridIndex(CurrentLevelIndex, columns);
+			int length = CurrentGridColumnLength(columns, position.Column);
+			int row = (position.Row + direction + length) % length;
+			SetCurrentLevelSelection(CurrentGridIndexAt(columns, position.Column, row));
+			return;
+		}
+
 		SetCurrentLevelSelection((CurrentLevelIndex + direction + count) % count);
+	}
+
+	private void MoveHorizontal(int direction)
+	{
+		int columns = CurrentGridColumnCount;
+		if (columns <= 1)
+		{
+			return;
+		}
+
+		GridPosition position = LocateCurrentGridIndex(CurrentLevelIndex, columns);
+		int targetColumn = position.Column + direction;
+		if (targetColumn < 0)
+		{
+			CloseSubmenu();
+			return;
+		}
+		if (targetColumn >= columns)
+		{
+			return;
+		}
+
+		int targetRow = Math.Min(position.Row, CurrentGridColumnLength(columns, targetColumn) - 1);
+		SetCurrentLevelSelection(CurrentGridIndexAt(columns, targetColumn, targetRow));
+	}
+
+	private GridPosition LocateCurrentGridIndex(int index, int columns)
+	{
+		if (CurrentLevelHasTrashFooter && index == CurrentLevelCount - 1)
+		{
+			int finalColumn = columns - 1;
+			return new(finalColumn, GridColumnLength(CurrentGridItemCount, columns, finalColumn));
+		}
+
+		return LocateGridIndex(index, CurrentGridItemCount, columns);
+	}
+
+	private int CurrentGridColumnLength(int columns, int column)
+	{
+		int length = GridColumnLength(CurrentGridItemCount, columns, column);
+		return CurrentLevelHasTrashFooter && column == columns - 1 ? length + 1 : length;
+	}
+
+	private int CurrentGridIndexAt(int columns, int column, int row)
+	{
+		int itemLength = GridColumnLength(CurrentGridItemCount, columns, column);
+		if (CurrentLevelHasTrashFooter && column == columns - 1 && row == itemLength)
+		{
+			return CurrentLevelCount - 1;
+		}
+
+		return GridIndexAt(CurrentGridItemCount, columns, column, row);
+	}
+
+	private static int ConfiguredColumnCount(AccessibleInventoryLayout layout)
+	{
+		AriadneClientConfig config = ModContent.GetInstance<AriadneClientConfig>();
+		return layout switch
+		{
+			AccessibleInventoryLayout.Inventory => config.InventoryColumnCount,
+			AccessibleInventoryLayout.Hotbar => config.HotbarColumnCount,
+			AccessibleInventoryLayout.Crafting => config.CraftingColumnCount,
+			AccessibleInventoryLayout.Storage => config.StorageColumnCount,
+			AccessibleInventoryLayout.Shop => config.ShopColumnCount,
+			_ => 1,
+		};
+	}
+
+	private static int GridColumnCount(int count, int requestedColumns) =>
+		InventoryGridLogic.ColumnCount(count, requestedColumns);
+
+	private static int GridColumnLength(int count, int columns, int column)
+	{
+		return InventoryGridLogic.ColumnLength(count, columns, column);
+	}
+
+	private static int GridColumnStart(int count, int columns, int column)
+	{
+		return InventoryGridLogic.ColumnStart(count, columns, column);
+	}
+
+	private static GridPosition LocateGridIndex(int index, int count, int columns)
+	{
+		GridLocation location = InventoryGridLogic.Locate(index, count, columns);
+		return new(location.Column, location.Row);
+	}
+
+	private static int GridIndexAt(int count, int columns, int column, int row)
+	{
+		return InventoryGridLogic.IndexAt(count, columns, column, row);
 	}
 
 	private void SetCurrentLevelSelection(int index)
@@ -1811,11 +1983,17 @@ internal sealed class AccessibleInventoryController
 
 		int previousLevel = CurrentLevel;
 		string previousNpcDialog = Main.npcChatText;
+		bool conversationWasOpen = Main.LocalPlayer.TalkNPC is not null;
 		action();
 		if (CanNavigateInventory())
 		{
 			RebuildCategories();
-			SoundEngine.PlaySound(SoundID.MenuTick);
+			// Closing an inventory-backed NPC conversation supplies its own close cue.
+			// Do not immediately layer the generic activation tick over it.
+			if (!conversationWasOpen || Main.LocalPlayer.TalkNPC is not null)
+			{
+				SoundEngine.PlaySound(SoundID.MenuTick);
+			}
 			if (!string.IsNullOrWhiteSpace(Main.npcChatText) && Main.npcChatText != previousNpcDialog)
 			{
 				_lastSemanticState = GetSemanticState();
@@ -1859,7 +2037,7 @@ internal sealed class AccessibleInventoryController
 
 		AriadneMod.ScreenReader.Output(
 			$"Inventory tree help. {DescribeSelection()} {DescribeCurrentLevel()} " +
-			"At every level, Up and Down move through the current list and wrap. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Left and Right change an adjustable entry or navigate into and out of the tree. Control Tab and Control Shift Tab move sideways to the next and previous pane at your current depth, such as from the hotbar to the main inventory, coins, ammo, and crafting, returning you to wherever you last were in each. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions, which include moving the item between the hotbar and the inventory and storing it in or taking it from an open container. Enter performs the primary or normal left click action, and Shift Enter takes one item from a stack of more than one, or performs the normal right click action when the slot cannot be split. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
+			"In vertical lists, Up and Down move through the current list and wrap. In a configured multi-column pane, Up and Down wrap within the current column, Left and Right move between columns, and Left from the first column returns to the parent. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Control Tab and Control Shift Tab move sideways between panes such as the hotbar, main inventory, coins, ammo, and crafting, returning to wherever you last were in each. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions, which include moving the item between the hotbar and the inventory and storing it in or taking it from an open container. Enter performs the primary or normal left click action, and Shift Enter takes one item from a stack of more than one, or performs the normal right click action when the slot cannot be split. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
 	private void AnnounceSelection(bool includeLevel = false)
@@ -1895,7 +2073,17 @@ internal sealed class AccessibleInventoryController
 		AccessibleInventoryEntry? entry = node.Entry;
 		string unavailable = entry?.IsEnabled == false ? ", unavailable" : string.Empty;
 		string adjustable = entry?.IsAdjustable == true ? ", adjustable" : string.Empty;
-		string position = entry?.SelectionDetails is null ? $", {CurrentLevelIndex + 1} of {CurrentLevelCount}" : string.Empty;
+		string position;
+		int columns = CurrentGridColumnCount;
+		if (columns > 1)
+		{
+			GridPosition grid = LocateCurrentGridIndex(CurrentLevelIndex, columns);
+			position = $", row {grid.Row + 1} of {CurrentGridColumnLength(columns, grid.Column)}, column {grid.Column + 1} of {columns}";
+		}
+		else
+		{
+			position = entry?.SelectionDetails is null ? $", {CurrentLevelIndex + 1} of {CurrentLevelCount}" : string.Empty;
+		}
 		string details = entry?.SelectionDetails?.Invoke() ?? string.Empty;
 		if (!string.IsNullOrWhiteSpace(details))
 		{
@@ -1924,7 +2112,7 @@ internal sealed class AccessibleInventoryController
 		AccessibleInventoryNode node = CurrentNode;
 		string enabled = node.Entry?.IsEnabled.ToString() ?? string.Empty;
 		string held = node.IsAction ? DescribeItemBrief(Main.mouseItem) : string.Empty;
-		return $"tree|{CurrentLevel}|{string.Join('/', GetFocusPathIds())}|{node.Label()}|{enabled}|{CurrentLevelIndex}|{CurrentLevelCount}|{held}";
+		return $"tree|{CurrentLevel}|{string.Join('/', GetFocusPathIds())}|{node.Label()}|{enabled}|{CurrentLevelIndex}|{CurrentLevelCount}|{CurrentGridColumnCount}|{held}";
 	}
 
 	private string DescribeCurrentLevel()
@@ -2731,7 +2919,6 @@ internal sealed class AccessibleInventoryController
 		AccessibleExternalUISystem.SetNextIngameHierarchyLevel(hierarchyLevel);
 		AccessibleExternalUISystem.SetNextJourneyPowerCategory(category);
 		Main.CreativeMenu.ToggleMenu();
-		SoundEngine.PlaySound(SoundID.MenuOpen);
 	}
 
 	private static string DescribeJourneyInfectionSpread()
@@ -2756,9 +2943,22 @@ internal sealed class AccessibleInventoryController
 
 	private static string DescribeJourneyEnemyDifficulty()
 	{
-		return AccessibleExternalUISystem.TryGetJourneyEnemyDifficultySlider(out Func<float>? getValue, out _)
-			? $"Enemy difficulty, {Math.Clamp(getValue(), 0f, 1f):P0}"
-			: "Enemy difficulty";
+		CreativePowers.DifficultySliderPower power = CreativePowerManager.Instance.GetPower<CreativePowers.DifficultySliderPower>();
+		if (!AccessibleExternalUISystem.TryGetJourneyEnemyDifficultySlider(out _, out _))
+		{
+			return "Enemy difficulty";
+		}
+
+		float multiplier = Math.Clamp(power.StrengthMultiplierToGiveNPCs, 0.5f, 3f);
+		string landmark = MathF.Round(multiplier * 20f) switch
+		{
+			10f => ", Journey",
+			20f => ", Classic",
+			40f => ", Expert",
+			60f => ", Master",
+			_ => string.Empty,
+		};
+		return $"Enemy difficulty, x{multiplier:0.00}{landmark}";
 	}
 
 	private static bool CanAdjustJourneyEnemyDifficulty()
@@ -2770,9 +2970,15 @@ internal sealed class AccessibleInventoryController
 
 	private static void AdjustJourneyEnemyDifficulty(float offset)
 	{
-		if (AccessibleExternalUISystem.TryGetJourneyEnemyDifficultySlider(out Func<float>? getValue, out Action<float>? setValue))
+		if (AccessibleExternalUISystem.TryGetJourneyEnemyDifficultySlider(out _, out Action<float>? setValue))
 		{
-			setValue(Math.Clamp(getValue() + offset, 0f, 1f));
+			CreativePowers.DifficultySliderPower power = CreativePowerManager.Instance.GetPower<CreativePowers.DifficultySliderPower>();
+			float multiplier = MathF.Round((power.StrengthMultiplierToGiveNPCs + offset) * 20f) / 20f;
+			multiplier = Math.Clamp(multiplier, 0.5f, 3f);
+			float slider = multiplier <= 1f
+				? (multiplier - 0.5f) / 0.5f * 0.33f
+				: 0.33f + (multiplier - 1f) / 2f * 0.67f;
+			setValue(Math.Clamp(slider, 0f, 1f));
 			return;
 		}
 
@@ -3356,14 +3562,31 @@ internal sealed class AccessibleInventoryController
 	}
 }
 
+internal enum AccessibleInventoryLayout
+{
+	None,
+	Inventory,
+	Hotbar,
+	Crafting,
+	Storage,
+	Shop,
+}
+
+internal readonly record struct GridPosition(int Column, int Row);
+
 internal sealed class AccessibleInventoryNode
 {
-	internal AccessibleInventoryNode(string id, Func<string> label, List<AccessibleInventoryNode> children)
+	internal AccessibleInventoryNode(
+		string id,
+		Func<string> label,
+		List<AccessibleInventoryNode> children,
+		AccessibleInventoryLayout layout = AccessibleInventoryLayout.None)
 	{
 		Id = id;
 		Label = label;
 		FirstLetterName = () => label();
 		Children = children;
+		Layout = layout;
 	}
 
 	private AccessibleInventoryNode(AccessibleInventoryEntry entry)
@@ -3382,6 +3605,7 @@ internal sealed class AccessibleInventoryNode
 	internal Func<string?> FirstLetterName { get; }
 	internal AccessibleInventoryEntry? Entry { get; }
 	internal IReadOnlyList<AccessibleInventoryNode> Children { get; }
+	internal AccessibleInventoryLayout Layout { get; }
 	internal bool HasChildren => Children.Count > 0;
 	internal bool IsAction => Entry is not null;
 	internal bool OpensSubmenu => HasChildren || Entry?.OpensSubmenu == true;

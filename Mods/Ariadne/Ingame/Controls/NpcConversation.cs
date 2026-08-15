@@ -82,13 +82,23 @@ internal static class NpcConversation
 	/// Vanilla's own chat eligibility, including the captive NPCs that are freed by talking
 	/// to them rather than by any other interaction, and any mod override of either.
 	/// </summary>
-	private static bool CanChat(NPC npc)
+	internal static bool CanChat(NPC npc)
 	{
 		bool vanillaDefault = npc.townNPC ||
 			npc.type is NPCID.BoundGoblin or NPCID.BoundWizard or NPCID.BoundMechanic
 				or NPCID.WebbedStylist or NPCID.SleepingAngler or NPCID.BartenderUnconscious
 				or NPCID.SkeletonMerchant or NPCID.GolferRescue;
 		return NPCLoader.CanChat(npc).GetValueOrDefault(vanillaDefault);
+	}
+
+	internal static bool IsWithinConversationReach(Player player, NPC npc)
+	{
+		Rectangle reach = new(
+			(int)(player.position.X + player.width / 2 - Player.tileRangeX * 16),
+			(int)(player.position.Y + player.height / 2 - Player.tileRangeY * 16),
+			Player.tileRangeX * 16 * 2,
+			Player.tileRangeY * 16 * 2);
+		return reach.Intersects(npc.Hitbox);
 	}
 
 	/// <summary>

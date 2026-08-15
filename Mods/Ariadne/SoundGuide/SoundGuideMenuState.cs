@@ -17,11 +17,11 @@ namespace Ariadne.SoundGuide;
 /// The Ariadne Sound Guide: one option per cue the mod makes, with what the cue
 /// means and a way to hear it.
 ///
-/// Enter plays the variant the focused option names, moves that option on to the next
-/// one, and says which one that is, so a listener who only ever presses Enter hears
-/// every variant of a cue and always knows what the next press will play. Left and
-/// Right choose a variant deliberately and speak its name, which is the same idiom
-/// every other adjustable option in Ariadne uses.
+/// Focusing a cue previews the variant its option currently names. Enter moves the
+/// option on to its next variant, plays that sound, and says which one it is, so the
+/// spoken name and audition always describe the same selection. Left and Right choose
+/// a variant deliberately and speak its name, which is the same idiom every other
+/// adjustable option in Ariadne uses.
 /// </summary>
 internal sealed class SoundGuideMenuState : AccessibleMenuState
 {
@@ -72,12 +72,13 @@ internal sealed class SoundGuideMenuState : AccessibleMenuState
 			return;
 		}
 
-		// Only the stop belongs to the screen. Advancing the player is
-		// SoundGuideSystem's job, because a release has to outlive this screen.
+		// Every focus change previews the exact variant named by the newly focused
+		// option. Each play method stops the previous audition before it starts, while
+		// SoundGuideSystem keeps any graceful release alive after this screen closes.
 		if (SelectedIndex != _lastSelectedIndex)
 		{
 			_lastSelectedIndex = SelectedIndex;
-			_player.Stop(ModContent.GetInstance<AriadneClientConfig>());
+			PreviewSelection();
 		}
 	}
 
@@ -115,6 +116,9 @@ internal sealed class SoundGuideMenuState : AccessibleMenuState
 	protected override void AddContextHelpTopics(List<AccessibleHelpTopic> topics)
 	{
 		topics.Add(new(
+			Language.GetTextValue("Mods.Ariadne.SoundGuide.Help.FocusControl"),
+			Language.GetTextValue("Mods.Ariadne.SoundGuide.Help.Focus")));
+		topics.Add(new(
 			Language.GetTextValue("Mods.Ariadne.SoundGuide.Help.VariantsControl"),
 			Language.GetTextValue("Mods.Ariadne.SoundGuide.Help.Variants")));
 		topics.Add(new(
@@ -136,20 +140,32 @@ internal sealed class SoundGuideMenuState : AccessibleMenuState
 
 		int cueIndex = Math.Clamp(SelectedIndex, 0, _cues.Count - 1);
 		SoundGuideEntry cue = _cues[cueIndex];
+		if (cue.Variants.Count > 1)
+		{
+			_variants[cueIndex] = (_variants[cueIndex] + 1) % cue.Variants.Count;
+			RebuildEntries();
+		}
+
 		cue.Variants[_variants[cueIndex]].Play(
 			_player,
 			ModContent.GetInstance<AriadneClientConfig>());
-		if (cue.Variants.Count <= 1)
+		// The option has just moved on, so it says what is now sounding. Only the
+		// variant name: the option's own name has not changed.
+		Announce(cue.VariantName(_variants[cueIndex]));
+	}
+
+	private void PreviewSelection()
+	{
+		if (_player is null || _cues.Count == 0)
 		{
 			return;
 		}
 
-		_variants[cueIndex] = (_variants[cueIndex] + 1) % cue.Variants.Count;
-		RebuildEntries();
-		// The option has just moved on, so it says where it moved to, exactly as Left
-		// and Right do. Only the variant name: the option's own name has not changed
-		// and the cue it names is already sounding underneath the speech.
-		Announce(cue.VariantName(_variants[cueIndex]));
+		int cueIndex = Math.Clamp(SelectedIndex, 0, _cues.Count - 1);
+		SoundGuideEntry cue = _cues[cueIndex];
+		cue.Variants[_variants[cueIndex]].Play(
+			_player,
+			ModContent.GetInstance<AriadneClientConfig>());
 	}
 
 	private void CycleVariant(int cueIndex, int direction)

@@ -1,7 +1,11 @@
 #nullable enable
 
 using System.Collections.Generic;
+using Ariadne.Logic;
 using Terraria;
+using Terraria.Audio;
+using Terraria.GameContent.UI.States;
+using Terraria.ID;
 using Terraria.UI;
 
 namespace Ariadne.Menus;
@@ -12,6 +16,8 @@ internal sealed class AccessibleMenuController
 	private readonly bool _inGame;
 	private AccessibleMainMenuState? _root;
 	private UIState? _currentState;
+	private MultiplayerIntent? _pendingWorldSelectionIntent;
+	private int _navigationVersion;
 
 	internal AccessibleMenuController(bool inGame = false)
 	{
@@ -20,6 +26,7 @@ internal sealed class AccessibleMenuController
 
 	internal bool IsInGame => _inGame;
 	internal bool IsActive => _currentState is not null && IsShowing(_currentState);
+	internal int NavigationVersion => _navigationVersion;
 
 	internal bool IsShowing(UIState state)
 	{
@@ -47,6 +54,8 @@ internal sealed class AccessibleMenuController
 		{
 			_history.Push(current);
 		}
+		_navigationVersion++;
+		SoundEngine.PlaySound(SoundID.MenuOpen);
 		ShowState(state);
 	}
 
@@ -55,10 +64,15 @@ internal sealed class AccessibleMenuController
 		ShowState(state);
 	}
 
-	internal void Back()
+	internal void Back(bool playSound = true)
 	{
 		if (_history.TryPop(out UIState? previous))
 		{
+			_navigationVersion++;
+			if (playSound)
+			{
+				SoundEngine.PlaySound(SoundID.MenuClose);
+			}
 			ShowState(previous);
 			return;
 		}
@@ -71,6 +85,7 @@ internal sealed class AccessibleMenuController
 
 	internal void Close()
 	{
+		_navigationVersion++;
 		_history.Clear();
 		_currentState = null;
 		if (_inGame)
@@ -82,6 +97,46 @@ internal sealed class AccessibleMenuController
 	internal void ClearHistory()
 	{
 		_history.Clear();
+	}
+
+	internal void BeginWorldTransition(MultiplayerIntent returnIntent)
+	{
+		_navigationVersion++;
+		_history.Clear();
+		_currentState = null;
+		_pendingWorldSelectionIntent = returnIntent;
+		Main.MenuUI.SetState(null);
+	}
+
+	internal void CancelWorldTransition()
+	{
+		_pendingWorldSelectionIntent = null;
+	}
+
+	internal bool HandleWorldTransition()
+	{
+		WorldTransitionMenuAction action = WorldTransitionLogic.MenuAction(
+			_pendingWorldSelectionIntent is not null,
+			Main.gameMenu,
+			WorldGen.generatingWorld,
+			Main.menuMode,
+			Main.MenuUI.CurrentState is UIWorldLoad);
+
+		switch (action)
+		{
+			case WorldTransitionMenuAction.Hold:
+				return true;
+			case WorldTransitionMenuAction.RestoreWorldSelection:
+				MultiplayerIntent intent = _pendingWorldSelectionIntent!.Value;
+				_pendingWorldSelectionIntent = null;
+				ShowRoot(new AccessibleWorldSelectMenuState(this, intent));
+				return true;
+			case WorldTransitionMenuAction.Clear:
+				_pendingWorldSelectionIntent = null;
+				return false;
+			default:
+				return false;
+		}
 	}
 
 	internal void ShowConnectionStatus()

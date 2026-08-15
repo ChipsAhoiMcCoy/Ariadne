@@ -549,6 +549,7 @@ internal static class ScannerSnapshotBuilder
 
 	private static string GetTileName(int x, int y, ushort type)
 	{
+		Tile tile = Main.tile[x, y];
 		if (type < MapHelper.tileLookup.Length && MapHelper.tileLookup[type] != 0)
 		{
 			MapTile mapTile = MapHelper.CreateMapTile(x, y, byte.MaxValue);
@@ -557,7 +558,7 @@ internal static class ScannerSnapshotBuilder
 				string mapName = Lang.GetMapObjectName(mapTile.Type);
 				if (!string.IsNullOrWhiteSpace(mapName))
 				{
-					return mapName;
+					return HerbNameResolver.Describe(tile, mapName);
 				}
 			}
 		}
@@ -565,11 +566,12 @@ internal static class ScannerSnapshotBuilder
 		ModTile? modTile = TileLoader.GetTile(type);
 		if (modTile is not null)
 		{
-			return Humanize(modTile.Name);
+			return HerbNameResolver.Describe(tile, Humanize(modTile.Name));
 		}
 
 		string? vanillaName = TileID.Search.GetName(type);
-		return string.IsNullOrWhiteSpace(vanillaName) ? $"Tile {type}" : Humanize(vanillaName);
+		string fallback = string.IsNullOrWhiteSpace(vanillaName) ? $"Tile {type}" : Humanize(vanillaName);
+		return HerbNameResolver.Describe(tile, fallback);
 	}
 
 	private static string LiquidName(int liquidType) => liquidType switch

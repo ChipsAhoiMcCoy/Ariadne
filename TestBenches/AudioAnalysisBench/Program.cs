@@ -57,6 +57,7 @@ internal static class Program
 		ListeningGateOpensAndClosesWithoutAStep();
 		OutputIsCenteredAndSurvivesTheSixteenBitFallback();
 		AuthoredCuesSitAtOrUnderTheReference();
+		TerrainVoiceFiltersRemainLoudnessMatched();
 		TerrainBedLevelAgainstSurfaceCount();
 		RenderCostFitsTheFrameBudget();
 		WriteCombatCueAudition();
@@ -72,8 +73,8 @@ internal static class Program
 
 	/// <summary>
 	/// Everything the mod can sound at once, all of it at the closest range and every
-	/// slider at maximum: four hostile mobs across the field, a fully enclosed terrain
-	/// bed, the body beacon, and optionally a stride of footsteps and wall bumps
+	/// slider at maximum: the hostile voice, a fully enclosed terrain bed, the body
+	/// beacon, and optionally footsteps, wall bumps, and movement-navigation cues
 	/// landing on top. This is the loudest situation the bus can be put in.
 	/// </summary>
 	private sealed class WorstCase
@@ -81,14 +82,21 @@ internal static class Program
 		private readonly OfflineBus _bus = new();
 		private readonly float _footstepSeconds;
 		private readonly float _bumpSeconds;
+		private readonly float _navigationSeconds;
 		private readonly float _burstSeconds;
 		private int _footstepIndex;
 		private int _bumpIndex;
+		private int _navigationIndex;
 
-		internal WorstCase(float footstepSeconds = 0f, float bumpSeconds = 0f, float burstSeconds = 0f)
+		internal WorstCase(
+			float footstepSeconds = 0f,
+			float bumpSeconds = 0f,
+			float navigationSeconds = 0f,
+			float burstSeconds = 0f)
 		{
 			_footstepSeconds = footstepSeconds;
 			_bumpSeconds = bumpSeconds;
+			_navigationSeconds = navigationSeconds;
 			_burstSeconds = burstSeconds;
 
 			HostileMobBed mobs = new();
@@ -98,12 +106,7 @@ internal static class Program
 			_bus.Add(mobs);
 			_bus.Add(beacon);
 
-			float[] positions = [-1f, -0.35f, 0.35f, 1f];
-			float[] heights = [-0.6f, 0.2f, -0.2f, 0.6f];
-			for (int index = 0; index < 4; index++)
-			{
-				mobs.SetTarget(index, positions[index], heights[index], 1f);
-			}
+			mobs.SetTarget(0, 0.35f, -0.2f, 1f);
 			mobs.Apply(SliderVolume, Settings);
 			bed.SetEnclosed(SliderVolume, Settings);
 			beacon.SetTarget(0f, 0f, SliderVolume, Settings);
@@ -160,11 +163,20 @@ internal static class Program
 					playbackRatio: 1f,
 					volume: SliderVolume));
 			}
+			if (Crossed(frame, _navigationSeconds))
+			{
+				_bus.Add(new MonoOneShotVoice(
+					Cues.NavigationTones[_navigationIndex++ % Cues.NavigationTones.Length],
+					playbackRatio: 1f,
+					volume: SliderVolume));
+			}
 			if (Crossed(frame, _burstSeconds))
 			{
 				// Several cues landing on the same tick, which is what actually drives the
 				// limiter far enough down for its recovery to be worth measuring.
-				foreach (float[] tone in Cues.FootstepTones.Concat(Cues.BumpTones))
+				foreach (float[] tone in Cues.FootstepTones
+					.Concat(Cues.BumpTones)
+					.Concat(Cues.NavigationTones))
 				{
 					_bus.Add(new MonoOneShotVoice(tone, playbackRatio: 1f, volume: SliderVolume));
 				}
@@ -213,11 +225,11 @@ internal static class Program
 
 	private static void WorstCaseStaysUnderTheCeiling()
 	{
-		WorstCase scene = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f);
+		WorstCase scene = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f, navigationSeconds: 0.10f);
 		(float[] left, float[] right) = scene.Render(8f);
 		Wav.WriteStereo(Path.Combine(_wavDirectory, "worst-case.wav"), left, right, Rate);
 
-		WorstCase unlimited = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f);
+		WorstCase unlimited = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f, navigationSeconds: 0.10f);
 		(float[] rawLeft, float[] rawRight) = unlimited.RenderPreChain(8f);
 		float preChainPeak = Measure.Peak(rawLeft, rawRight);
 
@@ -244,7 +256,7 @@ internal static class Program
 	{
 		// Measured over the same eight seconds the peak check runs, so the reconstruction
 		// is asked about the loudest moment rather than an early one.
-		WorstCase scene = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f);
+		WorstCase scene = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f, navigationSeconds: 0.10f);
 		(float[] left, float[] right) = scene.Render(8f);
 
 		float samplePeak = Measure.Peak(left, right);
@@ -265,7 +277,7 @@ internal static class Program
 	{
 		// The limiter decides one gain per block and walks to it in a straight line, so
 		// if that gain were audible it would show as a step exactly at a block edge.
-		WorstCase scene = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f);
+		WorstCase scene = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f, navigationSeconds: 0.10f);
 		(float[] left, _) = scene.Render(6f);
 		float insideBlocks = Measure.LargestStep(left);
 		float atBoundaries = Measure.LargestStepAcrossBoundaries(left, OfflineBus.FramesPerBuffer);
@@ -433,6 +445,10 @@ internal static class Program
 		{
 			yield return (Cues.Bumps[index].Name, Cues.BumpTones[index], 0f);
 		}
+		for (int index = 0; index < Cues.Navigation.Length; index++)
+		{
+			yield return (Cues.Navigation[index].Name, Cues.NavigationTones[index], 0f);
+		}
 		// Pitched playback stretches or compresses the cue against a frame budget that
 		// is computed from the ratio, which is where a truncation would appear.
 		yield return ("footstep 1", Cues.FootstepTones[0], -0.5f);
@@ -512,10 +528,10 @@ internal static class Program
 		bus.Add(mobs);
 
 		MobSwarm swarm = new(mobCount);
-		SlotAssigner assigner = new(4);
+		SlotAssigner assigner = new(1);
 		MobState[] states = new MobState[mobCount];
-		bool[] changed = new bool[4];
-		MobState[] assigned = new MobState[4];
+		bool[] changed = new bool[1];
+		MobState[] assigned = new MobState[1];
 
 		int blocks = (int)(seconds * Rate) / OfflineBus.FramesPerBuffer;
 		float[] left = new float[blocks * OfflineBus.FramesPerBuffer];
@@ -537,7 +553,7 @@ internal static class Program
 				nextFrame += frameSeconds;
 				swarm.Sample(time, states);
 				assigner.Reconcile(states, changed, assigned);
-				for (int slot = 0; slot < 4; slot++)
+				for (int slot = 0; slot < 1; slot++)
 				{
 					if (changed[slot])
 					{
@@ -569,7 +585,7 @@ internal static class Program
 	}
 
 	/// <summary>
-	/// A crowd of hostile mobs circling the listener, so the four voices keep being
+	/// A crowd of hostile mobs circling the listener, so the hostile voice keeps being
 	/// handed from one mob to the next. A handover that drops the voice's level in a
 	/// single sample is a step to silence in the middle of a waveform, which is what a
 	/// click is; enough of them in a row is what crackling is.
@@ -579,10 +595,10 @@ internal static class Program
 		const float seconds = 8f;
 		const int settleSamples = 48_000;
 
-		// Four mobs cannot displace one another, so once the slots are filled this run
-		// has no handovers at all. Whatever it does to the signal is the signal, and it
+		// One mob cannot be displaced, so once the voice is filled this run has no
+		// handovers at all. Whatever it does to the signal is the signal, and it
 		// sets the bar a step has to beat to be something other than the waveform.
-		(float[] calmLeft, _, _) = RenderSwarm(4, seconds);
+		(float[] calmLeft, _, _) = RenderSwarm(1, seconds);
 		float naturalSlope = Measure.LargestStep(calmLeft.AsSpan(settleSamples));
 		float clickThreshold = MathF.Max(naturalSlope * 4f, 1e-6f);
 
@@ -666,7 +682,7 @@ internal static class Program
 	/// </summary>
 	private static void OutputIsCenteredAndSurvivesTheSixteenBitFallback()
 	{
-		WorstCase scene = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f);
+		WorstCase scene = new(footstepSeconds: 0.35f, bumpSeconds: 0.90f, navigationSeconds: 0.10f);
 		(float[] left, float[] right) = scene.Render(8f);
 
 		float leftOffset = Mean(left);
@@ -757,10 +773,10 @@ internal static class Program
 		beacon.SetTarget(0f, 0f, SliderVolume, Settings);
 
 		MobSwarm swarm = new(24);
-		SlotAssigner assigner = new(4);
+		SlotAssigner assigner = new(1);
 		MobState[] states = new MobState[24];
-		bool[] changed = new bool[4];
-		MobState[] assigned = new MobState[4];
+		bool[] changed = new bool[1];
+		MobState[] assigned = new MobState[1];
 
 		const float seconds = 8f;
 		int blocks = (int)(seconds * Rate) / OfflineBus.FramesPerBuffer;
@@ -771,8 +787,10 @@ internal static class Program
 		float nextFrame = 0f;
 		int footstepInterval = (int)(0.35f * Rate);
 		int bumpInterval = (int)(0.90f * Rate);
+		int navigationInterval = (int)(0.10f * Rate);
 		int footstepIndex = 0;
 		int bumpIndex = 0;
+		int navigationIndex = 0;
 
 		for (int block = 0; block < blocks; block++)
 		{
@@ -783,7 +801,7 @@ internal static class Program
 				nextFrame += 1f / 60f;
 				swarm.Sample(time, states);
 				assigner.Reconcile(states, changed, assigned);
-				for (int slot = 0; slot < 4; slot++)
+				for (int slot = 0; slot < 1; slot++)
 				{
 					if (changed[slot])
 					{
@@ -814,6 +832,11 @@ internal static class Program
 			{
 				bus.Add(new MonoOneShotVoice(
 					Cues.BumpTones[bumpIndex++ % Cues.BumpTones.Length], 1f, SliderVolume));
+			}
+			if (frame / navigationInterval != (frame - OfflineBus.FramesPerBuffer) / navigationInterval)
+			{
+				bus.Add(new MonoOneShotVoice(
+					Cues.NavigationTones[navigationIndex++ % Cues.NavigationTones.Length], 1f, SliderVolume));
 			}
 
 			bus.RenderBlock(blockLeft, blockRight, MasterVolume, canListen: true);
@@ -878,7 +901,8 @@ internal static class Program
 	{
 		foreach ((string name, float[] tone) in
 			Cues.Footsteps.Select((entry, index) => (entry.Name, Cues.FootstepTones[index]))
-			.Concat(Cues.Bumps.Select((entry, index) => (entry.Name, Cues.BumpTones[index]))))
+			.Concat(Cues.Bumps.Select((entry, index) => (entry.Name, Cues.BumpTones[index])))
+			.Concat(Cues.Navigation.Select((entry, index) => (entry.Name, Cues.NavigationTones[index]))))
 		{
 			OfflineBus bus = new();
 			bus.Add(new MonoOneShotVoice(tone, 1f, SliderVolume));
@@ -922,7 +946,7 @@ internal static class Program
 
 		{
 			// Each bed voice is authored three decibels under the reference so that a
-			// corridor — a side and the floor answering together — arrives on it.
+			// corridor — the two side voices answering together — arrives on it.
 			OfflineBus bus = new();
 			TerrainBed bed = new();
 			bus.Add(bed);
@@ -940,7 +964,7 @@ internal static class Program
 	private static void TerrainBedLevelAgainstSurfaceCount()
 	{
 		Console.WriteLine("      terrain bed level against the number of answering surfaces");
-		for (int surfaces = 1; surfaces <= 4; surfaces++)
+		for (int surfaces = 1; surfaces <= 3; surfaces++)
 		{
 			OfflineBus bus = new();
 			TerrainBed bed = new();
@@ -953,6 +977,18 @@ internal static class Program
 				$"        {surfaces} surface(s): {loudness,7:F2} LUFS  ({offset:+0.00;-0.00;0.00} dB " +
 				$"against the reference)");
 		}
+	}
+
+	private static void TerrainVoiceFiltersRemainLoudnessMatched()
+	{
+		(float side, float ceiling) = TerrainBed.CalibratedVoiceLoudness();
+		float target = TerrainBed.TargetVoiceLoudness;
+		float worstOffset = MathF.Max(MathF.Abs(side - target), MathF.Abs(ceiling - target));
+		Report(
+			"Retuned terrain filters remain loudness matched",
+			worstOffset <= 0.10f,
+			$"target {target:F2} LUFS; side {side:F2}, ceiling {ceiling:F2}; " +
+			$"worst offset {worstOffset:F2} dB; no falling-ground voice exists");
 	}
 
 	private static (float[] Left, float[] Right) RenderPreChain(OfflineBus bus, float seconds)
@@ -978,10 +1014,10 @@ internal static class Program
 		// The pump runs on the game thread, so the mix has to cost a small fraction of
 		// a frame. Anything approaching the frame itself is what an underrun sounds
 		// like: the voice running dry and the queue growing to cover it.
-		new WorstCase(0.35f, 0.90f).Render(1f);
+		new WorstCase(0.35f, 0.90f, 0.10f).Render(1f);
 
 		Stopwatch stopwatch = Stopwatch.StartNew();
-		new WorstCase(0.35f, 0.90f).Render(5f);
+		new WorstCase(0.35f, 0.90f, 0.10f).Render(5f);
 		stopwatch.Stop();
 
 		double costPerSecond = stopwatch.Elapsed.TotalMilliseconds / 5d;

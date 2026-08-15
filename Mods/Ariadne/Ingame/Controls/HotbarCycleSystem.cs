@@ -4,7 +4,9 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.Audio;
 using Terraria.GameInput;
+using Terraria.ID;
 using Terraria.ModLoader;
 using Ariadne.Audio;
 using Ariadne.Configs;
@@ -21,7 +23,8 @@ namespace Ariadne.Ingame.Controls;
 ///
 /// Nothing here speaks, normally. Changing the selection is enough on its own, because
 /// <see cref="HotbarAnnouncementSystem"/> already watches for exactly that and runs later
-/// in the same tick.
+/// in the same tick. The native hotbar selection tick is played here because this path
+/// bypasses Terraria's number-key selection handler.
 /// </summary>
 [Autoload(Side = ModSide.Client)]
 internal sealed class HotbarCycleSystem : ModSystem
@@ -82,7 +85,14 @@ internal sealed class HotbarCycleSystem : ModSystem
 			slot = 0;
 		}
 
-		player.selectedItem = (slot + step + slotCount) % slotCount;
+		int nextSlot = (slot + step + slotCount) % slotCount;
+		if (player.selectedItem == nextSlot)
+		{
+			return;
+		}
+
+		player.selectedItem = nextSlot;
+		SoundEngine.PlaySound(SoundID.MenuTick);
 
 		// A deliberate press deserves an answer even when the passive announcement is
 		// switched off. The two paths are exclusive on the same setting, so the slot is

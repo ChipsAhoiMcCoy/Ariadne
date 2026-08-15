@@ -6,12 +6,10 @@ using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
-using Terraria.Audio;
 using Terraria.GameContent;
 using Terraria.GameContent.UI.BigProgressBar;
 using Terraria.GameInput;
 using Terraria.Graphics.Light;
-using Terraria.ID;
 using Terraria.Localization;
 using Terraria.ModLoader;
 using Terraria.UI;
@@ -554,7 +552,7 @@ internal sealed class AccessibleKeyBindingsMenuState : AccessibleSettingsPageSta
 		}
 	}
 
-	private static string BindingText(List<string> bindings) => bindings.Count == 0 ? "unbound" : string.Join(", ", bindings);
+	private static string BindingText(List<string> bindings) => bindings.Count == 0 ? "unbound" : SpokenKeyName.Join(bindings);
 
 	internal static string FriendlyTriggerName(string trigger)
 	{
@@ -646,7 +644,6 @@ internal sealed class AccessibleKeyCaptureState : UIState
 
 	private void OpenHelp()
 	{
-		SoundEngine.PlaySound(SoundID.MenuOpen);
 		_controller.Navigate(new AccessibleContextHelpMenuState(
 			_controller,
 			$"Bind {TriggerName}",
@@ -668,7 +665,7 @@ internal sealed class AccessibleKeyCaptureState : UIState
 		{
 			bindings.Add(key.ToString());
 			AriadneMod.ScreenReader.Output(
-				$"{TriggerName} bound to {key}.{DescribeSharedControls(configuration, key)}");
+				$"{TriggerName} bound to {SpokenKeyName.Format(key)}.{DescribeSharedControls(configuration, key)}");
 		}
 		else
 		{
@@ -698,7 +695,7 @@ internal sealed class AccessibleKeyCaptureState : UIState
 			.ToList();
 		return shared.Count == 0
 			? string.Empty
-			: $" Warning: {key} also stays bound to {string.Join(", ", shared)}.";
+			: $" Warning: {SpokenKeyName.Format(key)} also stays bound to {string.Join(", ", shared)}.";
 	}
 }
 

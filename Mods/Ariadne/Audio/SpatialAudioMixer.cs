@@ -78,6 +78,11 @@ internal static class SpatialAudioDistanceGain
 	{
 		return Math.Clamp(proximity, 0f, 1f);
 	}
+
+	internal static float FromProximity(float proximity, bool attenuationEnabled)
+	{
+		return attenuationEnabled ? FromProximity(proximity) : 1f;
+	}
 }
 
 internal static class SpatialAudioTransformCalculator

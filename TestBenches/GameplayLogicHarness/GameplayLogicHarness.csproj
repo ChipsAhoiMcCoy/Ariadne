@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RollForward>LatestMajor</RollForward>
+    <_TmlPath Condition="'$(TML_INSTALL_PATH)' != ''">$(TML_INSTALL_PATH)</_TmlPath>
+    <_TmlPath Condition="'$(_TmlPath)' == ''">C:\Program Files (x86)\Steam\steamapps\common\tModLoader</_TmlPath>
+    <_ModRoot>$(MSBuildThisFileDirectory)..\..\Mods\Ariadne</_ModRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="$(_ModRoot)\Logic\AccessibilityLogic.cs" Link="Linked\AccessibilityLogic.cs" />
+    <Compile Include="$(_ModRoot)\Accessibility\SpokenKeyName.cs" Link="Linked\SpokenKeyName.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="FNA">
+      <HintPath>$(_TmlPath)\Libraries\FNA\1.0.0\FNA.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

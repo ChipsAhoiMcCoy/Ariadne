@@ -24,10 +24,21 @@ internal readonly record struct WorldTargetDescription(
 
 internal static class WorldTargetDescriber
 {
-	internal static WorldTargetDescription Describe(Point tilePosition, Player player)
+	internal static WorldTargetDescription Describe(
+		Point tilePosition,
+		Player player,
+		bool includeInteractableEntities = false)
 	{
 		int x = Math.Clamp(tilePosition.X, 1, Main.maxTilesX - 2);
 		int y = Math.Clamp(tilePosition.Y, 1, Main.maxTilesY - 2);
+		Vector2 worldPosition = new(x * 16f + 8f, y * 16f + 8f);
+		WorldInteractionTarget? interactiveEntity = includeInteractableEntities
+			? WorldInteractionResolver.FindEntityAt(worldPosition, player)
+			: null;
+		NPC? cursorNpc = includeInteractableEntities
+			? interactiveEntity?.Npc ?? WorldInteractionResolver.FindNpcAt(worldPosition, player)
+			: null;
+
 		Tile tile = Main.tile[x, y];
 		string semanticKey;
 		string target;
@@ -50,7 +61,7 @@ internal static class WorldTargetDescriber
 			target = LiquidName(tile.LiquidType);
 			semanticKey = $"liquid:{tile.LiquidType}";
 		}
-		else if (tile.WallType > 0 && player.HeldItem.hammer > 0)
+		else if (tile.WallType > 0 && (player.HeldItem.hammer > 0 || player.HeldItem.createWall > 0))
 		{
 			target = $"{GetWallName(tile.WallType)} background wall";
 			semanticKey = $"wall:{tile.WallType}";
@@ -88,8 +99,7 @@ internal static class WorldTargetDescriber
 			isInReach
 				? "Mods.Ariadne.Announcements.CursorInReach"
 				: "Mods.Ariadne.Announcements.CursorOutOfReach");
-		Vector2 worldPosition = new(x * 16f + 8f, y * 16f + 8f);
-		return new(
+		WorldTargetDescription tileDescription = new(
 			semanticKey,
 			target,
 			$"{target}, {reach}, {WorldPositionFormatter.DescribeRelativePosition(worldPosition)}.",
@@ -99,6 +109,56 @@ internal static class WorldTargetDescriber
 				WorldPositionFormatter.DescribeCoordinates(worldPosition),
 				coordinateReach),
 			isEmptySpace);
+		if (cursorNpc is null)
+		{
+			return tileDescription;
+		}
+
+		return DescribeEntity(cursorNpc, interactiveEntity, player, tileDescription.TargetText, isInReach);
+	}
+
+	private static WorldTargetDescription DescribeEntity(
+		NPC npc,
+		WorldInteractionTarget? interaction,
+		Player player,
+		string underlyingTarget,
+		bool tileIsInReach)
+	{
+		string name = npc.FullName;
+		if (CombatTargetStatus.DescribePart(npc) is string part)
+		{
+			name = $"{name}, {part}";
+		}
+
+		bool isInteractive = interaction is WorldInteractionTarget { IsEntity: true };
+		bool isInReach = interaction?.Kind == WorldInteractionTargetKind.OldShakingChest ||
+			interaction?.Kind == WorldInteractionTargetKind.ConversationNpc &&
+			NpcConversation.IsWithinConversationReach(player, npc);
+		string reach = isInReach ? "in reach" : "out of reach";
+		string condition = npc.dontTakeDamage || npc.immortal
+			? "invulnerable"
+			: $"{Math.Max(0, npc.life)} of {Math.Max(1, npc.lifeMax)} health";
+		string over = string.Equals(underlyingTarget, "Empty space", StringComparison.OrdinalIgnoreCase)
+			? string.Empty
+			: $", over {underlyingTarget}";
+		string summary = isInteractive
+			? $"{name}, {reach}{over}"
+			: $"{name}, {condition}{over}";
+		bool coordinateIsInReach = isInteractive ? isInReach : tileIsInReach;
+		string coordinateReach = Language.GetTextValue(
+			coordinateIsInReach
+				? "Mods.Ariadne.Announcements.CursorInReach"
+				: "Mods.Ariadne.Announcements.CursorOutOfReach");
+		return new(
+			$"npc:{npc.whoAmI}:{npc.type}:{interaction?.Kind.ToString() ?? "description"}",
+			name,
+			$"{summary}, {WorldPositionFormatter.DescribeRelativePosition(npc.Center)}.",
+			Language.GetTextValue(
+				"Mods.Ariadne.Announcements.CursorCoordinates",
+				summary,
+				WorldPositionFormatter.DescribeCoordinates(npc.Center),
+				coordinateReach),
+			IsEmptySpace: false);
 	}
 
 	private static string GetObjectName(int x, int y, Tile tile, Point16 root)
@@ -111,6 +171,7 @@ internal static class WorldTargetDescriber
 
 	internal static string GetTileName(int x, int y, ushort type)
 	{
+		Tile tile = Main.tile[x, y];
 		string? treeName = GetTreeName(x, y, type);
 		if (treeName is not null)
 		{
@@ -125,7 +186,7 @@ internal static class WorldTargetDescriber
 				string mapName = Lang.GetMapObjectName(mapTile.Type);
 				if (!string.IsNullOrWhiteSpace(mapName))
 				{
-					return mapName;
+					return HerbNameResolver.Describe(tile, mapName);
 				}
 			}
 		}
@@ -133,11 +194,12 @@ internal static class WorldTargetDescriber
 		ModTile? modTile = TileLoader.GetTile(type);
 		if (modTile is not null)
 		{
-			return Humanize(modTile.Name);
+			return HerbNameResolver.Describe(tile, Humanize(modTile.Name));
 		}
 
 		string? vanillaName = TileID.Search.GetName(type);
-		return string.IsNullOrWhiteSpace(vanillaName) ? $"Tile {type}" : Humanize(vanillaName);
+		string fallback = string.IsNullOrWhiteSpace(vanillaName) ? $"Tile {type}" : Humanize(vanillaName);
+		return HerbNameResolver.Describe(tile, fallback);
 	}
 
 	private static string? GetTreeName(int x, int y, ushort type)

@@ -7,6 +7,7 @@ using Terraria;
 using Terraria.Audio;
 using Terraria.ID;
 using Terraria.ModLoader;
+using Ariadne.Ingame.Controls;
 using Ariadne.Ingame.Status;
 using Ariadne.Menus;
 
@@ -34,6 +35,9 @@ internal sealed class AccessibleWorldPlayerStatusMenuState : AccessibleMenuState
 		entries.Add(Status(
 			() => $"World events: {WorldEvents()}",
 			() => "Reports conspicuous active world events that Terraria ordinarily announces or displays."));
+		entries.Add(Status(
+			() => $"Celestial pillars: {PillarSummary()}",
+			() => "Lists every active Celestial Pillar and its global shield count. Direction and distance remain part of nearby combat targeting."));
 		entries.Add(Status(
 			() => PlayerStatusReadout.MoonPhaseLine(),
 			() => "The moon's current phase, which any player can see in the night sky. Unlike the other clock and sky readings this one does not require its Sextant."));
@@ -112,7 +116,29 @@ internal sealed class AccessibleWorldPlayerStatusMenuState : AccessibleMenuState
 		if (Main.snowMoon) events.Add("Frost Moon");
 		if (Main.slimeRain) events.Add("Slime Rain");
 		if (Main.invasionType > 0) events.Add(InvasionName(Main.invasionType));
+		if (ActivePillars().Count > 0) events.Add("Celestial Pillars");
 		return events.Count == 0 ? "none" : string.Join(", ", events);
+	}
+
+	private static List<NPC> ActivePillars() => Main.npc
+		.Where(npc => npc.active && CombatTargetStatus.LunarShieldSlot(npc.type) >= 0)
+		.OrderBy(npc => CombatTargetStatus.LunarShieldSlot(npc.type))
+		.ToList();
+
+	private static string PillarSummary()
+	{
+		List<NPC> pillars = ActivePillars();
+		if (pillars.Count == 0)
+		{
+			return "none";
+		}
+
+		return string.Join(", ", pillars.Select(pillar =>
+		{
+			CombatTargetStatus.TryGetLunarShield(pillar, out int strength, out int maximum);
+			string shield = strength > 0 ? $"shield {strength} of {maximum}" : "shield down";
+			return $"{pillar.FullName}, {shield}";
+		}));
 	}
 
 	private static string InvasionName(int type) => type switch
@@ -139,18 +165,8 @@ internal sealed class AccessibleWorldPlayerStatusMenuState : AccessibleMenuState
 
 	private static string SummonSummary(Player player)
 	{
-		int minions = 0;
-		int sentries = 0;
-		foreach (Projectile projectile in Main.projectile)
-		{
-			if (!projectile.active || projectile.owner != player.whoAmI)
-			{
-				continue;
-			}
-			if (projectile.sentry) sentries++;
-			else if (projectile.minion) minions++;
-		}
-		return $"{minions} {Plural(minions, "minion")}, {sentries} {Plural(sentries, "sentry")}";
+		SummonStatusSnapshot snapshot = SummonStatusSnapshot.Capture(player);
+		return $"{snapshot.MinionCount} {Plural(snapshot.MinionCount, "minion")}, {snapshot.SentryCount} {Plural(snapshot.SentryCount, "sentry")}";
 	}
 
 	private static List<NPC> ActiveBosses() => Main.npc
@@ -353,14 +369,6 @@ internal sealed class AccessibleBuffStatusMenuState : AccessibleMenuState
 
 internal sealed class AccessibleSummonStatusMenuState : AccessibleMenuState
 {
-	private readonly record struct SummonStatus(
-		string Name,
-		bool IsSentry,
-		int Count,
-		float Slots,
-		int MinimumDamage,
-		int MaximumDamage);
-
 	internal AccessibleSummonStatusMenuState(AccessibleMenuController controller)
 		: base(controller)
 	{
@@ -376,7 +384,7 @@ internal sealed class AccessibleSummonStatusMenuState : AccessibleMenuState
 			description: () => "Minions consume the slot amount defined by the summoned projectile.",
 			role: "status"));
 
-		List<SummonStatus> summons = CaptureSummons(player);
+		List<SummonInstanceStatus> summons = SummonStatusSnapshot.Capture(player).Groups;
 		int sentryCount = summons.Where(summon => summon.IsSentry).Sum(summon => summon.Count);
 		entries.Add(new(
 			() => $"Sentry capacity: {sentryCount} active of {player.maxTurrets}",
@@ -392,9 +400,9 @@ internal sealed class AccessibleSummonStatusMenuState : AccessibleMenuState
 			return;
 		}
 
-		foreach (SummonStatus summon in summons)
+		foreach (SummonInstanceStatus summon in summons)
 		{
-			SummonStatus captured = summon;
+			SummonInstanceStatus captured = summon;
 			entries.Add(new(
 				() => SummonLabel(captured),
 				description: () => SummonDescription(captured),
@@ -402,34 +410,14 @@ internal sealed class AccessibleSummonStatusMenuState : AccessibleMenuState
 		}
 	}
 
-	private static List<SummonStatus> CaptureSummons(Player player)
-	{
-		return Main.projectile
-			.Where(projectile =>
-				projectile.active &&
-				projectile.owner == player.whoAmI &&
-				(projectile.minion || projectile.sentry))
-			.GroupBy(projectile => (projectile.type, projectile.sentry))
-			.Select(group => new SummonStatus(
-				group.First().Name,
-				group.Key.sentry,
-				group.Count(),
-				group.Sum(projectile => projectile.minionSlots),
-				group.Min(projectile => projectile.damage),
-				group.Max(projectile => projectile.damage)))
-			.OrderBy(summon => summon.IsSentry)
-			.ThenBy(summon => summon.Name)
-			.ToList();
-	}
-
-	private static string SummonLabel(SummonStatus summon)
+	private static string SummonLabel(SummonInstanceStatus summon)
 	{
 		string count = $"{summon.Count} active";
 		string slots = summon.IsSentry ? string.Empty : $", {FormatSlots(summon.Slots)} slots";
 		return $"{summon.Name}: {count}{slots}";
 	}
 
-	private static string SummonDescription(SummonStatus summon)
+	private static string SummonDescription(SummonInstanceStatus summon)
 	{
 		string kind = summon.IsSentry ? "Sentry" : "Minion";
 		string damage = summon.MinimumDamage == summon.MaximumDamage

@@ -28,29 +28,42 @@ internal sealed class ScreenReaderService : IDisposable
 	private PrismBackendOutput? _backendOutput;
 	private PrismBackendStop? _backendStop;
 	private PrismErrorString? _errorString;
+	private bool _loggedInitializationFailure;
 
 	internal bool IsAvailable => _backend != 0;
+
+	internal bool CanRetry { get; private set; }
 
 	internal string? BackendName { get; private set; }
 
 	internal string? FailureReason { get; private set; }
 
-	internal void Initialize(Mod mod)
+	internal bool Initialize(Mod mod, bool logFailure = true)
 	{
 		_mod = mod;
+		if (IsAvailable)
+		{
+			return true;
+		}
+
+		DisposeNativeResources();
+		FailureReason = null;
+		CanRetry = false;
 
 		if (Main.dedServ)
 		{
 			FailureReason = "Speech is disabled on dedicated servers.";
-			return;
+			return false;
 		}
 
 		if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || RuntimeInformation.ProcessArchitecture != Architecture.X64)
 		{
 			FailureReason = "This build currently includes Prism only for 64-bit Windows.";
 			mod.Logger.Warn(FailureReason);
-			return;
+			return false;
 		}
+
+		CanRetry = true;
 
 		try
 		{
@@ -81,13 +94,22 @@ internal sealed class ScreenReaderService : IDisposable
 			}
 
 			BackendName = Marshal.PtrToStringUTF8(backendName(_backend)) ?? "Unknown";
+			FailureReason = null;
+			CanRetry = false;
+			_loggedInitializationFailure = false;
 			mod.Logger.Info($"Prism {PrismVersion} initialized with the {BackendName} backend.");
+			return true;
 		}
 		catch (Exception exception)
 		{
 			FailureReason = exception.Message;
-			mod.Logger.Error("Prism screen-reader initialization failed. Menu speech will be unavailable.", exception);
+			if (logFailure && !_loggedInitializationFailure)
+			{
+				mod.Logger.Error("Prism screen-reader initialization failed. Ariadne will keep trying to restore speech.", exception);
+				_loggedInitializationFailure = true;
+			}
 			DisposeNativeResources();
+			return false;
 		}
 	}
 
@@ -146,6 +168,7 @@ internal sealed class ScreenReaderService : IDisposable
 	{
 		DisposeNativeResources();
 		_mod = null;
+		CanRetry = false;
 		GC.SuppressFinalize(this);
 	}
 

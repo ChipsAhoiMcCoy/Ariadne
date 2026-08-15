@@ -153,7 +153,11 @@ internal sealed class WorldCursorSystem : ModSystem
 				? ProjectToViewportEdge(player.Center, _cursorState.AimDirection)
 				: _cursorState.PrecisionWorld;
 		_coordinates.ApplyWorldPosition(ClampWorldPosition(aimPoint), player);
-		MirrorActionKeybinds();
+		bool secondaryInteractionHandled = HandleSecondaryInteraction(
+			smartEnabled,
+			player,
+			_cursorState.PrecisionTile);
+		MirrorActionKeybinds(secondaryInteractionHandled);
 		DisableNativeGamepadLockOn();
 
 		if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
@@ -321,7 +325,10 @@ internal sealed class WorldCursorSystem : ModSystem
 	private void HandlePrecisionStep(Point tilePosition, bool interrupt)
 	{
 		Player player = Main.LocalPlayer;
-		WorldTargetDescription description = WorldTargetDescriber.Describe(tilePosition, player);
+		WorldTargetDescription description = WorldTargetDescriber.Describe(
+			tilePosition,
+			player,
+			includeInteractableEntities: true);
 		AriadneClientConfig config = ModContent.GetInstance<AriadneClientConfig>();
 		_cursorEarcon?.Play(
 			tilePosition,
@@ -438,12 +445,67 @@ internal sealed class WorldCursorSystem : ModSystem
 			MathHelper.Clamp(worldPosition.Y, 16f, Math.Max(16f, Main.maxTilesY * 16f - 17f)));
 	}
 
-	private void MirrorActionKeybinds()
+	private static bool HandleSecondaryInteraction(
+		bool smartEnabled,
+		Player player,
+		Point precisionTile)
+	{
+		bool held = PlayerInput.Triggers.Current.MouseRight ||
+			AriadneMod.SecondaryUseKeybind?.Current == true;
+		bool pressed = PlayerInput.Triggers.JustPressed.MouseRight ||
+			AriadneMod.SecondaryUseKeybind?.JustPressed == true;
+		if (!held || AriadneMod.CombatTargetModifierKeybind?.Current == true)
+		{
+			return false;
+		}
+
+		WorldInteractionTarget target = smartEnabled
+			? WorldInteractionResolver.ResolveSmart(player)
+			: WorldInteractionResolver.ResolvePrecision(precisionTile, player);
+		if (!target.IsEntity)
+		{
+			return false;
+		}
+
+		// Keep the underlying tile suppressed for the entire hold, not just its first
+		// frame. Otherwise an Old Shaking Chest without a key would announce the
+		// requirement on press and let an overlapping track receive the held button on
+		// the following update.
+		if (!pressed)
+		{
+			return true;
+		}
+
+		bool handled = WorldInteractionResolver.TryActivate(
+			target,
+			player,
+			out string? failureAnnouncement);
+		if (!string.IsNullOrWhiteSpace(failureAnnouncement))
+		{
+			AriadneMod.ScreenReader.Output(failureAnnouncement);
+		}
+		return handled;
+	}
+
+	private void MirrorActionKeybinds(bool suppressSecondary)
 	{
 		_nativePrimaryTrigger = CaptureTrigger(primary: true);
 		_nativeSecondaryTrigger = CaptureTrigger(primary: false);
 		MergeAction(AriadneMod.UseHeldItemKeybind, primary: true);
-		MergeAction(AriadneMod.SecondaryUseKeybind, primary: false);
+		if (suppressSecondary)
+		{
+			// A direct entity interaction replaces this press completely. Keep the
+			// restored snapshot empty too, so opening a conversation in this hook cannot
+			// put the physical press back during PreUpdatePlayers and also hit a tile.
+			_nativeSecondaryTrigger = default;
+			PlayerInput.Triggers.Current.MouseRight = false;
+			PlayerInput.Triggers.JustPressed.MouseRight = false;
+			PlayerInput.Triggers.JustReleased.MouseRight = false;
+		}
+		else
+		{
+			MergeAction(AriadneMod.SecondaryUseKeybind, primary: false);
+		}
 		Main.mouseLeft = PlayerInput.Triggers.Current.MouseLeft;
 		Main.mouseRight = PlayerInput.Triggers.Current.MouseRight;
 	}
@@ -540,10 +602,14 @@ internal sealed class WorldCursorSystem : ModSystem
 		string radar = DescribeModBinding(AriadneMod.RadarSweepKeybind);
 		string hotbarPrevious = DescribeModBinding(AriadneMod.HotbarPreviousKeybind);
 		string hotbarNext = DescribeModBinding(AriadneMod.HotbarNextKeybind);
+		string housing = DescribeModBinding(AriadneMod.HousingQueryKeybind);
 		AriadneMod.ScreenReader.Output(
 			$"Gameplay controls. Move with {movement}. Aim with {aiming}. " +
 			$"Use the held item with {use}, and secondary use or interact with {secondary}. " +
 			$"Terraria's Smart Cursor binding keeps its configured toggle or hold behavior. " +
+			$"With the cursor unlocked, interactable entities directly under it take priority, then the exact tile; Smart Cursor uses Terraria's genuine interaction target first. " +
+			$"Each manual unlocked-cursor step also describes the NPC, creature, critter, or enemy directly under the cursor. Noninteractable mobs never consume secondary use or block the exact tile behind them. " +
+			$"Centered rising and falling ticks mark vertical tile boundaries while climbing a rope-like tile. A spatial reassuring or warning cue classifies ledges beginning at three tiles, using the configured reachable lookahead. Spatial landmark cues identify platforms, minecart tracks, and ropes crossed along the path. " +
 			$"Press {targetCycle} to lock the nearest enemy, and press it again to step " +
 			$"outward to the next one; pressing it on the farthest enemy releases the lock " +
 			$"and recenters the cursor. " +
@@ -554,9 +620,9 @@ internal sealed class WorldCursorSystem : ModSystem
 			$"Press {status} for a character status readout, {scanner} to scan the visible surroundings, and {wallTones} to toggle wall tones. " +
 			$"The radar sounds a bell for anything the scanner would list as it comes into range: one strike for ore, " +
 			$"two for a container, three for a creature, four for anything else you have armed. " +
-			$"Press {radar} to sound everything in range and name it, or hold {targetModifier} with {radar} to switch passive radar off for this session. " +
+			$"Press {radar} repeatedly to step through a fixed nearest-first snapshot one contact and matching ping at a time; it resets after four idle seconds and always includes dropped items. Hold {targetModifier} with {radar} to switch passive radar off for this session. " +
 			$"Hold {targetModifier} with {hotbarPrevious} or {hotbarNext} to step through the hotbar. " +
-			$"Hold {targetModifier} with {waypoints} to open waypoints. Hold {freecam} to move a free camera, and release it to return to your body. " +
+			$"Press {housing} for the semantic Housing Query cursor over visible enclosed rooms. Hold {targetModifier} with {waypoints} to open waypoints. Hold {freecam} to move a free camera, and release it to return to your body. " +
 			$"Press {ContextHelpChord.Name} to repeat this help.");
 	}
 
@@ -569,7 +635,7 @@ internal sealed class WorldCursorSystem : ModSystem
 
 		return string.Join(", ", triggers.Select(trigger =>
 			configuration.KeyStatus.TryGetValue(trigger, out List<string>? bindings) && bindings.Count > 0
-				? string.Join(" or ", bindings)
+				? SpokenKeyName.Join(bindings, " or ")
 				: $"{trigger} unbound"));
 	}
 
@@ -585,7 +651,7 @@ internal sealed class WorldCursorSystem : ModSystem
 			return "unbound";
 		}
 		List<string> bindings = keybind.GetAssignedKeys(InputMode.Keyboard);
-		return bindings.Count == 0 ? "unbound" : string.Join(" or ", bindings);
+		return bindings.Count == 0 ? "unbound" : SpokenKeyName.Join(bindings, " or ");
 	}
 
 	private bool Pressed(KeyboardState keyboard, Keys key)

@@ -39,8 +39,9 @@
     <Compile Include="$(_ModRoot)\Audio\PcmPlaybackVoice.cs" Link="Linked\PcmPlaybackVoice.cs" />
     <Compile Include="$(_ModRoot)\Audio\SpatialOneShotVoice.cs" Link="Linked\SpatialOneShotVoice.cs" />
     <Compile Include="$(_ModRoot)\Audio\ImpactToneSynthesizer.cs" Link="Linked\ImpactToneSynthesizer.cs" />
-    <Compile Include="$(_ModRoot)\Audio\ModulatedTriangleToneVoice.cs" Link="Linked\ModulatedTriangleToneVoice.cs" />
-    <Compile Include="$(_ModRoot)\Audio\HostileMobToneVoiceBank.cs" Link="Linked\HostileMobToneVoiceBank.cs" />
+    <Compile Include="$(_ModRoot)\Audio\NavigationCueDesigns.cs" Link="Linked\NavigationCueDesigns.cs" />
+    <Compile Include="$(_ModRoot)\Audio\HostileMobToneVoice.cs" Link="Linked\HostileMobToneVoice.cs" />
+    <Compile Include="$(_ModRoot)\Audio\HostileMobToneBed.cs" Link="Linked\HostileMobToneBed.cs" />
     <Compile Include="$(_ModRoot)\Audio\CombatTargetCueVoice.cs" Link="Linked\CombatTargetCueVoice.cs" />
     <Compile Include="$(_ModRoot)\Audio\WallToneVoice.cs" Link="Linked\WallToneVoice.cs" />
     <Compile Include="$(_ModRoot)\Audio\BodyBeaconVoice.cs" Link="Linked\BodyBeaconVoice.cs" />

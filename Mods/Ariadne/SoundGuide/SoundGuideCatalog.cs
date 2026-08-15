@@ -147,6 +147,40 @@ internal static class SoundGuideCatalog
 					config))),
 
 			new SoundGuideEntry(
+				"ElevationMovement",
+				config => config.ElevationMovementCueVolumePercent,
+				new("Ascending", (player, config) => player.PlayNavigationCue(
+					NavigationCueKind.Ascending,
+					config)),
+				new("Descending", (player, config) => player.PlayNavigationCue(
+					NavigationCueKind.Descending,
+					config))),
+
+			new SoundGuideEntry(
+				"DropWarnings",
+				config => config.DropWarningVolumePercent,
+				new("Safe", (player, config) => player.PlayNavigationCue(
+					NavigationCueKind.SafeDrop,
+					config)),
+				new("Unsafe", (player, config) => player.PlayNavigationCue(
+					NavigationCueKind.UnsafeDrop,
+					config))),
+
+			new SoundGuideEntry(
+				"TraversalLandmarks",
+				config => config.TraversalLandmarkCueVolumePercent,
+				new("Platform", (player, config) => player.PlayNavigationCue(NavigationCueKind.Platform, config)),
+				new("MinecartTrack", (player, config) => player.PlayNavigationCue(NavigationCueKind.MinecartTrack, config)),
+				new("Rope", (player, config) => player.PlayNavigationCue(NavigationCueKind.Rope, config))),
+
+			new SoundGuideEntry(
+				"HousingRooms",
+				config => config.CursorEarconVolumePercent,
+				new("Suitable", (player, config) => player.PlayNavigationCue(NavigationCueKind.HousingSuitable, config)),
+				new("Occupied", (player, config) => player.PlayNavigationCue(NavigationCueKind.HousingOccupied, config)),
+				new("Unsuitable", (player, config) => player.PlayNavigationCue(NavigationCueKind.HousingUnsuitable, config))),
+
+			new SoundGuideEntry(
 				"Heartbeat",
 				config => config.LowHealthHeartbeatVolumePercent,
 				new("Half", (player, config) => player.PlayHeartbeat(0, config)),
@@ -264,9 +298,6 @@ internal static class SoundGuideCatalog
 					config)),
 				new("Ceiling", (player, config) => player.SustainWallTones(
 					[new(WallToneRegion.Ceiling, Upward, 0.2f)],
-					config)),
-				new("Floor", (player, config) => player.SustainWallTones(
-					[new(WallToneRegion.Floor, Downward, 0.35f)],
 					config))),
 
 			new SoundGuideEntry(

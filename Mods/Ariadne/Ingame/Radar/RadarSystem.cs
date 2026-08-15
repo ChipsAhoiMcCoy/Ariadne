@@ -10,6 +10,8 @@ using Ariadne.Audio;
 using Ariadne.Configs;
 using Ariadne.Ingame.Controls;
 using Ariadne.Ingame.Freecam;
+using Ariadne.Ingame.Scanner;
+using Ariadne.Logic;
 
 namespace Ariadne.Ingame.Radar;
 
@@ -55,13 +57,12 @@ internal sealed class RadarSystem : ModSystem
 
 	private const int MaxQueuedPings = 4;
 
-	private const int MaxManualSweepContacts = 6;
-
-	private const int MaxSpokenContacts = 4;
+	private const ulong ManualSnapshotResetTicks = 4UL * 60UL;
 
 	private readonly RadarContactTracker _tracker = new();
 	private readonly Queue<PendingPing> _pending = new();
-	private readonly List<string> _spokenNames = [];
+	private readonly List<RadarContact> _manualSnapshot = [];
+	private readonly FixedSnapshotCursor _manualCursor = new();
 	private RadarPingSound? _sound;
 	private int _ticksUntilSweep;
 	private int _ticksUntilNextPing;
@@ -187,19 +188,32 @@ internal sealed class RadarSystem : ModSystem
 	}
 
 	/// <summary>
-	/// Everything in range, sounded again on request and named as it goes. The names come
-	/// at once rather than behind the pings: the listener asked a question and an answer
-	/// that arrives two seconds later does not read as an answer. Both are ordered
-	/// nearest first, so the spoken list and the pings under it stay in step.
+	/// Captures a nearest-first snapshot on the first press, then advances exactly one
+	/// frozen contact per press. Four idle seconds starts a fresh snapshot.
 	/// </summary>
 	private void PerformManualSweep(AriadneClientConfig config)
 	{
 		_pending.Clear();
 		_ticksUntilNextPing = 0;
-
-		IReadOnlyList<RadarContact> contacts =
-			_tracker.Capture(SpatialObserverContext.Current, config);
-		if (contacts.Count == 0)
+		ulong now = Main.GameUpdateCount;
+		bool expired = _manualCursor.ShouldRefresh(
+			_manualSnapshot.Count,
+			now,
+			ManualSnapshotResetTicks);
+		if (expired)
+		{
+			_manualSnapshot.Clear();
+			_manualSnapshot.AddRange(_tracker.Capture(
+				SpatialObserverContext.Current,
+				config,
+				includeDroppedItems: true));
+			_manualCursor.Refresh(_manualSnapshot.Count, now);
+			foreach (RadarContact contact in _manualSnapshot)
+			{
+				_tracker.MarkSeen(contact);
+			}
+		}
+		if (_manualSnapshot.Count == 0)
 		{
 			// Spoken whatever the speech setting, because silence would be the same
 			// answer as a key that did nothing.
@@ -207,20 +221,13 @@ internal sealed class RadarSystem : ModSystem
 			return;
 		}
 
-		// A sweep tells the listener about everything in range, so discovery has nothing
-		// left to report and should not repeat it a half second later.
-		foreach (RadarContact contact in contacts)
-		{
-			_tracker.MarkSeen(contact);
-		}
-
-		int sounding = Math.Min(contacts.Count, MaxManualSweepContacts);
-		for (int index = 0; index < sounding; index++)
-		{
-			Enqueue(contacts[index]);
-		}
-
-		Announce(config, DescribeSweep(contacts));
+		RadarContact selected = _manualSnapshot[_manualCursor.Advance(now)];
+		_sound?.Play(
+			selected.WorldPosition,
+			RadarPing.ForPipCount(selected.PipCount),
+			selected.Proximity,
+			config);
+		Announce(config, DescribeContact(selected));
 	}
 
 	/// <summary>
@@ -230,23 +237,15 @@ internal sealed class RadarSystem : ModSystem
 	/// contacts are named at once here, so anything said about one of them is said four
 	/// times over, and the level of the ping already answered how far away it is.
 	/// </summary>
-	private string DescribeSweep(IReadOnlyList<RadarContact> contacts)
+	private static string DescribeContact(in RadarContact contact)
 	{
-		_spokenNames.Clear();
-		int named = Math.Min(contacts.Count, MaxSpokenContacts);
-		for (int index = 0; index < named; index++)
-		{
-			_spokenNames.Add(Language.GetTextValue(
-				"Mods.Ariadne.Radar.SweepContact",
-				contacts[index].Name,
-				WorldPositionFormatter.DescribeDirection(contacts[index].WorldPosition)));
-		}
-
-		string spoken = string.Join(" ", _spokenNames);
-		int remaining = contacts.Count - named;
-		return remaining > 0
-			? Language.GetTextValue("Mods.Ariadne.Radar.SweepSummaryWithMore", spoken, remaining)
-			: Language.GetTextValue("Mods.Ariadne.Radar.SweepSummary", spoken);
+		string name = contact.Target.Kind == ScannerTargetKind.DroppedItem && contact.Target.Stack > 1
+			? $"{contact.Name}, stack of {contact.Target.Stack}"
+			: contact.Name;
+		return Language.GetTextValue(
+			"Mods.Ariadne.Radar.SweepContact",
+			name,
+			WorldPositionFormatter.DescribeDirection(contact.WorldPosition));
 	}
 
 	private void TogglePassiveRadar()
@@ -338,6 +337,8 @@ internal sealed class RadarSystem : ModSystem
 	{
 		_tracker.Reset();
 		_pending.Clear();
+		_manualSnapshot.Clear();
+		_manualCursor.Reset();
 		_ticksUntilSweep = 0;
 		_ticksUntilNextPing = 0;
 		if (resetPassiveToggle)

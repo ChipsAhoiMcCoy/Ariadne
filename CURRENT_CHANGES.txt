@@ -1,0 +1,212 @@
+Current changes
+===============
+
+Terrain sensing and sound
+-------------------------
+[ ] A lone block directly overhead is detected as a ceiling.
+[ ] Blocks two tiles up and two tiles sideways are not detected as ceilings.
+[ ] Ceiling detection still works with inverted gravity, slopes, and half-blocks.
+[ ] Pass-through platforms are not treated as ceilings.
+[ ] Side walls use a broad 280-1,800 Hz white-noise filter with Q 1.0.
+[ ] Ceilings use a narrow 900-4,200 Hz white-noise filter with Q 3.0.
+[ ] Falling ground uses a broad low 140-850 Hz white-noise filter with Q 0.7.
+[ ] The three terrain timbres have similar perceived loudness.
+
+Interaction targeting
+---------------------
+[ ] An unlocked cursor activates an interactable entity directly under it first.
+[ ] Otherwise, an unlocked cursor activates the exact tile or multi-tile object.
+[ ] A nearby NPC does not steal interaction from a targeted chest above platforms.
+[ ] Smart Cursor honors Terraria's genuine tile or NPC target first.
+[ ] Smart Cursor uses proximity conversation only when it has no genuine target.
+[ ] Chests, dressers, signs, tracks, and modded objects retain normal right-click behavior.
+[ ] An Old Shaking Chest can be targeted through overlapping minecart tracks.
+[ ] An Old Shaking Chest consumes a Golden Key from inventory or an open Void Bag.
+[ ] An Old Shaking Chest transforms and synchronizes correctly in multiplayer.
+[ ] Without a Golden Key, Ariadne announces that one is required.
+[ ] Unlocked-cursor speech names a resolved entity instead of an overlapping tile.
+
+Elevation movement cues
+-----------------------
+[ ] Climbing upward across a vertical tile boundary on a rope-like tile plays a brief rising centered tick.
+[ ] Climbing downward across a vertical tile boundary on a rope-like tile plays a brief falling centered tick.
+[ ] Ordinary jumps, falls, mounts, grappling-hook pulls, and other vertical movement remain silent.
+[ ] Detaching and grabbing another climbable does not report crossings accumulated in between.
+[ ] No more than ten elevation ticks play per second during fast climbing.
+[ ] Excess crossings during fast climbing are discarded instead of queued.
+[ ] Teleports and other large discontinuities do not produce elevation ticks.
+[ ] Elevation ticks stop or reset during pause, focus loss, menus, death, and world transitions.
+
+Ledge and drop warnings
+-----------------------
+[ ] No ledge cue plays for a one- or two-tile drop.
+[ ] A hazard-free three-tile drop plays one safe-drop cue.
+[ ] A fall that would cause damage plays one unsafe-drop cue.
+[ ] Spikes and modded hurting tiles play the unsafe-drop cue.
+[ ] Lava and shimmer play the unsafe-drop cue.
+[ ] No bottom within the configured detection range plays the unsafe-drop cue.
+[ ] Wings, no-fall effects, extraFall, and fall-negating tiles affect safety correctly.
+[ ] Holding toward the same ledge does not repeat its cue.
+[ ] Retreating from the edge re-arms the cue.
+[ ] Changing direction re-arms the cue.
+[ ] Returning to supported terrain re-arms the cue.
+[ ] Drop warnings run only while grounded and intentionally moving left or right.
+
+Configuration and Sound Guide
+-----------------------------
+[ ] Elevation movement cues is available in Ariadne's accessible config editor and defaults to on.
+[ ] Elevation movement cue volume defaults to 70 percent.
+[ ] Drop warnings is available in Ariadne's accessible config editor and defaults to on.
+[ ] Drop warning volume defaults to 70 percent.
+[ ] Drop detection range defaults to 30 tiles and accepts 3-60 tiles.
+[ ] The Sound Guide auditions ascending, descending, safe-drop, and unsafe-drop cues.
+[ ] The Sound Guide auditions the newly separated wall, ceiling, and falling-ground filters.
+[ ] Localization, config tooltips, gameplay help, and README descriptions are correct.
+
+Automated verification already completed
+----------------------------------------
+[x] Tools/build.ps1 completed with 0 errors and 0 warnings.
+[x] The AudioAnalysisBench project built with 0 errors and 0 warnings.
+[x] Every expanded audio-analysis check passed.
+[x] Worst-case simultaneous playback stayed below full scale with a 0.9721 true peak.
+[x] Retuned side, ceiling, and falling-ground voices measured at the same calibrated loudness.
+[x] Hostile-enemy runtime behavior, waveform, count, settings, and documentation were not changed.
+
+
+Inventory customization and accessibility fixes
+===============================================
+
+Configurable inventory columns
+------------------------------
+[ ] Inventory, hotbar, crafting, storage, and shop column settings all default to one.
+[ ] Every column setting accepts values from 1 through 10 in Ariadne's accessible config editor.
+[ ] One column preserves the previous ordering, announcements, and controls.
+[ ] Two columns split forty inventory entries into two columns of twenty.
+[ ] Four columns split forty inventory entries into four columns of ten.
+[ ] Three columns balance uneven entry counts without losing or duplicating an entry.
+[ ] Up and Down wrap within the current column.
+[ ] Left and Right preserve the row when changing columns and clamp safely in a shorter column.
+[ ] Left from the first column returns to the parent; Right at the final column stays put.
+[ ] Focus announces row and column in a multi-column pane.
+[ ] Home, End, Page Up, Page Down, letter navigation, item actions, and Control Tab still work.
+[ ] Dynamic crafting lists retain a valid selection when their recipe count changes.
+[ ] Equipment, vanity, accessory, dye, pet, mount, and hook panes remain vertical lists without a column setting.
+
+Accessible configuration save behavior
+--------------------------------------
+[ ] Saving Ariadne settings disables Save and Revert when no further changes remain.
+[ ] Leaving immediately after a successful save returns normally without asking to discard changes.
+[ ] Editing after a save re-enables Save and prompts on exit only while those later edits remain unsaved.
+
+Manage Mods and speech recovery
+-------------------------------
+[ ] Escape with no effective enabled-mod changes returns without reloading.
+[ ] Toggling a mod twice back to its initial state does not trigger a reload.
+[ ] With tModLoader automatic reload enabled, Escape announces and applies changed mod states.
+[ ] With automatic reload disabled, Escape returns and reports that a reload remains pending.
+[ ] The explicit reload action remains available.
+[ ] Reloading with Ariadne disabled requires confirmation and clearly warns that speech will stop.
+[ ] Speech pauses during a normal mod reload and recovers without restarting tModLoader.
+[ ] A transient Prism failure retries quickly for ten attempts and then every five seconds without log spam.
+
+Journey difficulty
+------------------
+[ ] Journey enemy difficulty is reported as a multiplier rather than a percentage.
+[ ] Left and Right adjust in exact 0.05x steps from 0.50x through 3.00x.
+[ ] 0.50x, 1.00x, 2.00x, and 3.00x are labeled Journey, Classic, Expert, and Master.
+
+Celestial Pillars and Moon Lord
+-------------------------------
+[ ] World Events reports Celestial Pillars while any pillar is active.
+[ ] World Status lists every active pillar and its shield count or shield-down state.
+[ ] Pillar status does not reveal global direction or distance.
+[ ] Shielded pillars remain available to combat targeting.
+[ ] Closed but living Moon Lord eyes and the protected core remain targetable.
+[ ] Destroyed Moon Lord head and hand shells disappear from targeting instead of reporting reset full health.
+[ ] True Eyes of Cthulhu are never offered as damage targets.
+[ ] The exposed core is preferred over temporarily protected candidates and reports its real health.
+[ ] A destroyed held part is replaced instead of being remembered for reacquisition.
+
+Summon announcements
+--------------------
+[ ] Summon announcements default to on and are available in the accessible config editor.
+[ ] A newly summoned minion is named with the active total and used minion slots.
+[ ] A newly summoned sentry is named with the active total and sentry capacity.
+[ ] Multiple summons created in one update produce one noninterrupting announcement.
+[ ] Repeated same-type summons still provide immediate feedback.
+[ ] Decorative multipart projectiles are not counted as separate minions.
+[ ] Removals, world synchronization, menus, pause, death, and focus loss do not produce delayed summon speech.
+[ ] Immediate summon feedback and the requested status menu report the same totals.
+
+Unlocked-cursor NPC descriptions
+--------------------------------
+[ ] Manual unlocked-cursor steps identify town NPCs, creatures, critters, and hostile mobs under the exact point.
+[ ] Descriptions include useful health or invulnerability state and the underlying tile or object.
+[ ] An interactable entity wins description priority when NPC hitboxes overlap.
+[ ] A noninteractable mob never consumes secondary use or prevents activation of the exact underlying tile.
+[ ] A stationary cursor does not announce moving NPCs automatically.
+[ ] Existing chest, track, NPC conversation, and Old Shaking Chest interaction precedence still works.
+
+Documentation and packaging
+---------------------------
+[ ] README behavior descriptions and config localization are accurate.
+[ ] A release installs from Ariadne.tmod alone and includes Prism and localization.
+[ ] A bare Ariadne.dll and another user's enabled.json are not used as the distribution package.
+
+Deferred ideas (not implemented in this batch)
+----------------------------------------------
+[x] Classic-versus-modern inventory switching remains deferred; configurable semantic columns are the only inventory-layout change.
+[x] A dedicated build mode remains deferred while unlocked-cursor building and interaction are play-tested.
+
+Automated verification already completed for this batch
+-------------------------------------------------------
+[x] Tools/build.ps1 completed with 0 errors and 0 warnings after the runtime implementation pass.
+[x] Hostile-enemy sound behavior and settings were not changed.
+
+Reload audio-bus hotfix
+-----------------------
+[x] Ariadne closes its FNA audio stream on the main thread before its accessible reload flow begins.
+[x] A reload initiated through another tModLoader path marshals audio-bus disposal back to the main thread.
+[x] Cleanup failures are contained so they cannot abort the entire mod unload.
+[ ] Disable a non-Ariadne mod, reload, and confirm that Ariadne speech returns without a tModLoader restart warning.
+
+NPC conversation close cue
+--------------------------
+[x] Closing a conversation no longer follows Terraria's native close cue with a generic menu-open cue.
+[x] Automatic closure when an NPC becomes unavailable no longer adds a second close cue.
+[ ] Use Close conversation and Escape, and confirm that each produces exactly one closing sound.
+
+Menu transition sound audit
+---------------------------
+[x] Forward and backward Ariadne menu navigation now own one directionally correct cue in the shared controller.
+[x] Closing a root in-game menu relies on Terraria's native close cue instead of adding another one first.
+[x] Text submission and cancellation no longer add a close cue before callbacks that may already close the UI.
+[x] Journey power opening, category return, and menu closing no longer layer Ariadne cues over Terraria's native toggle or category sounds.
+[x] Selecting a Guide material keeps the item-grab sound without adding a menu-close cue.
+[x] Leaving two config levels after discarding pending changes produces one close cue rather than two.
+[x] Inventory-backed NPC conversation closure no longer layers a generic activation tick over its close cue.
+[x] Tools/build.ps1 completed with 0 errors and 0 warnings after the menu-sound audit.
+[ ] Check Escape and explicit Back/Close actions in settings, config, scanner, waypoints, map, NPC, sign, dresser, stylist, Guide, and text-entry screens; each transition should produce one cue.
+[ ] Open and close Journey powers and move into and out of power categories; each action should produce only Terraria's single native cue.
+Hotbar cycle selection cue
+--------------------------
+[x] Alt+Q and Alt+E play Terraria's native hotbar selection tick after changing slots.
+[x] The cue plays only when the selected slot actually changes, matching the number keys.
+[ ] Compare Alt+Q/E with 1-0 over occupied and empty slots and at both wraparound edges.
+
+Sound Guide focus previews
+--------------------------
+[x] Moving focus to a Sound Guide option automatically auditions its currently named variant.
+[x] Moving away stops an ongoing audition before the newly focused sound begins.
+[x] Enter advances first, then plays and announces the newly selected variant without replaying the previous one.
+[ ] Arrow through one-shot, repeating, and sustained cues and confirm each preview starts once.
+[ ] Confirm Home, End, Page Up, Page Down, and letter navigation preview the resulting focus.
+Author privacy
+--------------
+[x] Ariadne's displayed and packaged author name is ChipsAhoyMcCoy.
+[x] Repository content and filenames contain no occurrence of the previous personal name.
+[x] Builds use an identity-neutral staging path so packaged metadata does not expose the Windows profile name.
+[x] Repository-local Git author settings use ChipsAhoyMcCoy and the pseudonymous no-reply email.
+[x] All 46 affected historical commits use the pseudonymous author and committer identity locally.
+[x] Force-push rewritten branches to replace the identity-bearing history previously stored on GitHub.
+[ ] Confirm Manage Mods and Mod Information display ChipsAhoyMcCoy after reloading the package.

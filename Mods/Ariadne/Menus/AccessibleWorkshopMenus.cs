@@ -15,6 +15,7 @@ using Terraria.IO;
 using Terraria.Localization;
 using Terraria.ModLoader;
 using Terraria.Social;
+using Ariadne.Audio;
 
 namespace Ariadne.Menus;
 
@@ -98,9 +99,11 @@ internal sealed class AccessibleManageModsMenuState : AccessibleMenuState
 	private static readonly Type? OrganizerType = typeof(Mod).Assembly.GetType("Terraria.ModLoader.Core.ModOrganizer");
 	private static readonly MethodInfo? FindMods = OrganizerType?.GetMethod("FindMods", StaticMembers);
 	private static readonly MethodInfo? DeleteMod = OrganizerType?.GetMethod("DeleteMod", StaticMembers);
-	private static readonly MethodInfo? ReloadMods = typeof(Terraria.ModLoader.ModLoader).GetMethod("Reload", StaticMembers);
+	private static readonly FieldInfo? AutoReloadRequiredMods = typeof(Terraria.ModLoader.ModLoader)
+		.GetField("autoReloadRequiredModsLeavingModsScreen", StaticMembers);
 	private readonly Dictionary<string, int> _actionIndices = new(StringComparer.OrdinalIgnoreCase);
 	private List<LocalModView> _mods = [];
+	private bool _loaded;
 
 	internal AccessibleManageModsMenuState(AccessibleMenuController controller)
 		: base(controller)
@@ -111,7 +114,11 @@ internal sealed class AccessibleManageModsMenuState : AccessibleMenuState
 
 	public override void OnActivate()
 	{
-		_mods = LoadMods();
+		if (!_loaded)
+		{
+			_mods = LoadMods();
+			_loaded = true;
+		}
 		base.OnActivate();
 	}
 
@@ -150,6 +157,24 @@ internal sealed class AccessibleManageModsMenuState : AccessibleMenuState
 				role: "mod with actions",
 				adjustmentAnnouncement: () => ActionAdjustmentAnnouncement(CurrentAction())));
 		}
+	}
+
+	protected override void GoBack()
+	{
+		if (!HasEnabledChanges())
+		{
+			base.GoBack();
+			return;
+		}
+
+		if (AutoReloadRequiredMods?.GetValue(null) as bool? != false)
+		{
+			RequestReload();
+			return;
+		}
+
+		Controller.Back();
+		AriadneMod.ScreenReader.Output(Language.GetTextValue("Mods.Ariadne.Menus.ManageMods.ReloadPending"));
 	}
 
 	private List<AccessibleMenuEntry> GetActionEntries(LocalModView mod)
@@ -225,13 +250,33 @@ internal sealed class AccessibleManageModsMenuState : AccessibleMenuState
 
 	private void Reload()
 	{
-		if (ReloadMods is null)
+		RequestReload();
+	}
+
+	private bool HasEnabledChanges() => _mods.Any(mod => mod.Enabled != mod.InitialEnabled);
+
+	private void RequestReload()
+	{
+		LocalModView? ariadne = _mods.FirstOrDefault(mod =>
+			string.Equals(mod.Name, "Ariadne", StringComparison.OrdinalIgnoreCase));
+		if (ariadne is { Enabled: false })
 		{
-			Announce("Reload is unavailable because this tModLoader version changed its mod loader API.");
+			Controller.Navigate(new AccessibleConfirmationMenuState(
+				Controller,
+				Language.GetTextValue("Mods.Ariadne.Menus.ManageMods.DisableTitle"),
+				Language.GetTextValue("Mods.Ariadne.Menus.ManageMods.DisableWarning"),
+				BeginReload));
 			return;
 		}
+
+		BeginReload();
+	}
+
+	private void BeginReload()
+	{
+		AudioBusSystem.PrepareForModReload();
 		Controller.ClearHistory();
-		ReloadMods.Invoke(null, null);
+		Controller.Replace(new AccessibleReloadModsStatusState(Controller));
 	}
 
 	private static void OpenModsFolder()
@@ -280,6 +325,7 @@ internal sealed class AccessibleManageModsMenuState : AccessibleMenuState
 		{
 			DeleteMod.Invoke(null, [mod.Source]);
 			_actionIndices.Remove(mod.Name);
+			_mods.Remove(mod);
 			Announce($"Deleted {mod.DisplayName}.");
 			Controller.Back();
 		}
@@ -389,6 +435,44 @@ internal sealed class AccessibleManageModsMenuState : AccessibleMenuState
 					description: () => _mod.Homepage));
 			}
 		}
+	}
+}
+
+internal sealed class AccessibleReloadModsStatusState : AccessibleMenuState
+{
+	private const int ReloadDelayTicks = 120;
+	private int _ticksRemaining = ReloadDelayTicks;
+	private bool _started;
+
+	internal AccessibleReloadModsStatusState(AccessibleMenuController controller)
+		: base(controller)
+	{
+	}
+
+	protected override string Title => Language.GetTextValue("Mods.Ariadne.Menus.ManageMods.ReloadTitle");
+
+	protected override bool CanGoBack => false;
+
+	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
+	{
+	}
+
+	public override void OnActivate()
+	{
+		base.OnActivate();
+		AriadneMod.ScreenReader.Output(Language.GetTextValue("Mods.Ariadne.Menus.ManageMods.ReloadAnnouncement"));
+	}
+
+	public override void Update(GameTime gameTime)
+	{
+		base.Update(gameTime);
+		if (_started || --_ticksRemaining > 0)
+		{
+			return;
+		}
+
+		_started = true;
+		Main.menuMode = 10006;
 	}
 }
 

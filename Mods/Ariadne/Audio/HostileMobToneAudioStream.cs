@@ -52,7 +52,11 @@ internal sealed class HostileMobToneAudioStream : IAudioBusSource, IDisposable
 
 		// Terraria's sound slider is applied once, by the bus, for the whole mix.
 		float masterGain = Math.Clamp(config.HostileMobToneVolumePercent / 100f, 0f, 1f);
-		_bed.SetTarget(target, masterGain, config.ToSpatialAudioSettings());
+		_bed.SetTarget(
+			target,
+			masterGain,
+			config.ToSpatialAudioSettings(),
+			config.SpatialAudioDistanceAttenuationEnabled);
 		_isReset = false;
 	}
 

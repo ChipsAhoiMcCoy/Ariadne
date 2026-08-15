@@ -68,10 +68,11 @@ internal sealed class RadarContactTracker
 	/// </summary>
 	internal IReadOnlyList<RadarContact> Capture(
 		SpatialObserverSnapshot observer,
-		AriadneClientConfig config)
+		AriadneClientConfig config,
+		bool includeDroppedItems = false)
 	{
 		_contacts.Clear();
-		BuildArmedCategories(config);
+		BuildArmedCategories(config, includeDroppedItems);
 		if (_armed.Count == 0)
 		{
 			ForgetOutOfRange(observer, config.RadarRangeTiles);
@@ -180,7 +181,7 @@ internal sealed class RadarContactTracker
 	/// the scanner's own routing; Hunter touches nothing but NPCs. Enemies are held out by
 	/// default because the hostile tone already follows the nearest one.
 	/// </summary>
-	private void BuildArmedCategories(AriadneClientConfig config)
+	private void BuildArmedCategories(AriadneClientConfig config, bool includeDroppedItems)
 	{
 		_armed.Clear();
 		Arm(config.RadarDetectsOresAndValuables, ScannerCategoryKind.OresAndValuables);
@@ -188,7 +189,7 @@ internal sealed class RadarContactTracker
 		Arm(config.RadarDetectsCreatures, ScannerCategoryKind.Npcs);
 		Arm(config.RadarDetectsCreatures, ScannerCategoryKind.PassiveCreatures);
 		Arm(config.RadarDetectsEnemies, ScannerCategoryKind.Enemies);
-		Arm(config.RadarDetectsDroppedItems, ScannerCategoryKind.DroppedItems);
+		Arm(includeDroppedItems || config.RadarDetectsDroppedItems, ScannerCategoryKind.DroppedItems);
 		Arm(config.RadarDetectsLiquids, ScannerCategoryKind.Liquids);
 		Arm(config.RadarDetectsTreesAndPlants, ScannerCategoryKind.TreesAndLargePlants);
 		Arm(config.RadarDetectsPlacedObjects, ScannerCategoryKind.PlacedObjects);

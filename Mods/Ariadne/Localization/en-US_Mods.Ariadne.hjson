@@ -15,6 +15,7 @@ Keybinds: {
 	RadarSweep.DisplayName: Radar Sweep (hold Ariadne Modifier to toggle passive radar)
 	HotbarPrevious.DisplayName: Previous Hotbar Slot (hold Ariadne Modifier)
 	HotbarNext.DisplayName: Next Hotbar Slot (hold Ariadne Modifier)
+	HousingQuery.DisplayName: Housing Query
 }
 
 Radar: {
@@ -24,6 +25,21 @@ Radar: {
 	SweepEmpty: No items or entities in range.
 	PassiveOn: Radar on
 	PassiveOff: Radar off
+}
+
+HerbStages: {
+	Immature: immature
+	Mature: mature, not blooming
+	Blooming: blooming, ready to harvest
+}
+
+TraversalLandmarks: {
+	Platform: Platform
+	MinecartTrack: Minecart track
+	Rope: Rope
+	Above: above
+	Below: below
+	Announcement: "{0} {1}"
 }
 
 Announcements: {
@@ -47,6 +63,21 @@ Announcements: {
 	BreathRemaining: Breath {0} percent
 	BreathEmpty: Out of breath, drowning
 	ItemPickedUp: Picked up {0}
+	Summoned: Summoned {0}.
+	MinionCapacity: Minions: {0} active, {1} of {2} slots used.
+	SentryCapacity: Sentries: {0} active of {1} capacity.
+	SpeechRestored: Speech restored.
+	OldShakingChestNeedsKey: A Golden Key is required to unlock the Old Shaking Chest.
+}
+
+Menus: {
+	ManageMods: {
+		ReloadPending: Enabled mod changes are saved and still require a mod reload.
+		DisableTitle: Disable Ariadne and reload?
+		DisableWarning: Reloading with Ariadne disabled stops its speech and accessibility support. Speech cannot recover until Ariadne is enabled and mods are reloaded again.
+		ReloadTitle: Applying Mod Changes
+		ReloadAnnouncement: Reloading mods. Speech will pause and recover automatically.
+	}
 }
 
 CombatTarget: {
@@ -152,16 +183,18 @@ SoundGuide: {
 	Summary: Hear every sound Ariadne makes and what each one tells you.
 	Label: "{0}: {1}"
 	VariantPosition: Variant {0} of {1}.
-	ControlHint: Enter: play
-	Instructions: Press Enter to play the sound the focused option names. Each press then moves that option on to its next variant and says which one, so pressing Enter repeatedly hears all of them. Left and Right Arrow keys choose a variant without playing it. Everything plays at the volumes you have set, so this is what the world will sound like.
+	ControlHint: Enter: next sound
+	Instructions: Moving to an option automatically plays the variant it currently names. Press Enter to move to the next variant, play it, and say its name, so pressing Enter repeatedly hears all of them. Left and Right Arrow keys choose a variant without playing it. Everything plays at the volumes you have set, so this is what the world will sound like.
 	Unavailable: Nothing can be played because Ariadne's audio bus is unavailable. See the tModLoader client log.
 	GameVolumeOff: Nothing will be heard until Terraria's Sound volume is raised above zero.
 	CueVolumeOff: Nothing will be heard until this cue's volume is raised above zero in Ariadne's settings.
 
 	Help: {
-		Enter: Play the sound the focused option names, then move that option on to its next variant and speak it. Pressing Enter repeatedly walks every variant of a cue and returns to the first. What is spoken after each press is what the next press will play.
+		Enter: Move the focused cue to its next variant, play that sound, and speak its name. Pressing Enter repeatedly walks every variant and returns to the first. What is spoken after each press is the sound playing now.
+		FocusControl: Moving between sounds
+		Focus: Focusing an option automatically plays the variant named in that option. Moving away stops its ongoing audition before the newly focused sound begins.
 		VariantsControl: Left and Right Arrow keys
-		Variants: Choose which variant of the focused cue Enter will play. The variant is spoken but nothing is played, so you can pick one deliberately instead of stepping through them.
+		Variants: Choose the current variant of the focused cue. Its name is spoken without playing it; moving away and back previews that selection, while Enter advances from it and plays the following variant.
 		VolumesControl: Volumes
 		Volumes: Every cue plays at the loudness you have configured for it, underneath Terraria's own Sound volume. A cue turned down to zero stays silent here too, and the focused option says so rather than leaving you with silence to interpret.
 	}
@@ -207,6 +240,80 @@ SoundGuide: {
 				Ceiling: {
 					Name: Head against the ceiling
 					Detail: Pitched up, the mirror of a landing.
+				}
+			}
+		}
+
+		ElevationMovement: {
+			Name: Climbing elevation
+			Description: A brief centered tonal tick whenever you cross a vertical tile boundary while attached to a rope or similar climbable tile. The direction of the pitch sweep says whether you are climbing upward or downward. Ordinary jumps, falls, mounts, grappling-hook pulls, and other vertical movement stay silent.
+
+			Variants: {
+				Ascending: {
+					Name: Ascending
+					Detail: A short rising tick when climbing upward on a rope-like tile.
+				}
+
+				Descending: {
+					Name: Descending
+					Detail: A short falling tick when climbing downward on a rope-like tile. It marks crossed tile boundaries at up to ten ticks per second.
+				}
+			}
+		}
+
+		DropWarnings: {
+			Name: Ledge and drop warnings
+			Description: One spatial cue from the ledge when you walk toward a reachable drop beginning at three tiles. The configurable lookahead searches ahead independently from the downward landing range. The result stays latched at that edge instead of repeating while you hold the same direction, and re-arms after you retreat, change direction or return to supported terrain.
+
+			Variants: {
+				Safe: {
+					Name: Safe drop
+					Detail: A light reassuring rise. A known landing was found within range, contains no dangerous liquid or hurting tile, and is safe from fall damage for the player's current equipment and state.
+				}
+
+				Unsafe: {
+					Name: Unsafe drop
+					Detail: A low rough fall. Damaging distance, lava, shimmer, spikes or modded hurting tiles, and a bottom that cannot be found within range all share this warning.
+				}
+			}
+		}
+
+		TraversalLandmarks: {
+			Name: Traversal landmarks
+			Description: Distinct spatial cues for platforms, minecart tracks, and ropes near the path above or below you. A cue sounds at every crossed landmark tile, while speech only names the start of a contiguous run or a changed landmark type or rope direction.
+
+			Variants: {
+				Platform: {
+					Name: Platform
+					Detail: A light wooden gesture for a platform up to four gravity-relative tiles overhead.
+				}
+				MinecartTrack: {
+					Name: Minecart track
+					Detail: A brighter metallic gesture for track up to four gravity-relative tiles overhead.
+				}
+				Rope: {
+					Name: Rope
+					Detail: A lower flexible gesture for rope up to seven tiles above or below.
+				}
+			}
+		}
+
+		HousingRooms: {
+			Name: Housing room states
+			Description: The three spatial focus cues used by Housing Query mode. Each sounds from the geometric center of the focused room and uses cursor-earcon volume.
+
+			Variants: {
+				Suitable: {
+					Name: Suitable room
+					Detail: A clear rising answer for housing Terraria considers suitable.
+				}
+				Occupied: {
+					Name: Occupied room
+					Detail: A paired settled answer for a room already assigned to a town NPC.
+				}
+				Unsuitable: {
+					Name: Unsuitable room
+					Detail: A lower falling answer for a room with a housing failure.
 				}
 			}
 		}
@@ -393,12 +500,12 @@ SoundGuide: {
 
 		WallTones: {
 			Name: Terrain wall tones
-			Description: Filtered noise that draws the terrain immediately around you: one voice for each side, one for the ceiling, and one for the ground while you are falling. Each rises in pitch and in loudness as its surface gets nearer, so a corridor narrowing is heard before it is met. The sides are the neutral timbre, the ceiling is higher and narrower so it reads as thin and focused, and the floor is lower and broader so it reads as a rumble. Distances here are fractions of your configured wall tone range; because the stereo field is a fixed hundred and twenty tiles wide, a wall a few tiles away sits only slightly off centre and its timbre and pitch carry more than its pan does.
+			Description: Filtered white noise that draws movement-blocking terrain immediately around you: one voice for each side and one for the gravity-relative ceiling. Each rises in pitch as its surface gets nearer, and also in loudness while distance attenuation is enabled. Side walls use a broad 280 to 1,800 hertz band and the ceiling a narrow 900 to 4,200 hertz band. Traversable steps, stairs, and hills are omitted from side-wall classification.
 
 			Variants: {
 				LeftClose: {
 					Name: Wall close on your left
-					Detail: High and loud. A surface has to answer four probes down the height of your body before it counts, so a one-tile step up stays silent.
+					Detail: High and loud. The player-sized collision path cannot traverse this surface even with Terraria's normal step-up behavior.
 				}
 
 				LeftFar: {
@@ -418,12 +525,7 @@ SoundGuide: {
 
 				Ceiling: {
 					Name: Ceiling above you
-					Detail: Thinner and higher than a side. A single block overhead already blocks upward movement, so the nearest hit wins outright with no alignment required.
-				}
-
-				Floor: {
-					Name: Ground below you while falling
-					Detail: Broader and lower than a side. The ground is at zero distance whenever you are standing on it, so this voice only sounds mid-descent, and only if falling tones are enabled.
+					Detail: Thinner and higher than a side. A single block counts when it overlaps the player's horizontal collision footprint; a block diagonally off either shoulder does not obstruct the jump path and stays silent.
 				}
 			}
 		}
@@ -538,6 +640,36 @@ Configs: {
 			Tooltip: Speak each item that reaches the inventory, including fishing catches. Repeated gains of the same item are collected for a moment and reported as one running total, and coins are merged into a single value.
 		}
 
+		SummonAnnouncementsEnabled: {
+			Label: Summon announcements
+			Tooltip: Speak newly summoned minions and sentries, followed by the active total and used capacity. Removals remain silent.
+		}
+
+		InventoryColumnCount: {
+			Label: Inventory columns
+			Tooltip: Set the number of top-to-bottom columns used by the 40 backpack slots, coin, and ammo panes. Trash is appended beneath slot 40 in the final backpack column and is not included in column division. One preserves the original vertical list.
+		}
+
+		HotbarColumnCount: {
+			Label: Hotbar columns
+			Tooltip: Set the number of top-to-bottom columns used by the accessible hotbar pane. One preserves the original vertical list.
+		}
+
+		CraftingColumnCount: {
+			Label: Crafting columns
+			Tooltip: Set the number of top-to-bottom columns used by normal and Guide recipe lists. One preserves the original vertical list.
+		}
+
+		StorageColumnCount: {
+			Label: Storage columns
+			Tooltip: Set the number of top-to-bottom columns used by chests, banks, and their actions. One preserves the original vertical list.
+		}
+
+		ShopColumnCount: {
+			Label: Shop columns
+			Tooltip: Set the number of top-to-bottom columns used by shop entries. One preserves the original vertical list.
+		}
+
 		FootstepSoundsEnabled: {
 			Label: Footstep sounds
 			Tooltip: Sound a step each time the player crosses a tile boundary on foot, raised in pitch while standing on a platform.
@@ -560,7 +692,7 @@ Configs: {
 
 		WallToneEnabled: {
 			Label: Wall tones
-			Tooltip: Continuously indicate nearby left walls, right walls, and the gravity-relative ceiling with procedural audio. Each surface is placed where it sits on screen, and its own timbre tells a wall apart from the ceiling and the ground below you.
+			Tooltip: Continuously indicate nearby movement-blocking left walls, right walls, and the gravity-relative ceiling with procedural audio. Traversable steps and slopes stay silent, and each surface remains placed at its literal world position.
 		}
 
 		WallToneVolumePercent: {
@@ -573,9 +705,49 @@ Configs: {
 			Tooltip: Set the maximum sensing distance in tiles. A larger range begins indicating terrain sooner.
 		}
 
-		FallTonesEnabled: {
-			Label: Falling tones
-			Tooltip: Sound the ground below while falling, rising in pitch and loudness as it approaches. Ordinary jumps and short step-downs stay silent.
+		SpatialAudioDistanceAttenuationEnabled: {
+			Label: Reduce spatial cue volume with distance
+			Tooltip: Make wall and ceiling tones, hostile-mob tones, and radar pings quieter with distance. Disable this to keep those detected cues at full configured volume until their normal range cutoff; position and pitch remain spatial.
+		}
+
+		ElevationMovementCuesEnabled: {
+			Label: Climbing elevation cues
+			Tooltip: Play a brief rising or falling tick when crossing a vertical tile boundary while attached to a rope or similar climbable tile. Ordinary vertical movement stays silent.
+		}
+
+		ElevationMovementCueVolumePercent: {
+			Label: Elevation movement cue volume
+			Tooltip: Set ascending and descending tick loudness as a percentage of the game's Sound volume.
+		}
+
+		DropWarningsEnabled: {
+			Label: Ledge and drop warnings
+			Tooltip: Sound one safe or unsafe cue when walking toward a drop of at least three tiles. The warning does not repeat while you keep pressing toward the same ledge.
+		}
+
+		DropWarningVolumePercent: {
+			Label: Drop warning volume
+			Tooltip: Set safe and unsafe ledge-cue loudness as a percentage of the game's Sound volume.
+		}
+
+		DropDetectionRangeTiles: {
+			Label: Drop detection range
+			Tooltip: Set how far downward, from 3 to 60 tiles, Ariadne searches for a safe landing. Lava, shimmer, hurting tiles, damaging falls, and no bottom within this range are unsafe.
+		}
+
+		DropWarningLookaheadTiles: {
+			Label: Ledge warning lookahead
+			Tooltip: Set how many reachable tiles ahead, from 1 to 12, Ariadne checks for a ledge. The default is 4. Walls stop the search, while traversable steps and slopes do not.
+		}
+
+		TraversalLandmarkCuesEnabled: {
+			Label: Traversal landmark cues
+			Tooltip: Sound distinct spatial platform, minecart-track, and rope cues as grounded movement crosses their columns. Speech names only the start or change of a contiguous run.
+		}
+
+		TraversalLandmarkCueVolumePercent: {
+			Label: Traversal landmark cue volume
+			Tooltip: Set platform, minecart-track, and rope cue loudness as a percentage of the game's Sound volume.
 		}
 
 		HostileMobTonesEnabled: {
@@ -590,7 +762,7 @@ Configs: {
 
 		HostileMobToneRangeTiles: {
 			Label: Hostile mob tone range
-			Tooltip: Set the distance in tiles at which a hostile mob tone reaches silence. Loudness rises evenly from there to full at the player, so a shorter range makes each tile of approach a larger change.
+			Tooltip: Set the distance in tiles at which a hostile mob tone stops. With distance-based volume reduction enabled, loudness rises evenly from there to full at the player; with it disabled, the tone stays at configured volume throughout the range.
 		}
 
 		FreecamBeaconVolumePercent: {
@@ -600,7 +772,7 @@ Configs: {
 
 		RadarEnabled: {
 			Label: Radar
-			Tooltip: Sound a short bell from anything the scanner would list when it first comes into range, so you know when opening the scanner is worth it. It stays silent while nothing new arrives. The number of strikes says what was found, and level, stereo position and pitch place it as they do for every other spatial cue.
+			Tooltip: Sound a short bell from anything the scanner would list when it first comes into range. Apostrophe steps through one contact and matching ping at a time from a fixed snapshot that resets after four idle seconds. Manual snapshots always include dropped items.
 		}
 
 		RadarVolumePercent: {

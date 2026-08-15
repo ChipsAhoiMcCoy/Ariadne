@@ -57,27 +57,39 @@ internal sealed class OfflineBus
 }
 
 /// <summary>
-/// The real <see cref="HostileMobToneVoiceBank"/> on the bus. Levels, targeting and
-/// the handover rule are all the mod's, so what the swarm scenario measures is the
-/// shipped behaviour rather than a restatement of it.
+/// The real <see cref="HostileMobToneBed"/> on the bus. Levels and the handover rule
+/// are the mod's, so what the swarm scenario measures is the shipped behaviour rather
+/// than a restatement of it.
 /// </summary>
 internal sealed class HostileMobBed : IAudioBusSource
 {
-	private readonly HostileMobToneVoiceBank _bank = new();
-	private readonly HostileMobToneTarget[] _targets = new HostileMobToneTarget[HostileMobToneVoiceBank.SlotCount];
+	private readonly HostileMobToneBed _bed = new();
+	private HostileMobToneTarget _target;
 
 	internal void SetTarget(int index, float normalizedX, float normalizedY, float proximity)
 	{
-		_targets[index] = new(true, normalizedX, normalizedY, proximity);
+		if (index == 0)
+		{
+			_target = new(true, false, normalizedX, normalizedY, proximity);
+		}
 	}
 
 	internal void ClearTarget(int index)
 	{
-		_targets[index] = default;
+		if (index == 0)
+		{
+			_target = default;
+		}
 	}
 
-	/// <summary>Hands a seat to a different mob, the way the system does.</summary>
-	internal void RetireEmitter(int index) => _bank.Retire(index);
+	/// <summary>Hands the voice to a different mob, the way the system does.</summary>
+	internal void RetireEmitter(int index)
+	{
+		if (index == 0)
+		{
+			_bed.Handoff();
+		}
+	}
 
 	/// <summary>
 	/// Hands the whole set over at once, as <c>HostileMobToneSystem</c> does after it
@@ -85,65 +97,67 @@ internal sealed class HostileMobBed : IAudioBusSource
 	/// </summary>
 	internal void Apply(float masterGain, in SpatialAudioSettings settings)
 	{
-		_bank.SetTargets(_targets, masterGain, settings);
+		_bed.SetTarget(_target, masterGain, settings, distanceAttenuationEnabled: true);
 	}
 
 	public bool Render(Span<float> left, Span<float> right)
 	{
-		_bank.Render(left, right);
+		_bed.Render(left, right);
 		return true;
 	}
 }
 
 /// <summary>
-/// The terrain bed's four surfaces, targeted the way <see cref="WallToneAudioStream"/>
+/// The terrain bed's three surfaces, targeted the way <see cref="WallToneAudioStream"/>
 /// targets them, with the same per-design calibration re-run here.
 /// </summary>
 internal sealed class TerrainBed : IAudioBusSource
 {
 	private const float BedVoiceOffsetDecibels = 3f;
 
-	private static readonly WallToneVoiceDesign SideDesign = new(320f, 2_400f, 1.4f);
-	private static readonly WallToneVoiceDesign CeilingDesign = new(480f, 3_200f, 2.2f);
-	private static readonly WallToneVoiceDesign FloorDesign = new(180f, 1_200f, 0.9f);
+	private static readonly WallToneVoiceDesign SideDesign = new(280f, 1_800f, 1.0f);
+	private static readonly WallToneVoiceDesign CeilingDesign = new(900f, 4_200f, 3.0f);
 
+	internal static readonly float TargetVoiceLoudness =
+		AuthoredAudioLevels.SpatialVoiceReferenceLoudness - BedVoiceOffsetDecibels;
 	internal static readonly float SideVoiceGain = CalibrateVoiceGain(SideDesign);
 	internal static readonly float CeilingVoiceGain = CalibrateVoiceGain(CeilingDesign);
-	internal static readonly float FloorVoiceGain = CalibrateVoiceGain(FloorDesign);
+
+	internal static (float Side, float Ceiling) CalibratedVoiceLoudness() =>
+		(
+			MeasureCalibratedVoice(SideDesign, SideVoiceGain),
+			MeasureCalibratedVoice(CeilingDesign, CeilingVoiceGain)
+		);
 
 	private readonly WallToneVoice _leftVoice = new(0x93A4_52E1u, SideDesign);
 	private readonly WallToneVoice _rightVoice = new(0xD17B_8305u, SideDesign);
 	private readonly WallToneVoice _ceilingVoice = new(0x6C8E_9CF3u, CeilingDesign);
-	private readonly WallToneVoice _floorVoice = new(0x2B57_41ADu, FloorDesign);
 	private readonly SpatialAudioEmitter _leftEmitter = new();
 	private readonly SpatialAudioEmitter _rightEmitter = new();
 	private readonly SpatialAudioEmitter _ceilingEmitter = new();
-	private readonly SpatialAudioEmitter _floorEmitter = new();
 	private SpatialAudioSettings _settings;
 
 	/// <summary>
 	/// How many surfaces answer at once, hard against the listener. One is an open
 	/// wall, two is the corridor the bed's level offset is authored for, four is being
-	/// fully enclosed, which is the loudest the bed gets.
+	/// fully enclosed, which is the loudest the three-voice bed gets.
 	/// </summary>
 	internal void SetActiveSurfaces(int count, float masterGain, in SpatialAudioSettings settings)
 	{
 		_settings = settings;
 		SetVoice(_leftVoice, _leftEmitter, -1f, 0f, count >= 1, masterGain * SideVoiceGain);
-		SetVoice(_floorVoice, _floorEmitter, 0f, 1f, count >= 2, masterGain * FloorVoiceGain);
-		SetVoice(_rightVoice, _rightEmitter, 1f, 0f, count >= 3, masterGain * SideVoiceGain);
-		SetVoice(_ceilingVoice, _ceilingEmitter, 0f, -1f, count >= 4, masterGain * CeilingVoiceGain);
+		SetVoice(_rightVoice, _rightEmitter, 1f, 0f, count >= 2, masterGain * SideVoiceGain);
+		SetVoice(_ceilingVoice, _ceilingEmitter, 0f, -1f, count >= 3, masterGain * CeilingVoiceGain);
 	}
 
 	internal void SetEnclosed(float masterGain, in SpatialAudioSettings settings) =>
-		SetActiveSurfaces(4, masterGain, settings);
+		SetActiveSurfaces(3, masterGain, settings);
 
 	public bool Render(Span<float> left, Span<float> right)
 	{
 		_leftEmitter.Render(_leftVoice, _settings, left, right);
 		_rightEmitter.Render(_rightVoice, _settings, left, right);
 		_ceilingEmitter.Render(_ceilingVoice, _settings, left, right);
-		_floorEmitter.Render(_floorVoice, _settings, left, right);
 		return true;
 	}
 
@@ -174,7 +188,19 @@ internal sealed class TerrainBed : IAudioBusSource
 		}
 		return AuthoredAudioLevels.LoudnessTrim(
 			samples,
-			AuthoredAudioLevels.SpatialVoiceReferenceLoudness - BedVoiceOffsetDecibels);
+			TargetVoiceLoudness);
+	}
+
+	private static float MeasureCalibratedVoice(WallToneVoiceDesign design, float gain)
+	{
+		WallToneVoice voice = new(0x51F0_2C7Bu, design);
+		voice.SetTarget(voice.FrequencyForProximity(1f), gain: 1f);
+		float[] samples = new float[SpatialAudioTransformCalculator.SampleRate];
+		for (int index = 0; index < samples.Length; index++)
+		{
+			samples[index] = voice.ReadSample(pitchRatio: 1f) * gain;
+		}
+		return AudioLoudness.Measure(samples);
 	}
 }
 
@@ -222,6 +248,20 @@ internal sealed class BodyBeacon : IAudioBusSource
 /// </summary>
 internal static class Cues
 {
+	internal static readonly (string Name, NavigationCueKind Kind)[] Navigation =
+	[
+		("ascending", NavigationCueKind.Ascending),
+		("descending", NavigationCueKind.Descending),
+		("safe drop", NavigationCueKind.SafeDrop),
+		("unsafe drop", NavigationCueKind.UnsafeDrop),
+		("platform landmark", NavigationCueKind.Platform),
+		("minecart landmark", NavigationCueKind.MinecartTrack),
+		("rope landmark", NavigationCueKind.Rope),
+		("housing suitable", NavigationCueKind.HousingSuitable),
+		("housing occupied", NavigationCueKind.HousingOccupied),
+		("housing unsuitable", NavigationCueKind.HousingUnsuitable),
+	];
+
 	internal static readonly (string Name, ImpactToneDesign Design)[] Footsteps =
 	[
 		("footstep 1", new(180f, 40.0f, 0.180f, 0.135f, 0.18f, 25.0f, 0.120f, 0x16A3_7421u)),
@@ -238,6 +278,10 @@ internal static class Cues
 
 	private static float[][]? _footstepTones;
 	private static float[][]? _bumpTones;
+	private static float[][]? _navigationTones;
+
+	internal static float[][] NavigationTones =>
+		_navigationTones ??= [.. Navigation.Select(entry => NavigationCueDesigns.Render(entry.Kind))];
 
 	internal static float[][] FootstepTones =>
 		_footstepTones ??= [.. Footsteps.Select(entry => ImpactToneSynthesizer.Render(entry.Design))];

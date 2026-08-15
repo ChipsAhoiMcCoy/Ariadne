@@ -65,13 +65,16 @@ internal sealed class HostileMobToneBed
 	private bool _hasPendingTarget;
 	private HostileMobToneTarget _pendingTarget;
 	private float _pendingMasterGain;
+	private bool _distanceAttenuationEnabled = true;
 
 	internal void SetTarget(
 		in HostileMobToneTarget target,
 		float masterGain,
-		in SpatialAudioSettings settings)
+		in SpatialAudioSettings settings,
+		bool distanceAttenuationEnabled)
 	{
 		_settings = settings;
+		_distanceAttenuationEnabled = distanceAttenuationEnabled;
 		HostileMobToneTarget sanitized = Sanitize(target);
 		if (_isRetiring)
 		{
@@ -175,7 +178,7 @@ internal sealed class HostileMobToneBed
 		SpatialSourceParameters parameters = new(
 			target.NormalizedX,
 			target.NormalizedY,
-			target.IsActive ? SpatialAudioDistanceGain.FromProximity(target.Proximity) : 0f);
+			target.IsActive ? SpatialAudioDistanceGain.FromProximity(target.Proximity, _distanceAttenuationEnabled) : 0f);
 		if (place)
 		{
 			_emitter.SetTargetImmediately(parameters);

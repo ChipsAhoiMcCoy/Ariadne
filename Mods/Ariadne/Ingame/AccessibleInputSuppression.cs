@@ -182,4 +182,19 @@ internal static class AccessibleInputSuppression
 		current.Up = current.Down = current.Left = current.Right = current.Jump = false;
 		justPressed.Up = justPressed.Down = justPressed.Left = justPressed.Right = justPressed.Jump = false;
 	}
+
+	internal static void ConsumeAllGameplayTriggers()
+	{
+		TriggersSet current = PlayerInput.Triggers.Current;
+		TriggersSet justPressed = PlayerInput.Triggers.JustPressed;
+		foreach (string trigger in new List<string>(current.KeyStatus.Keys))
+		{
+			current.KeyStatus[trigger] = false;
+		}
+		foreach (string trigger in new List<string>(justPressed.KeyStatus.Keys))
+		{
+			justPressed.KeyStatus[trigger] = false;
+		}
+		ConsumeMovementTriggers();
+	}
 }

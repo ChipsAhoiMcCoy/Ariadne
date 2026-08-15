@@ -73,6 +73,39 @@ public sealed class AriadneClientConfig : ModConfig
 	public bool ItemPickupAnnouncementsEnabled { get; set; } = true;
 
 	[DefaultValue(true)]
+	public bool SummonAnnouncementsEnabled { get; set; } = true;
+
+	[DefaultValue(1)]
+	[Range(1, 10)]
+	[Increment(1)]
+	[Slider]
+	public int InventoryColumnCount { get; set; } = 1;
+
+	[DefaultValue(1)]
+	[Range(1, 10)]
+	[Increment(1)]
+	[Slider]
+	public int HotbarColumnCount { get; set; } = 1;
+
+	[DefaultValue(1)]
+	[Range(1, 10)]
+	[Increment(1)]
+	[Slider]
+	public int CraftingColumnCount { get; set; } = 1;
+
+	[DefaultValue(1)]
+	[Range(1, 10)]
+	[Increment(1)]
+	[Slider]
+	public int StorageColumnCount { get; set; } = 1;
+
+	[DefaultValue(1)]
+	[Range(1, 10)]
+	[Increment(1)]
+	[Slider]
+	public int ShopColumnCount { get; set; } = 1;
+
+	[DefaultValue(true)]
 	public bool MovementBumpTonesEnabled { get; set; } = true;
 
 	[DefaultValue(DefaultVolumePercent)]
@@ -97,7 +130,46 @@ public sealed class AriadneClientConfig : ModConfig
 	public int WallToneRangeTiles { get; set; } = 12;
 
 	[DefaultValue(true)]
-	public bool FallTonesEnabled { get; set; } = true;
+	public bool SpatialAudioDistanceAttenuationEnabled { get; set; } = true;
+
+	[DefaultValue(true)]
+	public bool ElevationMovementCuesEnabled { get; set; } = true;
+
+	[DefaultValue(DefaultVolumePercent)]
+	[Range(0, 100)]
+	[Increment(5)]
+	[Slider]
+	public int ElevationMovementCueVolumePercent { get; set; } = DefaultVolumePercent;
+
+	[DefaultValue(true)]
+	public bool DropWarningsEnabled { get; set; } = true;
+
+	[DefaultValue(DefaultVolumePercent)]
+	[Range(0, 100)]
+	[Increment(5)]
+	[Slider]
+	public int DropWarningVolumePercent { get; set; } = DefaultVolumePercent;
+
+	[DefaultValue(30)]
+	[Range(3, 60)]
+	[Increment(1)]
+	[Slider]
+	public int DropDetectionRangeTiles { get; set; } = 30;
+
+	[DefaultValue(4)]
+	[Range(1, 12)]
+	[Increment(1)]
+	[Slider]
+	public int DropWarningLookaheadTiles { get; set; } = 4;
+
+	[DefaultValue(true)]
+	public bool TraversalLandmarkCuesEnabled { get; set; } = true;
+
+	[DefaultValue(DefaultVolumePercent)]
+	[Range(0, 100)]
+	[Increment(5)]
+	[Slider]
+	public int TraversalLandmarkCueVolumePercent { get; set; } = DefaultVolumePercent;
 
 	[DefaultValue(true)]
 	public bool HostileMobTonesEnabled { get; set; } = true;

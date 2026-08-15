@@ -220,16 +220,65 @@ internal sealed class AriadneAudioBus : IDisposable
 		{
 			return;
 		}
+		if (!Program.IsMainThread)
+		{
+			try
+			{
+				// tModLoader unloads mods on its loader worker. FNA requires every
+				// DynamicSoundEffectInstance operation, including disposal, on the
+				// game thread. This mirrors tModLoader's own ActiveSound and
+				// MusicLoader cleanup paths and waits until the queued action finishes.
+				Main.RunOnMainThread(DisposeOnMainThread).GetAwaiter().GetResult();
+			}
+			catch (Exception exception)
+			{
+				// An unload must remain able to complete even if the game is already
+				// too far into shutdown to service its main-thread action queue.
+				_owner.Logger.Warn(
+					$"Ariadne's audio bus could not finish main-thread cleanup: " +
+					$"{exception.GetBaseException().Message}");
+				AbandonManagedReferences();
+			}
+			return;
+		}
+
+		DisposeOnMainThread();
+	}
+
+	private void DisposeOnMainThread()
+	{
+		if (_disposed)
+		{
+			return;
+		}
 
 		try
 		{
 			_stream?.Stop(true);
 		}
-		catch
+		catch (Exception exception)
 		{
-			// Disposal must stay safe if the audio device has already disappeared.
+			_owner.Logger.Warn(
+				$"Ariadne's audio bus could not stop during cleanup: " +
+				$"{exception.GetBaseException().Message}");
 		}
-		_stream?.Dispose();
+
+		try
+		{
+			_stream?.Dispose();
+		}
+		catch (Exception exception)
+		{
+			_owner.Logger.Warn(
+				$"Ariadne's audio bus could not dispose during cleanup: " +
+				$"{exception.GetBaseException().Message}");
+		}
+
+		AbandonManagedReferences();
+	}
+
+	private void AbandonManagedReferences()
+	{
 		_stream = null;
 		_sources.Clear();
 		_isRunning = false;

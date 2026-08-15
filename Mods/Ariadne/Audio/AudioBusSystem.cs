@@ -68,8 +68,19 @@ internal sealed class AudioBusSystem : ModSystem
 
 	public override void Unload()
 	{
+		PrepareForModReload();
+		_creationAttempted = false;
+	}
+
+	/// <summary>
+	/// Closes FNA resources before tModLoader transfers mod unloading to its loader
+	/// worker. Keeping creation marked as attempted prevents a later menu update in the
+	/// same frame from recreating the bus while a reload is already committed.
+	/// </summary>
+	internal static void PrepareForModReload()
+	{
+		_creationAttempted = true;
 		_bus?.Dispose();
 		_bus = null;
-		_creationAttempted = false;
 	}
 }

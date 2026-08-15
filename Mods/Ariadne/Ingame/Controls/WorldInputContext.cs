@@ -6,6 +6,7 @@ using Terraria.GameContent.UI;
 using Terraria.GameInput;
 using Terraria.Graphics.Capture;
 using Ariadne.Ingame.Freecam;
+using Ariadne.Ingame.Housing;
 
 namespace Ariadne.Ingame.Controls;
 
@@ -13,7 +14,7 @@ internal static class WorldInputContext
 {
 	internal static bool CanOwnWorldCursor()
 	{
-		return !FreecamSystem.IsActive && IsUnobstructedGameplay();
+		return !FreecamSystem.IsActive && !HousingQuerySystem.IsActive && IsUnobstructedGameplay();
 	}
 
 	internal static bool IsUnobstructedGameplay()

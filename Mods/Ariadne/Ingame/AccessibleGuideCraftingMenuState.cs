@@ -249,7 +249,8 @@ internal sealed class AccessibleGuideMaterialMenuState : AccessibleMenuState
 		Utils.Swap(ref _player.inventory[index], ref Main.guideItem);
 		Recipe.FindRecipes();
 		SoundEngine.PlaySound(SoundID.Grab);
-		Controller.Back();
+		// The item grab is the action feedback; do not stack a menu-close cue on it.
+		Controller.Back(playSound: false);
 	}
 
 	private static string InventorySlotName(int index)

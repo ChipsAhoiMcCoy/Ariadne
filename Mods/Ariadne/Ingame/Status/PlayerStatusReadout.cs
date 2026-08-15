@@ -90,24 +90,13 @@ internal static class PlayerStatusReadout
 
 	private static string Summons(Player player)
 	{
-		int minions = 0;
-		int sentries = 0;
-		foreach (Projectile projectile in Main.projectile)
-		{
-			if (!projectile.active || projectile.owner != player.whoAmI)
-			{
-				continue;
-			}
-			if (projectile.sentry) sentries++;
-			else if (projectile.minion) minions++;
-		}
-
+		SummonStatusSnapshot snapshot = SummonStatusSnapshot.Capture(player);
 		return Text(
 			"Summons",
-			minions,
+			snapshot.MinionCount,
 			player.slotsMinions.ToString("0.##"),
 			player.maxMinions,
-			sentries,
+			snapshot.SentryCount,
 			player.maxTurrets);
 	}
 

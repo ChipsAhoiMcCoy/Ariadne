@@ -293,7 +293,6 @@ internal abstract class AccessibleMenuState : UIState
 
 	protected virtual void GoBack()
 	{
-		SoundEngine.PlaySound(SoundID.MenuClose);
 		Controller.Back();
 	}
 
@@ -337,7 +336,6 @@ internal abstract class AccessibleMenuState : UIState
 		AddContextHelpTopics(topics);
 		topics.Add(new(ContextHelpChord.Name, $"Open this contextual help screen. Press {ContextHelpChord.Name} or Escape while reading help to return."));
 
-		SoundEngine.PlaySound(SoundID.MenuOpen);
 		Controller.Navigate(new AccessibleContextHelpMenuState(Controller, Title, topics, KeepsInventoryOpen));
 	}
 
@@ -451,6 +449,7 @@ internal abstract class AccessibleMenuState : UIState
 			return;
 		}
 
+		int navigationVersion = Controller.NavigationVersion;
 		entry.Activate();
 		if (Controller.IsShowing(this))
 		{
@@ -458,7 +457,17 @@ internal abstract class AccessibleMenuState : UIState
 			RebuildEntries(announceSelection: true);
 			return;
 		}
-		SoundEngine.PlaySound(SoundID.MenuOpen);
+		// Controller navigation owns its own directional cue. A transition outside the
+		// controller still needs an opening cue unless it closed Terraria's in-game UI,
+		// whose Close method has already supplied the native close sound.
+		if (Controller.NavigationVersion != navigationVersion)
+		{
+			return;
+		}
+		if (!Controller.IsInGame || Main.inFancyUI)
+		{
+			SoundEngine.PlaySound(SoundID.MenuOpen);
+		}
 	}
 
 	private void AdjustSelection(bool forward)

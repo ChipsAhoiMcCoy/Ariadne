@@ -58,7 +58,7 @@ internal sealed class RadarPingSound : IDisposable
 	{
 		// Terraria's sound slider is applied once, by the bus, for the whole mix.
 		float volume = Math.Clamp(config.RadarVolumePercent / 100f, 0f, 1f) *
-			SpatialAudioDistanceGain.FromProximity(proximity);
+			SpatialAudioDistanceGain.FromProximity(proximity, config.SpatialAudioDistanceAttenuationEnabled);
 		if (_disposed || volume <= 0f || !GameplayAudioGate.CanListen())
 		{
 			return;

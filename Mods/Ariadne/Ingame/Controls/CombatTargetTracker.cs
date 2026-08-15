@@ -136,7 +136,8 @@ internal sealed class CombatTargetTracker
 			if (!group.Segments.Contains(_selectedSegment))
 			{
 				_selectedSegment = group.Segments
-					.OrderBy(index => Vector2.DistanceSquared(Main.npc[index].Center, _lastAimPoint))
+					.OrderBy(index => !CombatTargetStatus.CanBeHit(Main.npc[index]))
+					.ThenBy(index => Vector2.DistanceSquared(Main.npc[index].Center, _lastAimPoint))
 					.First();
 			}
 			_lastAimPoint = Main.npc[_selectedSegment].Center;
@@ -158,7 +159,8 @@ internal sealed class CombatTargetTracker
 		}
 
 		CombatTargetGroup? replacement = _candidates
-			.OrderBy(candidate => candidate.DistanceSquaredTo(oldAimPoint))
+			.OrderBy(candidate => candidate.IsProtected)
+			.ThenBy(candidate => candidate.DistanceSquaredTo(oldAimPoint))
 			.FirstOrDefault();
 		if (replacement is null)
 		{
@@ -192,7 +194,8 @@ internal sealed class CombatTargetTracker
 		}
 
 		List<CombatTargetGroup> ordered = _candidates
-			.OrderBy(candidate => candidate.DistanceSquaredTo(player.Center))
+			.OrderBy(candidate => candidate.IsProtected)
+			.ThenBy(candidate => candidate.DistanceSquaredTo(player.Center))
 			.ToList();
 		int currentIndex = _selectedIdentity is CombatTargetIdentity selected
 			? ordered.FindIndex(candidate => candidate.Identity == selected)
@@ -260,7 +263,8 @@ internal sealed class CombatTargetTracker
 
 		_selectedIdentity = group.Identity;
 		_selectedSegment = group.Segments
-			.OrderByDescending(index => Vector2.Dot(
+			.OrderBy(index => !CombatTargetStatus.CanBeHit(Main.npc[index]))
+			.ThenByDescending(index => Vector2.Dot(
 				SafeDirection(player.Center, Main.npc[index].Center),
 				direction))
 			.ThenBy(index => Vector2.DistanceSquared(Main.npc[index].Center, referenceAimPoint))
@@ -488,8 +492,7 @@ internal sealed class CombatTargetTracker
 		}
 
 		NPC root = Main.npc[identity.RootNpcIndex];
-		if (root.active &&
-			root.life > 0 &&
+		if (CombatTargetEligibility.IsCombatObjectiveActive(root) &&
 			root.netID == identity.RootNetId)
 		{
 			return true;
@@ -498,8 +501,7 @@ internal sealed class CombatTargetTracker
 		for (int index = 0; index < Main.maxNPCs; index++)
 		{
 			NPC npc = Main.npc[index];
-			if (npc.active &&
-				npc.life > 0 &&
+			if (CombatTargetEligibility.IsCombatObjectiveActive(npc) &&
 				npc.realLife == identity.RootNpcIndex)
 			{
 				return true;
@@ -511,8 +513,7 @@ internal sealed class CombatTargetTracker
 	private bool IsSelectedSegmentCurrent()
 	{
 		return (uint)_selectedSegment < Main.maxNPCs &&
-			Main.npc[_selectedSegment].active &&
-			Main.npc[_selectedSegment].life > 0;
+			CombatTargetEligibility.IsCombatObjectiveActive(Main.npc[_selectedSegment]);
 	}
 
 	private static int ResolveRootIndex(NPC npc, int ownIndex)
@@ -629,6 +630,8 @@ internal sealed class CombatTargetTracker
 		internal CombatTargetIdentity Identity { get; }
 
 		internal List<int> Segments { get; } = [];
+
+		internal bool IsProtected => Segments.All(index => !CombatTargetStatus.CanBeHit(Main.npc[index]));
 
 		internal float DistanceSquaredTo(Vector2 point)
 		{

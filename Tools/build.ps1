@@ -46,17 +46,45 @@ $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $modSource = (Resolve-Path -LiteralPath (Join-Path $repoRoot "Mods\Ariadne")).Path
 $tmlPath = Resolve-TModLoaderPath
 $dotnetPath = Resolve-DotNetPath -TModLoaderPath $tmlPath
+$publicProfile = [Environment]::GetEnvironmentVariable("PUBLIC")
+if ([string]::IsNullOrWhiteSpace($publicProfile)) {
+    throw "Unable to locate the Windows Public profile for an identity-neutral build path."
+}
+
+# tModLoader records the absolute source folder in the packaged Info metadata and
+# portable PDB. Building directly from a user profile would therefore disclose that
+# profile name even when build.txt uses a pseudonym. Stage the source beneath the
+# identity-neutral Public profile and remove it after packaging.
+$stagingBase = [IO.Path]::GetFullPath((Join-Path $publicProfile "AriadneBuild"))
+$stagingRoot = [IO.Path]::GetFullPath((Join-Path $stagingBase ([Guid]::NewGuid().ToString("N"))))
+$stagedModSource = Join-Path $stagingRoot "Ariadne"
 
 Write-Host "Using tModLoader: $tmlPath"
 Write-Host "Using dotnet: $dotnetPath"
 
-Push-Location $tmlPath
+New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 try {
-    & $dotnetPath "tModLoader.dll" "-build" $modSource
-    $exitCode = $LASTEXITCODE
+    Copy-Item -LiteralPath $modSource -Destination $stagedModSource -Recurse
+
+    Push-Location $tmlPath
+    try {
+        & $dotnetPath "tModLoader.dll" "-build" $stagedModSource
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+    }
 }
 finally {
-    Pop-Location
+    $validatedBase = $stagingBase.TrimEnd([IO.Path]::DirectorySeparatorChar) +
+        [IO.Path]::DirectorySeparatorChar
+    $validatedTarget = [IO.Path]::GetFullPath($stagingRoot)
+    if (-not $validatedTarget.StartsWith($validatedBase, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove an unexpected build staging path: $validatedTarget"
+    }
+    if (Test-Path -LiteralPath $validatedTarget) {
+        Remove-Item -LiteralPath $validatedTarget -Recurse -Force
+    }
 }
 
 if ($exitCode -ne 0) {

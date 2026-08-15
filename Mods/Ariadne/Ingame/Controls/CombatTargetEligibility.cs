@@ -18,7 +18,8 @@ internal static class CombatTargetEligibility
 	/// </summary>
 	internal static bool CanLockOn(Player player, NPC npc)
 	{
-		if (npc.friendly ||
+		if (!IsCombatObjectiveActive(npc) ||
+			npc.friendly ||
 			npc.isLikeATownNPC ||
 			npc.immortal ||
 			npc.CountsAsACritter)
@@ -64,5 +65,27 @@ internal static class CombatTargetEligibility
 			Collision.CanHitLine(player.Center, 0, 0, predicted, 0, 0) ||
 			Collision.CanHit(player.Center, 0, 0, npc.Center, 0, 0) ||
 			Collision.CanHitLine(player.Center, 0, 0, npc.Center, 0, 0);
+	}
+
+	/// <summary>
+	/// Whether an active, positive-life NPC still represents something the player can
+	/// eventually damage. Moon Lord deliberately leaves destroyed shells alive with
+	/// full health, and its True Eyes are attacks rather than combat objectives.
+	/// </summary>
+	internal static bool IsCombatObjectiveActive(NPC npc)
+	{
+		if (!npc.active || npc.life <= 0 || npc.type == NPCID.MoonLordFreeEye)
+		{
+			return false;
+		}
+		if ((npc.type == NPCID.MoonLordHead || npc.type == NPCID.MoonLordHand) && npc.ai[0] == -2f)
+		{
+			return false;
+		}
+		if (npc.type == NPCID.MoonLordCore && npc.ai[0] >= 2f)
+		{
+			return false;
+		}
+		return true;
 	}
 }

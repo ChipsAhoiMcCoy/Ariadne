@@ -18,7 +18,11 @@ internal sealed class AccessibleMainMenuSystem : ModSystem
 
 	public override void PostUpdateInput()
 	{
-		if (!Main.gameMenu || _controller is null)
+		if (_controller is null)
+		{
+			return;
+		}
+		if (_controller.HandleWorldTransition() || !Main.gameMenu)
 		{
 			return;
 		}

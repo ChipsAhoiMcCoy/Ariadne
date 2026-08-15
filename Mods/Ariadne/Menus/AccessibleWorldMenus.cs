@@ -44,7 +44,7 @@ internal sealed class AccessibleWorldSelectMenuState : AccessibleMenuState
 	{
 		entries.Add(new(
 			() => Language.GetTextValue("UI.New"),
-			() => Controller.Navigate(new AccessibleWorldCreationMenuState(Controller))));
+			() => Controller.Navigate(new AccessibleWorldCreationMenuState(Controller, _intent))));
 
 		foreach (WorldFileData world in _worlds)
 		{
@@ -134,9 +134,9 @@ internal sealed class AccessibleWorldSelectMenuState : AccessibleMenuState
 			return;
 		}
 
-		Controller.ClearHistory();
-		Main.MenuUI.SetState(null);
+		Controller.BeginWorldTransition(_intent);
 		Main.menuMode = 10;
+		WorldGenerationStatusSpeechSystem.BeginLoading();
 		WorldGen.playWorld();
 	}
 
@@ -175,15 +175,17 @@ internal sealed class AccessibleWorldSelectMenuState : AccessibleMenuState
 
 internal sealed class AccessibleWorldCreationMenuState : AccessibleMenuState
 {
+	private readonly MultiplayerIntent _intent;
 	private string _name = string.Empty;
 	private string _seed = string.Empty;
 	private int _size = 1;
 	private int _difficulty;
 	private int _evil = -1;
 
-	internal AccessibleWorldCreationMenuState(AccessibleMenuController controller)
+	internal AccessibleWorldCreationMenuState(AccessibleMenuController controller, MultiplayerIntent intent)
 		: base(controller)
 	{
+		_intent = intent;
 	}
 
 	protected override string Title => "Create World";
@@ -293,13 +295,16 @@ internal sealed class AccessibleWorldCreationMenuState : AccessibleMenuState
 				Main.ActiveWorldFileData.SetSeed(_seed);
 			}
 
-			Controller.ClearHistory();
-			Main.MenuUI.SetState(null);
+			Controller.BeginWorldTransition(_intent);
 			Main.menuMode = 10;
+			WorldGenerationStatusSpeechSystem.BeginGeneration();
 			WorldGen.CreateNewWorld();
 		}
 		catch (Exception exception)
 		{
+			WorldGenerationStatusSpeechSystem.Cancel();
+			Controller.CancelWorldTransition();
+			Controller.ShowRoot(this);
 			Announce("The world could not be created. See the tModLoader client log.");
 			ModContent.GetInstance<AriadneMod>().Logger.Error("Custom world creation failed.", exception);
 		}

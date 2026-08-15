@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Terraria;
-using Terraria.Audio;
 using Terraria.ID;
 using Terraria.ModLoader;
 using Ariadne.Menus;
@@ -160,7 +159,6 @@ internal sealed class AccessibleNpcConversationMenuState : AccessibleMenuState
 		Main.playerInventory = false;
 		if (announce)
 		{
-			SoundEngine.PlaySound(SoundID.MenuClose);
 			AriadneMod.ScreenReader.Output("Conversation closed because the NPC is no longer available.");
 		}
 	}

@@ -3,32 +3,24 @@
 using System;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Ariadne.Logic;
 
 namespace Ariadne.Ingame.WallTones;
 
 internal static class WallToneTerrainProbe
 {
 	private const int ProbeCount = 7;
-	// Four aligned body-height samples distinguish a movement-blocking side from
-	// one-tile step-up terrain without requiring the surface to rise above the player.
-	private const int MinimumAlignedProbeCount = 4;
 	private const float TileSize = 16f;
 	private const float MarchStepPixels = 2f;
 	private const float FirstProbeOffsetPixels = 0.25f;
 	private const int RefinementSteps = 6;
-	private const float BodyProbeSpan = 0.85f;
-	// Step-up terrain is rejected because its upper probes miss the surface entirely,
-	// not because the hits disagree, so this tolerance only has to admit an uneven
-	// face. Half a tile keeps rough cave walls audible without merging separate ledges.
-	private const float SurfaceAlignmentTolerancePixels = TileSize * 0.5f;
 	// A flat surface answers every vertical probe at the same range, so the winner
 	// would otherwise be whichever probe the loop reached first - always the leftmost.
 	private const float VerticalTieTolerancePixels = MarchStepPixels;
 
 	internal static WallToneSnapshot Sample(
 		SpatialObserverSnapshot observer,
-		int rangeTiles,
-		bool includeFloor)
+		int rangeTiles)
 	{
 		float maximumDistance = Math.Clamp(rangeTiles, 4, 30) * TileSize;
 		Vector2 halfSize = new(observer.Width * 0.5f, observer.Height * 0.5f);
@@ -37,10 +29,7 @@ internal static class WallToneTerrainProbe
 		return new(
 			SampleSideRegion(observer, halfSize, -1f, maximumDistance),
 			SampleSideRegion(observer, halfSize, 1f, maximumDistance),
-			SampleVerticalRegion(observer, halfSize, -gravityDirection, maximumDistance),
-			includeFloor
-				? SampleVerticalRegion(observer, halfSize, gravityDirection, maximumDistance)
-				: WallToneRegionSnapshot.Empty(maximumDistance));
+			SampleVerticalRegion(observer, halfSize, -gravityDirection, maximumDistance));
 	}
 
 	private static WallToneRegionSnapshot SampleSideRegion(
@@ -49,42 +38,82 @@ internal static class WallToneTerrainProbe
 		float horizontalDirection,
 		float maximumDistance)
 	{
-		Vector2 playerCenter = observer.Center;
-		Span<float> distances = stackalloc float[ProbeCount];
-		Span<Vector2> hitPoints = stackalloc Vector2[ProbeCount];
-		Span<bool> hits = stackalloc bool[ProbeCount];
-		hits.Clear();
-		Vector2 direction = new(horizontalDirection, 0f);
-
-		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
+		int width = Math.Max(1, (int)MathF.Round(playerHalfSize.X * 2f));
+		int height = Math.Max(1, (int)MathF.Round(playerHalfSize.Y * 2f));
+		Vector2 position = observer.Center - playerHalfSize;
+		Vector2 originalPosition = position;
+		float stepSpeed = 0f;
+		float gfxOffY = 0f;
+		int gravity = observer.GravityDirection < 0f ? -1 : 1;
+		for (float travelled = 0f; travelled < maximumDistance; travelled += MarchStepPixels)
 		{
-			float verticalAmount = probeIndex / (float)(ProbeCount - 1) * 2f - 1f;
-			Vector2 origin = playerCenter + new Vector2(
-				horizontalDirection * playerHalfSize.X,
-				verticalAmount * playerHalfSize.Y * BodyProbeSpan);
-			if (!TryRaycast(origin, direction, maximumDistance, out float distance, out Vector2 hitPoint))
+			Vector2 velocity = new(horizontalDirection * MarchStepPixels, 0f);
+			Collision.StepUp(
+				ref position,
+				ref velocity,
+				width,
+				height,
+				ref stepSpeed,
+				ref gfxOffY,
+				gravity,
+				holdsMatching: false,
+				specialChecksMode: 0);
+			Vector2 allowed = Collision.TileCollision(
+				position,
+				velocity,
+				width,
+				height,
+				fallThrough: false,
+				fall2: false,
+				gravDir: gravity);
+			if (TraversalLogic.IsImpassable(MarchStepPixels, allowed.X))
 			{
-				distances[probeIndex] = maximumDistance;
-				continue;
+				float distance = MathF.Abs(position.X - originalPosition.X) + MathF.Abs(allowed.X);
+				Vector2 surface = FindBlockingSurfacePoint(
+					position,
+					width,
+					height,
+					horizontalDirection,
+					allowed.X);
+				return new(
+					true,
+					Math.Clamp(distance, 0f, maximumDistance),
+					maximumDistance,
+					observer.NormalizeToField(surface));
 			}
 
-			hits[probeIndex] = true;
-			distances[probeIndex] = distance;
-			hitPoints[probeIndex] = hitPoint;
+			position += allowed;
 		}
 
-		Span<bool> alignedHits = stackalloc bool[ProbeCount];
-		if (!TrySelectAlignedSurface(hits, distances, alignedHits, out _))
+		return WallToneRegionSnapshot.Empty(maximumDistance);
+	}
+
+	private static Vector2 FindBlockingSurfacePoint(
+		Vector2 bodyPosition,
+		int width,
+		int height,
+		float horizontalDirection,
+		float allowedMovement)
+	{
+		float surfaceX = horizontalDirection > 0f
+			? bodyPosition.X + width + allowedMovement
+			: bodyPosition.X + allowedMovement;
+		float sampleX = surfaceX + horizontalDirection * FirstProbeOffsetPixels;
+		float totalY = 0f;
+		int hits = 0;
+		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
 		{
-			return WallToneRegionSnapshot.Empty(maximumDistance);
+			float amount = probeIndex / (float)(ProbeCount - 1);
+			float y = bodyPosition.Y + FirstProbeOffsetPixels +
+				amount * MathF.Max(0f, height - FirstProbeOffsetPixels * 2f);
+			if (IsBlockingPoint(new(sampleX, y)))
+			{
+				totalY += y;
+				hits++;
+			}
 		}
 
-		return CreateSnapshot(
-			observer,
-			maximumDistance,
-			alignedHits,
-			distances,
-			hitPoints);
+		return new(surfaceX, hits > 0 ? totalY / hits : bodyPosition.Y + height * 0.5f);
 	}
 
 	/// <summary>
@@ -102,7 +131,13 @@ internal static class WallToneTerrainProbe
 	{
 		Vector2 playerCenter = observer.Center;
 		Vector2 direction = new(0f, verticalDirection);
-		float horizontalSpan = MathF.Max(playerHalfSize.X * BodyProbeSpan, TileSize * 1.5f);
+		// Only terrain overlapping the body's collision footprint can stop vertical
+		// movement. The former three-tile minimum reached well past both shoulders,
+		// so a block two tiles diagonally away was reported as a ceiling. Pulling the
+		// outer samples just inside the hitbox also avoids assigning a boundary point
+		// to the neighbouring tile while retaining several samples across a normal
+		// player's width for lone blocks and uneven ceilings.
+		float horizontalSpan = MathF.Max(0f, playerHalfSize.X - FirstProbeOffsetPixels);
 		float nearestDistance = float.PositiveInfinity;
 		float nearestLateralOffset = float.PositiveInfinity;
 		Vector2 nearestPoint = Vector2.Zero;
@@ -142,97 +177,6 @@ internal static class WallToneTerrainProbe
 			nearestDistance,
 			maximumDistance,
 			observer.NormalizeToField(nearestPoint));
-	}
-
-	private static bool TrySelectAlignedSurface(
-		ReadOnlySpan<bool> hits,
-		ReadOnlySpan<float> distances,
-		Span<bool> alignedHits,
-		out float surfaceDistance)
-	{
-		alignedHits.Clear();
-		int bestCount = 0;
-		float bestCandidate = float.PositiveInfinity;
-		for (int candidateIndex = 0; candidateIndex < ProbeCount; candidateIndex++)
-		{
-			if (!hits[candidateIndex])
-			{
-				continue;
-			}
-
-			float candidate = distances[candidateIndex];
-			int alignedCount = 0;
-			for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
-			{
-				if (hits[probeIndex] &&
-					MathF.Abs(distances[probeIndex] - candidate) <= SurfaceAlignmentTolerancePixels)
-				{
-					alignedCount++;
-				}
-			}
-
-			if (alignedCount > bestCount ||
-				(alignedCount == bestCount && candidate < bestCandidate))
-			{
-				bestCount = alignedCount;
-				bestCandidate = candidate;
-			}
-		}
-
-		if (bestCount < MinimumAlignedProbeCount)
-		{
-			surfaceDistance = 0f;
-			return false;
-		}
-
-		float alignedDistanceTotal = 0f;
-		int selectedCount = 0;
-		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
-		{
-			bool isAligned = hits[probeIndex] &&
-				MathF.Abs(distances[probeIndex] - bestCandidate) <= SurfaceAlignmentTolerancePixels;
-			alignedHits[probeIndex] = isAligned;
-			if (isAligned)
-			{
-				alignedDistanceTotal += distances[probeIndex];
-				selectedCount++;
-			}
-		}
-
-		surfaceDistance = alignedDistanceTotal / selectedCount;
-		return true;
-	}
-
-	private static WallToneRegionSnapshot CreateSnapshot(
-		SpatialObserverSnapshot observer,
-		float maximumDistance,
-		ReadOnlySpan<bool> alignedHits,
-		ReadOnlySpan<float> distances,
-		ReadOnlySpan<Vector2> hitPoints)
-	{
-		float weightedDistance = 0f;
-		Vector2 weightedCentroid = Vector2.Zero;
-		float totalWeight = 0f;
-		for (int probeIndex = 0; probeIndex < ProbeCount; probeIndex++)
-		{
-			if (!alignedHits[probeIndex])
-			{
-				continue;
-			}
-
-			float proximity = 1f - distances[probeIndex] / maximumDistance;
-			float weight = 0.05f + 4f * proximity * proximity;
-			weightedDistance += distances[probeIndex] * weight;
-			weightedCentroid += hitPoints[probeIndex] * weight;
-			totalWeight += weight;
-		}
-
-		Vector2 centroid = weightedCentroid / totalWeight;
-		return new(
-			true,
-			weightedDistance / totalWeight,
-			maximumDistance,
-			observer.NormalizeToField(centroid));
 	}
 
 	private static bool TryRaycast(

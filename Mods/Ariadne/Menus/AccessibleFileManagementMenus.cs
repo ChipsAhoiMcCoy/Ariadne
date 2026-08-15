@@ -527,6 +527,6 @@ internal sealed class AccessibleConfirmationMenuState : AccessibleMenuState
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
 		entries.Add(new(() => Lang.menu[104].Value, _confirm, description: () => _message));
-		entries.Add(new(() => Lang.menu[105].Value, Controller.Back, description: () => "Cancel and go back."));
+		entries.Add(new(() => Lang.menu[105].Value, () => Controller.Back(), description: () => "Cancel and go back."));
 	}
 }

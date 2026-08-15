@@ -1,4 +1,4 @@
 displayName = Ariadne
-author = Colton Meyer
+author = ChipsAhoyMcCoy
 version = 0.1.0
 side = NoSync

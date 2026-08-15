@@ -105,7 +105,7 @@ internal sealed class AccessibleExternalUISystem : ModSystem
 			state = null;
 		}
 
-		if (state is null || IsAriadneState(state))
+		if (state is null || state is UIWorldLoad || IsAriadneState(state))
 		{
 			_controller.Deactivate();
 			_nextIngameHierarchyLevel = null;
@@ -1916,21 +1916,18 @@ internal sealed class AccessibleExternalUIController
 					GetIntOptionValue(openCategory) == inventoryCategory)
 				{
 					Main.CreativeMenu.ToggleMenu();
-					SoundEngine.PlaySound(SoundID.MenuClose);
 					return;
 				}
 
 				string returnControlId = GetElementStableId(openCategory);
 				ActivateElement(openCategory, secondary: false, DescribeElement(openCategory, includeAllText: false));
-				RebuildAndAnnounceLevel(returnControlId);
+				// GroupOptionButton.LeftMouseDown already plays Terraria's native
+				// transition tick.
+				RebuildAndAnnounceLevel(returnControlId, playCloseSound: false);
 				return;
 			}
 
 			Main.CreativeMenu.ToggleMenu();
-			if (_hierarchyLevel is not null)
-			{
-				SoundEngine.PlaySound(SoundID.MenuClose);
-			}
 			return;
 		}
 
@@ -1950,7 +1947,7 @@ internal sealed class AccessibleExternalUIController
 		}
 	}
 
-	private void RebuildAndAnnounceLevel(string? returnControlId = null)
+	private void RebuildAndAnnounceLevel(string? returnControlId = null, bool playCloseSound = true)
 	{
 		_selectedIndex = 0;
 		RebuildControls(preserveSelection: false);
@@ -1967,7 +1964,10 @@ internal sealed class AccessibleExternalUIController
 			}
 		}
 		FocusSelectedControl();
-		SoundEngine.PlaySound(SoundID.MenuClose);
+		if (playCloseSound)
+		{
+			SoundEngine.PlaySound(SoundID.MenuClose);
+		}
 		AnnounceSelection();
 	}
 

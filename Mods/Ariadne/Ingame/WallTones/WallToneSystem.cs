@@ -72,11 +72,7 @@ internal sealed class WallToneSystem : ModSystem
 
 		_previousObserverCenter = observerCenter;
 		_hasPreviousObserverCenter = true;
-		// The ground sits at zero distance whenever the player is standing on it, so
-		// the floor voice is only meaningful mid-descent. Skipping the sample rather
-		// than only muting it keeps ordinary walking free of the extra raycast.
-		bool includeFloor = config.FallTonesEnabled && PlayerFallTracker.IsDescending;
-		_snapshot = WallToneTerrainProbe.Sample(observer, config.WallToneRangeTiles, includeFloor);
+		_snapshot = WallToneTerrainProbe.Sample(observer, config.WallToneRangeTiles);
 	}
 
 	public override void PostUpdateInput()

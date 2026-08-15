@@ -33,10 +33,24 @@ internal static class Program
 		UnpitchedPlaybackReturnsTheBufferItWasGiven();
 		CentredCueReachesBothChannelsWhole();
 		OneShotRetiresItself();
+		DistanceAttenuationCanBeDisabled();
 
 		Console.WriteLine();
 		Console.WriteLine(_failures == 0 ? "All checks passed." : $"{_failures} check(s) FAILED.");
 		return _failures == 0 ? 0 : 1;
+	}
+
+	private static void DistanceAttenuationCanBeDisabled()
+	{
+		float enabled = SpatialAudioDistanceGain.FromProximity(0.2f, attenuationEnabled: true);
+		float disabled = SpatialAudioDistanceGain.FromProximity(0.2f, attenuationEnabled: false);
+		(float[] attenuated, _) = RenderImpulse(0f, itdEnabled: false, distanceGain: enabled);
+		(float[] fullLevel, _) = RenderImpulse(0f, itdEnabled: false, distanceGain: disabled);
+		Report(
+			"Distance attenuation toggle preserves full level when disabled",
+			MathF.Abs(enabled - 0.2f) < 1e-6f && MathF.Abs(disabled - 1f) < 1e-6f &&
+				MathF.Abs(fullLevel[0] / attenuated[0] - 5f) < 1e-4f,
+			$"enabled gain {enabled:F2}, disabled gain {disabled:F2}, rendered level ratio {fullLevel[0] / attenuated[0]:F2}x");
 	}
 
 	private static void HermiteIsExactOnAQuadratic()
@@ -290,10 +304,11 @@ internal static class Program
 		float normalizedX,
 		bool itdEnabled,
 		float maximumItd = 0.65f,
-		bool headShadow = false)
+		bool headShadow = false,
+		float distanceGain = 1f)
 	{
 		SpatialAudioEmitter emitter = new(gainAttackSeconds: 0.001f);
-		emitter.SetTargetImmediately(new(normalizedX, 0f, 1f));
+		emitter.SetTargetImmediately(new(normalizedX, 0f, distanceGain));
 		float[] left = new float[512];
 		float[] right = new float[512];
 		emitter.Render(

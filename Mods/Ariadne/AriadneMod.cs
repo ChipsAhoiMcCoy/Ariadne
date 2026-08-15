@@ -28,6 +28,7 @@ public sealed class AriadneMod : Mod
 	internal static ModKeybind? RadarSweepKeybind { get; private set; }
 	internal static ModKeybind? HotbarPreviousKeybind { get; private set; }
 	internal static ModKeybind? HotbarNextKeybind { get; private set; }
+	internal static ModKeybind? HousingQueryKeybind { get; private set; }
 	internal static IReadOnlyList<RegisteredKeybindDefault> KeybindDefaults => RegisteredDefaults;
 
 	public override void Load()
@@ -61,6 +62,7 @@ public sealed class AriadneMod : Mod
 		// which HotbarCycleSystem withholds for the frames the chord owns.
 		HotbarPreviousKeybind = RegisterKeybind("HotbarPrevious", Keys.Q, introducedVersion: 6);
 		HotbarNextKeybind = RegisterKeybind("HotbarNext", Keys.E, introducedVersion: 6);
+		HousingQueryKeybind = RegisterKeybind("HousingQuery", Keys.U, introducedVersion: 8);
 	}
 
 	public override void Unload()
@@ -83,6 +85,7 @@ public sealed class AriadneMod : Mod
 		RadarSweepKeybind = null;
 		HotbarPreviousKeybind = null;
 		HotbarNextKeybind = null;
+		HousingQueryKeybind = null;
 		RegisteredDefaults.Clear();
 	}
 

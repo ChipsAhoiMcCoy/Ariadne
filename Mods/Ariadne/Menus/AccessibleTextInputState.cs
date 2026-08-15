@@ -98,7 +98,6 @@ internal sealed class AccessibleTextInputState : UIState
 		KeyboardState keyboard = Keyboard.GetState();
 		if (ContextHelpChord.Pressed(keyboard, _previousKeyboard))
 		{
-			SoundEngine.PlaySound(SoundID.MenuOpen);
 			_controller.Navigate(new AccessibleContextHelpMenuState(
 				_controller,
 				_prompt,
@@ -132,7 +131,6 @@ internal sealed class AccessibleTextInputState : UIState
 
 		if (Pressed(keyboard, Keys.Escape))
 		{
-			SoundEngine.PlaySound(SoundID.MenuClose);
 			if (_cancel is null)
 			{
 				_controller.Back();
@@ -144,7 +142,6 @@ internal sealed class AccessibleTextInputState : UIState
 		}
 		else if (Pressed(keyboard, Keys.Enter))
 		{
-			SoundEngine.PlaySound(SoundID.MenuClose);
 			_submit(_value.Trim());
 		}
 

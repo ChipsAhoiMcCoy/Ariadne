@@ -19,7 +19,6 @@ internal enum WallToneRegion
 	Left,
 	Right,
 	Ceiling,
-	Floor,
 }
 
 /// <summary>A source placed by direction and by fraction of its own cue's range.</summary>
@@ -79,6 +78,7 @@ internal sealed class SoundGuidePlayer : IDisposable
 	private readonly AriadneAudioBus _bus;
 	private readonly FootstepSoundBank? _footsteps;
 	private readonly WallBumpSoundBank? _bumps;
+	private readonly NavigationCueSoundBank? _navigation;
 	private readonly HeartbeatSound? _heartbeat;
 	private readonly WallToneAudioStream? _wallTones;
 	private readonly HostileMobToneAudioStream? _mobTones;
@@ -109,6 +109,7 @@ internal sealed class SoundGuidePlayer : IDisposable
 		_bus = bus;
 		_footsteps = FootstepSoundBank.Create(owner);
 		_bumps = WallBumpSoundBank.Create(owner);
+		_navigation = NavigationCueSoundBank.Create(owner);
 		_heartbeat = HeartbeatSound.Create(owner);
 		_wallTones = WallToneAudioStream.TryCreate(owner);
 		_mobTones = HostileMobToneAudioStream.TryCreate(owner);
@@ -232,6 +233,7 @@ internal sealed class SoundGuidePlayer : IDisposable
 		_beacon?.Dispose();
 		_footsteps?.Dispose();
 		_bumps?.Dispose();
+		_navigation?.Dispose();
 		_heartbeat?.Dispose();
 		_pcmCache.Dispose();
 	}
@@ -255,6 +257,19 @@ internal sealed class SoundGuidePlayer : IDisposable
 	{
 		Stop(config);
 		_bumps?.Play(config.MovementBumpVolumePercent / 100f, pitch, surface);
+	}
+
+	internal void PlayNavigationCue(NavigationCueKind kind, AriadneClientConfig config)
+	{
+		Stop(config);
+		int volumePercent = kind switch
+		{
+			NavigationCueKind.Ascending or NavigationCueKind.Descending => config.ElevationMovementCueVolumePercent,
+			NavigationCueKind.SafeDrop or NavigationCueKind.UnsafeDrop => config.DropWarningVolumePercent,
+			NavigationCueKind.Platform or NavigationCueKind.MinecartTrack or NavigationCueKind.Rope => config.TraversalLandmarkCueVolumePercent,
+			_ => config.CursorEarconVolumePercent,
+		};
+		_navigation?.Play(kind, volumePercent / 100f);
 	}
 
 	internal void PlayHeartbeat(int stageIndex, AriadneClientConfig config)
@@ -307,7 +322,9 @@ internal sealed class SoundGuidePlayer : IDisposable
 			normalizedPosition,
 			config.ToSpatialAudioSettings(),
 			Math.Clamp(config.RadarVolumePercent / 100f, 0f, 1f) *
-				SpatialAudioDistanceGain.FromProximity(proximity)));
+				SpatialAudioDistanceGain.FromProximity(
+					proximity,
+					config.SpatialAudioDistanceAttenuationEnabled)));
 	}
 
 	/// <summary>
@@ -462,7 +479,6 @@ internal sealed class SoundGuidePlayer : IDisposable
 		WallToneRegionSnapshot left = empty;
 		WallToneRegionSnapshot right = empty;
 		WallToneRegionSnapshot ceiling = empty;
-		WallToneRegionSnapshot floor = empty;
 		foreach (WallToneAudition surface in surfaces)
 		{
 			WallToneRegionSnapshot region = new(
@@ -485,12 +501,11 @@ internal sealed class SoundGuidePlayer : IDisposable
 					ceiling = region;
 					break;
 				default:
-					floor = region;
 					break;
 			}
 		}
 
-		return new(left, right, ceiling, floor);
+		return new(left, right, ceiling);
 	}
 
 	private void PlayNativeFallback(string soundPath, in SoundStyle style, float volume)
