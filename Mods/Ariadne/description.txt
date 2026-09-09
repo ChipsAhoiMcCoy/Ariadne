@@ -1,1 +1,8 @@
-Accessibility support for blind and low-vision Terraria players.
+Accessibility support for blind and low-vision Terraria players: spoken menus, keyboard inventory and world interaction, combat targeting, spatial audio, radar, scanner travel, waypoints, housing, and status reports.
+
+Press Alt+H for help. Open Ariadne Sound Guide on the main menu to learn the sounds.
+
+Player guide and downloads: https://github.com/ChipsAhoiMcCoy/Ariadne/releases/tag/v1.0.0
+
+Speech and braille use Prism 0.17.3 by ethindp and the Prism contributors, under MPL-2.0. Corresponding source: https://github.com/ethindp/prism/tree/v0.17.3
+Full licenses and dependency notices are packaged under ThirdParty. Speech runtime: Windows x64 only.

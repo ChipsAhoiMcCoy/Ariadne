@@ -1,123 +1,39 @@
-# Ariadne
+# Ariadne 1.0.0
 
-Ariadne is an accessibility-focused tModLoader mod for Terraria. It provides semantic menu reading and spatial terrain audio for blind and low-vision players.
+Ariadne brings spoken menus, keyboard interaction, and spatial audio to Terraria through tModLoader, for blind and low-vision players.
 
-## Current Accessibility
+**[Download 1.0.0](https://github.com/ChipsAhoiMcCoy/Ariadne/releases/tag/v1.0.0)** · **[Player guide and keybinds](docs/player-guide.md)** · **[Settings reference](docs/settings.md)** · **[Credits and licenses](Mods/Ariadne/ThirdParty/README.md)**
 
-The Terraria title flow is replaced with a Ariadne-owned menu stack. It begins with the seven Terraria/tModLoader actions—Single Player, Multiplayer, Achievements, Workshop, Settings, Credits, and Exit—and continues into custom semantic screens rather than the stock visual menus.
+## Install
 
-Current custom screens include:
+1. Install Terraria and tModLoader through Steam. This release's speech requires 64-bit Windows 10 or later.
+2. Download **Ariadne.tmod** from the release's Assets section. GitHub's Source code downloads are for developers.
+3. In tModLoader, use **Workshop → Manage Mods → Open Mods Folder**. Close tModLoader and copy `Ariadne.tmod` there. The usual Windows location is `Documents\My Games\Terraria\tModLoader\Mods`; redirected Documents and custom save paths can change it.
+4. Start your screen reader, launch tModLoader, enable **Ariadne** in Manage Mods, and reload mods.
+5. Once loaded, press **Alt+H** for contextual help. Open **Ariadne Sound Guide** on the main menu to learn the sounds.
 
-- Character and world selection, creation, appearance, inline file actions, and deletion confirmation.
-- Join via IP, recent servers, host options, password entry, and live connection status.
-- Achievement search, completion filters, details, progress, and reset confirmation.
-- General, interface, video, audio, cursor, language, tModLoader, and keyboard-binding settings, both from the title screen and while playing.
-- An in-game World and Player Status hierarchy covering world difficulty and events, active Celestial Pillars and their shield counts, moon phase, biome, health, mana, defense, armor set bonus, breath, bosses, all current buffs and debuffs, minion and sentry capacity and instances, and informational-accessory readings.
-- Installed mods, Mod Sources, Mod Packs, the Mod Browser, Workshop publishing and import tools, resource packs, and logs.
-- A multi-level in-game inventory tree covering the hotbar, backpack, coins and ammo, trash, armor, accessories, vanity, dyes, equipment, loadouts, containers, shops, crafting, and reforging. Focused conversation, Guide crafting-help, and sign screens expose NPC services, tModLoader chat-button hooks, material-based recipe lookup, sign editing, modded shops, Stylist and Dresser customization, NPC housing selection, Journey research and duplication, the Bestiary, emotes, and Journey powers without opening the general inventory for ordinary dialogue.
-- Scanner results say which way each thing lies from where the player stands and end with its raw tile coordinates. The coordinates are given whatever the relative-readout preference says, because the snapshot is fixed and may be acted on after the player has walked somewhere else, where an offset would no longer be true. They are spoken last, after the interaction sentence, so the useful half of the line is never held up behind five digits.
-- A semantic world map listing the current biome and coordinates, world spawn, the last death marker, active players, bosses, town NPCs, and discovered pylons. Pylon entries request normal Terraria travel without requiring mouse targeting.
-- Spoken legacy chat editing and death/respawn status, including edit feedback, dropped coins, and the visible respawn countdown.
+The `.tmod` is the only Ariadne file players need to install. It includes Prism, localization, and third-party notices. Ariadne cannot speak the initial setup screens before it is enabled; assistance may be needed for first-time setup.
 
-Ariadne also provides continuous terrain tones during unobstructed gameplay. Three independent white-noise voices indicate the nearest movement-blocking terrain to the left, right, and gravity-relative ceiling. Distance controls pitch and, by default, loudness; a global setting can keep detected cues at full configured volume until their range cutoff without changing position or pitch. Screen position supplies literal stereo or binaural placement and vertical pitch. Strongly separated filters make the broad 280–1,800 Hz side walls and narrow 900–4,200 Hz ceiling distinguishable without changing noise color. Side sensing follows a player-sized Terraria collision path with normal step-up behavior, so head- and torso-height walls sound while traversable steps, staircases, and hills do not. Ceiling probes stay inside the player's horizontal collision footprint, and pass-through platforms are not treated as ceilings.
+## Features
 
-Centered elevation ticks mark each vertical tile boundary crossed while attached to a rope or similar climbable tile. A rising sweep means climbing upward and a falling sweep means climbing downward. Ordinary jumps, falls, mounts, grappling-hook pulls, and other vertical movement stay silent. At most ten ticks play per second, and fast climbing discards additional crossings rather than queuing late feedback. Detaching, teleports, discontinuities, pause, focus loss, death, menus, and world transitions reset the cue cleanly.
+- Accessible character/world creation, multiplayer setup, settings, Workshop tools, and hierarchical inventory menus.
+- Keyboard world cursor, Smart Cursor support, combat targeting, NPC services, shops, crafting, and housing queries.
+- Spatial terrain/enemy cues, radar, footsteps, climbing/ledge feedback, and health/breath announcements.
+- Visible-surroundings scanner with teleport/interact actions, world waypoints, semantic map, and freecam exploration.
+- Spoken status, chat history, pickups, summons, biome changes, and an interactive sound guide.
 
-While a grounded player intentionally walks toward a ledge, Ariadne searches along the reachable path up to a configurable four tiles ahead, classifies drops beginning at three tiles, and sounds one spatial reassuring cue for a known safe landing or one warning for an unsafe result from the ledge itself. Walls stop the lookahead, while traversable steps and slopes do not. Lava, shimmer, hurting tiles, a fall that would damage the current player, and a bottom not found within the separate downward range are unsafe. The result latches at that edge and re-arms after retreating, changing direction, or returning to supported terrain, so holding a movement key does not repeat the warning.
+Custom screens provide the most complete support. Other screens receive a best-effort keyboard adapter; Steam/browser/Explorer windows use their own accessibility. See the [coverage matrix](docs/accessibility-screen-coverage.md).
 
-Grounded horizontal movement also identifies traversal landmarks along the crossed path. Platforms and minecart track are detected up to four gravity-relative tiles overhead; tracks intersecting the player or at the feet are also detected, and rope up to seven tiles above or below, with solid terrain blocking the scan. Tracks use a short, bright descending tick. Distinct spatial sounds play for every crossed landmark; speech names only the start of a contiguous run, a changed landmark type, or a changed rope direction.
+Speech and braille integration uses **Prism 0.17.3 by ethindp and the Prism contributors**, under MPL-2.0. [Bundled credits](Mods/Ariadne/ThirdParty/README.md) include upstream notices, dependency licenses, and corresponding source links.
 
-Hostile mob tones provide a separate on-screen enemy-awareness layer. Up to three enemies by default receive continuous, gently ticking procedural triangle tones, with visible multipart segments grouped into one emitter. Proximity increases loudness and tick rate, horizontal screen position supplies stereo level and timing differences, and vertical screen position controls pitch. Stable assignments and a 20-percent-nearer replacement threshold keep ordinary enemies from chattering between slots. Hostility comes from Terraria's chaseable-enemy semantics, without lighting or line-of-sight requirements, but an NPC must genuinely intersect the zoom-aware camera viewport.
+## Development
 
-Combat targeting keeps temporarily protected objectives such as shielded Celestial Pillars, closed Moon Lord eyes, and the protected Moon Lord core available while preferring targets that can currently take damage. Destroyed Moon Lord hand and head shells are removed from the cycle even though Terraria leaves them active at reset full health, True Eyes of Cthulhu are omitted because they can never be damaged, and the exposed core becomes the meaningful target. World Status lists all active pillars and their shield counts globally, while direction and distance remain limited to nearby targeting.
-
-The radar says when the scanner is worth opening. It sweeps twice a second, and when something the scanner would list first comes into range it sounds one struck bell from that thing's position. It stays silent while nothing new arrives, so standing still costs nothing. What was found is carried by how many times the bell is struck: one strike for the ores, gems, pots, and life crystals a Spelunker Potion would highlight, two for a container, three for the town, rescuable, and passive creatures a Hunter Potion would highlight, and four for any other category armed in configuration. Pitch carries height, while level carries distance when distance attenuation is enabled. The radar uses the scanner's own lit world scan for passive discovery. Apostrophe captures a fixed nearest-first snapshot and advances exactly one contact with its matching ping on each press, wrapping after the last and refreshing after four idle seconds. Manual snapshots always include visible dropped items and their stack counts even when passive dropped-item radar is disabled. A pickup or changed stack refreshes the manual snapshot before it is spoken. Passive dropped-item discovery is available in Ariadne Accessibility Settings as Passive radar finds dropped items. Left Alt plus Apostrophe switches passive discovery off for the session. Enemies are off by default because the hostile mob tone already follows the nearest one continuously.
-
-The virtual world cursor plays the targeted foreground tile or liquid's native Terraria sound on every nonempty manual unlocked-cursor tile step and every changed nonempty Smart Cursor result. Ariadne reads these assets only from the player's installed Terraria content, decodes and caches their PCM in memory, and routes cached sounds through the same ILD, ITD, and vertical-pitch spatializer used by its authored audio. Common variants warm in the background; an uncommon or unsupported sound falls back immediately to Terraria's ordinary spatial playback while its cache is unavailable. Terraria's declared sound variants are selected in sequence instead of randomly repeating, and a new result replaces any unfinished cursor sound. Water and honey alternate the native strong and weak splashes, shimmer cycles its four native splash sounds, and lava uses a short, faded segment of Terraria's native lava ambience asset. Empty space—including wall- or wire-only coordinates—remains silent. Unlocked movement announces the target, raw tile X and Y, and held-item reach by default. On a manual cursor step, any town NPC, creature, critter, or hostile mob whose hitbox contains the exact cursor point is named with useful health or invulnerability state and the tile beneath it. Noninteractable mobs are descriptive only and never consume secondary use. Coordinate announcements can be disabled to restore the target, reach, and player-relative description. Smart Cursor remains concise: it speaks only the target name, never coordinates or reach, while still reporting coordinate changes and same-tile semantic state changes. Interaction and description share one resolver: in unlocked mode an interactable entity directly under the cursor takes priority, then the exact tile or multi-tile object, so an unrelated nearby NPC cannot steal a chest click. Smart Cursor honors Terraria's genuine target before using proximity conversation. This also makes an Old Shaking Chest targetable through overlapping minecart tracks and reports when a Golden Key is required.
-
-U opens Housing Query mode over a fixed snapshot of every enclosed room intersecting the viewport, whether suitable, occupied, or unsuitable and regardless of lighting. Focus starts on the room nearest the player; Arrow keys move semantically between room centers, Enter runs Terraria's live query at the stored interior tile, U refreshes, and Escape exits. Distinct suitable, occupied, and unsuitable sounds play from the focused room's geometric center at cursor-earcon volume. The inventory's Housing query tool opens the same mode, while NPC assignment stays in its separate list and follows Terraria's native housing-head visibility rules.
-
-Biome announcements speak the current biome after entering the world and each stable biome transition after a short debounce. The announcement leads with the biome itself, as in "Forest Biome", rather than a prefix, so the name arrives first. Vanilla special biomes, pillars, and mod-added `ModBiome` content are included. Announcements intentionally omit time, exact position, depth, weather, and other informational-accessory readings.
-
-A low-health heartbeat pulses once health reaches half and quickens at the 40, 30, 20, 10, and 5 percent thresholds, rising slightly in pitch and loudness as it goes. Terraria has no native heartbeat asset, so the two-part "lub-dub" cycle is synthesized; raising its pitch for a worse wound also tightens the gap between the two thumps. The remaining health percentage is spoken when health first crosses into each lower threshold, and a single confirmation is spoken once health has recovered. A two-percent margin above each boundary keeps a wound that hovers on a threshold from flickering between two rates.
-
-Breath is reported while submerged. Entering water or honey announces the submersion, each ten percent of remaining breath is announced as it is lost, and running out is announced as drowning begins. Every report is paired with Terraria's own splash sound. Surfacing is announced once, and both transitions are debounced so bobbing at a liquid surface cannot chatter. Players whose breath does not drain, such as those wearing gills or a Neptune's Shell, hear only the submersion and surfacing announcements.
-
-Backspace speaks one character-status entry per press and advances through the report while the player keeps pressing, restarting at the beginning once the sequence has been left alone for four seconds. The order is health, mana, defense, armor set bonus, minions and sentries, buffs and debuffs, time of day, moon phase, breath when it is not full, biome and layer, and active bosses when any are present. Time of day follows the same accessory rules as the status menu: without a watch it degrades to a rough phase such as morning, afternoon, or evening, and an equipped watch, nearby clock, or teammate sharing raises it to the hour, half hour, or exact minute that tier grants. The set bonus reports the equipped armor set's granted effect, including modded sets, and reports none when no set is complete.
-
-New capacity-bearing minions and sentries are announced as they appear, followed by the active total and used capacity. Everything created during one update is combined into one noninterrupting report; removals, decorative multipart projectiles, initial world synchronization, and changes during inactive gameplay remain silent. The immediate announcement and requested summon status share the same counting model.
-
-Journey enemy difficulty is exposed as Terraria's actual `0.50x` through `3.00x` multiplier rather than as the normalized slider percentage. Accessible Left and Right adjustment moves in exact `0.05x` steps, with the `0.50x`, `1.00x`, `2.00x`, and `3.00x` Journey, Classic, Expert, and Master landmarks named explicitly.
-
-The status menu follows Terraria's information-accessory rules. Time, weather, fishing power, detected treasure, rare creatures, nearby enemy count, kill count, DPS, speed, compass position, depth, and mod-added information displays appear only while their native display is active through an equipped item, nearby clock, teammate sharing, or the providing mod. Hiding an icon does not revoke information the player otherwise possesses.
-
-Moon phase is the deliberate exception to that rule and is reported without a Sextant, both as a status row and in the Backspace report. A sighted player reads the moon straight off the night sky at no cost, so gating the phase behind an accessory would withhold information the interface never actually charged for. The Sextant's own reading still appears among the informational-accessory readings when the accessory is active.
-
-The radar is enabled at 70 percent volume with a 30-tile range, armed for ores and valuables, containers, and creatures. Wall tones use a 12-tile range. Elevation movement cues, spatial ledge warnings, and traversal landmarks are enabled at 70 percent volume; ledges look four reachable tiles ahead and search 30 tiles downward for a landing. Distance-based volume reduction for walls and ceilings, hostile tones, and radar pings is enabled by default. One global interaural-time-difference switch and strength slider serves spatial audio; ITD is enabled by default with 0.65 milliseconds of maximum far-ear delay. These values can be changed in Ariadne Accessibility Settings through either Ariadne's accessible configuration editor or tModLoader's standard editor.
-
-Any Terraria, tModLoader, or third-party `UIState` without a purpose-built Ariadne screen receives a universal semantic keyboard adapter. It discovers live buttons, list entries, item slots, text fields, toggles, and sliders; derives their labels from localized UI content; keeps the selected row in view; and announces changing progress or error text. This supplies baseline access to newly added screens without waiting for a dedicated implementation. See [the screen coverage matrix](docs/accessibility-screen-coverage.md) for the routing model and known spatial boundaries.
-
-Platform-owned actions such as the Steam friends list, Steam Workshop web page, File Explorer folders, and entering gameplay intentionally leave the custom menu stack.
-
-- Up and Down Arrow move through the options and wrap at either end.
-- Home, End, Page Up, and Page Down move through long lists.
-- Letter keys jump to the next matching option by name in custom and fallback screens.
-- Left and Right Arrow adjust choices, toggles, and sliders. On a character or world row they rotate through that file's Play, Favorite, Cloud, Seed, Rename, Delete, and contextual warning actions.
-- In in-game hierarchical menus, Right or Enter opens submenus and activates buttons, while Left or Escape returns to the parent. When an adjustable setting is focused, Left and Right continue to change its value.
-- Enter activates the focused option.
-- Escape goes back in submenus. It has no effect at the root main menu because there is no previous screen.
-- F1 opens an arrow-navigable contextual help screen describing the focused option and the controls available in the current menu. F1 or Escape closes help.
-- Text fields speak edits and accept Enter or cancel with Escape.
-- Focus is spoken as a semantic label, role, state, description, and position in the menu.
-- Stock fallback screens use Enter for a normal click, Shift+Enter for a right click or alternate action, and Ctrl+R to read all discovered text for the focused control.
-
-Sonar Potion catch popups are spoken when a bite identifies an item, enemy, or custom modded catch. The unlocked world cursor names the individual banner or statue variant, including statues facing either direction.
-
-While the inventory is open:
-
-- The inventory opens at level 0 with Inventory and Crafting as one branch; Crafting is nested alongside the hotbar, main inventory, coins and ammo, and inventory actions. Armor, Accessories, and Equipment is one combined root branch containing those three sections. World and Player Status, Settings, and Save and Exit are always the final three options.
-- Groups can contain submenus to any depth. For example, Armor contains Equipped Armor, Vanity Armor, and Armor Dyes at level 1, with their slots at level 2; modded accessory variants can reach level 3. Up and Down move and wrap within the current level, Right or Enter opens a submenu, and Left returns to its parent.
-- Main Inventory divides only its forty storage slots into the configured columns, then appends Trash as a footer after slot 40 in the final column. Down from slot 40 reaches Trash, and the footer wraps vertically with that final column. Quick stack, Sort Inventory, and Sort Ammo are level 1 options in the Inventory group.
-- Inventory, hotbar, crafting, storage, and shop panes each have a configurable column count from one through ten. Equipment panes remain short vertical lists. One column is the default and preserves the original list. With multiple columns, entries fill top-to-bottom in balanced columns; Up and Down wrap within the current column, Left and Right move between columns, and Left from the first column returns to the parent. Focus includes its row and column.
-- Home and End jump to the first and last option at the current level, and Page Up and Page Down move by ten options.
-- Letter keys jump to matching entries in alphabetical order. Repeating a letter cycles through its matches and wraps; empty item slots are skipped. This works in inventories, chests and banks, shops, recipe lists, equipment, and action lists.
-- In Crafting, hold I to craft the focused recipe repeatedly. Releasing I stops crafting; exhausting a recipe never starts the next recipe. Equipment crafts once per press. Results go into inventory immediately, with any overflow retained in the held slot and further crafting stopped until it can be stored.
-- Chest, Piggy Bank, Safe, Defender's Forge, and Void Vault position announcements count only item slots; container action buttons have no slot number.
-- Enter performs the normal primary click. Shift+Enter performs the secondary click used for splitting stacks and other alternate actions.
-- Ctrl+F toggles favorite on supported inventory items, Ctrl+R reads full details and tooltips, and F1 reads the inventory controls.
-- Escape closes the inventory. World and Player Status, Settings, and Save and Exit are available at the bottom of the main tree.
-
-During gameplay, Left Alt is Ariadne's command prefix. Holding it with Q or E steps the selected hotbar slot backward or forward, wrapping at either end and stepping through empty slots rather than skipping them; the slot and its contents are spoken by the existing hotbar announcement. Because Terraria binds E to Grapple and does not know the modifier is held, Ariadne withholds whatever native trigger that key is bound to for as long as the chord is held, resolved from the live binding so a rebind stays covered. Holding Left Alt with W opens waypoints, and with Apostrophe toggles passive radar.
-
-During gameplay, Home toggles only wall tones for the current session and announces the new state without changing the saved configuration. Hostile/combat-target audio and cursor earcons are controlled exclusively by their saved client configuration. Home remains available for its existing navigation behavior whenever an inventory, chat field, map, NPC/sign editor, full-screen interface, or accessible menu is active. Saving a changed Wall tones setting clears the session override.
-
-Both continuous gameplay audio streams stop and clear their source, delay, assignment, and queued-buffer state on pause, focus loss, death, title/world transitions, and all supported UI contexts, then resume from fresh state during normal gameplay. Cursor, navigation, and combat-target one-shots are suppressed or reset at the same boundaries. The systems are entirely client-side and generate no network traffic. Wall tones and hostile tones are generated procedurally, while cursor earcons use in-memory PCM decoded from the local Terraria installation behind a separate failure boundary; no extracted game audio is packaged with Ariadne.
-
-Ariadne-authored one-shot sounds such as procedural footsteps, the low-health heartbeat, and combat-target cues retain a 70-percent peak ceiling before their playback-specific and user-configured gains are applied. Cached native cursor earcons retain the source asset's own samples and level before the cursor-volume setting and spatial transform. Continuous wall and hostile tones retain lower per-voice headroom because several voices can mix simultaneously.
-
-Speech and braille output use [Prism](https://github.com/ethindp/prism), with active screen readers such as NVDA preferred over built-in speech fallbacks. Ariadne currently packages Prism for 64-bit Windows clients; servers and unsupported platforms skip speech initialization safely. Leaving Manage Mods follows tModLoader's automatic-reload preference. Speech necessarily pauses while Ariadne is unloaded, then Prism retries transient initialization failures and announces when speech has recovered. Disabling Ariadne itself requires a warning confirmation because speech cannot return after that reload.
-
-## Installation
-
-Install the packaged `Ariadne.tmod` in tModLoader's Mods folder, enable Ariadne in Manage Mods, and reload mods. The `.tmod` is the complete distributable and contains Ariadne's assembly, Prism runtime, localization, and packaged notices. Do not distribute a bare `Ariadne.dll` or another player's `enabled.json`; the DLL omits required packaged resources, while `enabled.json` is private per-user mod-selection state.
-
-## Repository Layout
-
-- `Mods/Ariadne/` contains the tracked tModLoader mod.
-- `Tools/build.ps1` compiles or packages the mod using the local tModLoader installation.
-- `docs/decompilation/` contains tracked navigation maps for local decompiled references.
-- `Terraria Decompiled/` and `TModLoader Decompiled/` are local, read-only references excluded from Git.
-
-## Build
-
-Install tModLoader through Steam, then compile and package the mod with:
+`Mods/Ariadne/` contains the mod. Install tModLoader, then run:
 
 ```powershell
 .\Tools\build.ps1
 ```
 
-Set `TML_INSTALL_PATH` if tModLoader is not in its standard Steam location.
+Set `TML_INSTALL_PATH` for a nonstandard Steam location. The build stages source under the Windows Public profile to avoid embedding a personal source path. Distribute the packaged `.tmod`, never a bare DLL or your `enabled.json`.
 
-## Local References
-
-The decompiled source trees are intentionally untracked and must not be published. Start source investigations with [the tModLoader map](docs/decompilation/decompiled-tmodloader-map.md) or [the Terraria map](docs/decompilation/decompiled-terraria-map.md), then narrow searches with `rg`.
+Local decompiled game references are intentionally untracked and must not be published. Navigation maps are in [docs/decompilation](docs/decompilation). See the [1.0.0 release notes](docs/releases/1.0.0.md).
