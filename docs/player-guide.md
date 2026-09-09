@@ -19,16 +19,25 @@ This guide describes Ariadne 1.0.0. Keys are defaults for a US keyboard; punctua
 
 ## Installation
 
-1. Install Terraria and tModLoader from Steam. Launch **tModLoader**, rather than ordinary Terraria. This release's speech requires **64-bit Windows 10 or later**; Linux, macOS, and Windows ARM64 speech runtimes are not packaged.
-2. Download **Ariadne.tmod** from Assets on the [1.0.0 release](https://github.com/ChipsAhoiMcCoy/Ariadne/releases/tag/v1.0.0). GitHub's Source code ZIP/TAR downloads are not the installable mod.
-3. Use **Workshop → Manage Mods → Open Mods Folder** in tModLoader. The usual path is `Documents\My Games\Terraria\tModLoader\Mods`. OneDrive, redirected Documents, preview branches, or custom save paths can change this; the in-game folder button is authoritative.
-4. Close tModLoader and put `Ariadne.tmod` there. Do not unzip it or place it in Terraria's Steam installation folder.
-5. Start your screen reader, reopen tModLoader, enable Ariadne in Manage Mods, and reload mods. Apply the pending reload yourself if automatic reloading is disabled.
-6. Once the menu speaks, open **Ariadne Sound Guide** on the main menu, learn a few sounds, then return to **Single Player** to select/create a character and world.
+1. Install Terraria and tModLoader through Steam. This release's speech requires **64-bit Windows 10 or later**.
+2. Download **Ariadne.tmod** and **enabled.json** from the [1.0.0 release Assets](https://github.com/ChipsAhoiMcCoy/Ariadne/releases/tag/v1.0.0). Keep both filenames exactly as downloaded, especially `enabled.json` rather than `enabled.json.txt`.
+3. **Keep tModLoader closed.** In File Explorer, open your Windows Documents folder, then `My Games\Terraria\tModLoader\Mods`. You can press **Windows+R**, type `shell:Personal`, and press Enter to open Documents using the keyboard, including redirected Documents folders. Create missing folders if this is a fresh installation. If you deliberately use a custom tModLoader save location or preview branch, use its Mods folder instead.
+4. For a fresh installation, copy **both files** into that Mods folder. `enabled.json` contains only Ariadne and tells tModLoader to load it automatically. You do not need to navigate the game's Enable button. Do not unzip `Ariadne.tmod` or put either file in Terraria's Steam installation folder.
+5. Start your screen reader, then launch **tModLoader** from Steam. Ariadne will be enabled during startup. Open **Ariadne Sound Guide** on the main menu to learn the sounds; press **Alt+H** for help.
 
-**The `.tmod` is the only Ariadne file you need to install.** Prism, localization, and notices are inside. No separate DLL, SDK, or source checkout is needed. Active screen readers such as NVDA are preferred over available built-in speech fallbacks. Braille depends on your backend and screen-reader setup. Before Ariadne is enabled its speech is unavailable, so initial setup may require assistance.
+**Already have mods?** Back up your existing `enabled.json` before changing it. Replacing it with the starter file enables only Ariadne and disables your other mod selections (it does not delete the mods). To keep your selections, edit the existing JSON array and add `"Ariadne"` as another entry, separated by a comma, instead of replacing the file. Close tModLoader before editing so it does not overwrite your change.
 
-To upgrade, back up saves, close tModLoader, and replace the old `.tmod` in the same folder. Reopen and check that Ariadne is enabled and shows 1.0.0. Keep your own settings and `enabled.json`; never copy someone else's mod-selection file. To uninstall, disable Ariadne and reload, or close the game and remove its `.tmod`. Disabling it also removes its speech and keyboard accessibility.
+The supplied starter file is exactly:
+
+```json
+[
+  "Ariadne"
+]
+```
+
+Prism, localization, and licenses are already inside `Ariadne.tmod`. No separate DLL, SDK, or compiler is needed. GitHub's automatic Source code ZIP/TAR downloads are not installable mods. Active screen readers such as NVDA are preferred over available built-in speech fallbacks; braille depends on the selected backend and your screen-reader setup.
+
+**Updating an existing Ariadne installation:** Back up saves, close tModLoader, and replace `Ariadne.tmod`. Keep your existing `enabled.json` if it already includes Ariadne; you do not need to replace it on every update. To uninstall without in-game menus, close tModLoader and remove `"Ariadne"` from the enabled array, preserving valid JSON, or remove `Ariadne.tmod` from Mods. Ariadne's speech and keyboard accessibility will then stop.
 
 References: [official tModLoader usage guide](https://github.com/tModLoader/tModLoader/wiki/Basic-tModLoader-Usage-Guide) and [Prism 0.17.3 platform requirements](https://github.com/ethindp/prism/tree/v0.17.3).
 
@@ -225,7 +234,7 @@ Ariadne is **NoSync**: the server and other clients need not install it for your
 
 | Problem | Check |
 | --- | --- |
-| Mod absent | Launch tModLoader; verify the active Mods folder and that the file is Ariadne.tmod, not a source ZIP. |
+| Mod absent or not loading | Verify both Ariadne.tmod and enabled.json are in the active Mods folder, the JSON contains "Ariadne", and its filename is not enabled.json.txt. Launch tModLoader, not Terraria. |
 | No speech | Check Windows x64, active screen reader/working fallback, and completed reload. Transient initialization failures retry with a recovery announcement. |
 | No cues | Check Terraria Sound, feature volume/toggle, Home/radar session state, game focus, and open interfaces. Try the Sound Guide. |
 | Different keys | Check Controls and Alt+H; existing profiles/layouts and overlapping mod bindings can differ. |
