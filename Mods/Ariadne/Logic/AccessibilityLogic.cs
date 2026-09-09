@@ -8,6 +8,24 @@ namespace Ariadne.Logic;
 
 internal readonly record struct GridLocation(int Column, int Row);
 
+/// <summary>A held craft never follows focus onto a different recipe or repeats equipment.</summary>
+internal sealed class CraftingRepeatLatch
+{
+	private string? _recipe;
+	private bool _crafted;
+
+	internal bool Allow(string recipe, bool pressed, bool triggered, bool stackable)
+	{
+		if (pressed) { _recipe = recipe; _crafted = false; }
+		if (_recipe != recipe) { _recipe = null; return false; }
+		if (!triggered || _crafted && !stackable) return false;
+		_crafted = true;
+		return true;
+	}
+
+	internal void Reset() { _recipe = null; _crafted = false; }
+}
+
 internal static class InventoryGridLogic
 {
 	internal static int ColumnCount(int itemCount, int requested) =>

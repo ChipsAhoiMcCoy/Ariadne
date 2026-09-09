@@ -161,6 +161,31 @@ internal sealed class AccessibleAriadneConfigMenuState : AccessibleMenuState
 
 	protected override void BuildEntries(List<AccessibleMenuEntry> entries)
 	{
+		AddToggle(entries, nameof(AriadneClientConfig.RadarEnabled),
+			() => _pending.RadarEnabled, value => _pending.RadarEnabled = value);
+		AddPercentSlider(entries, nameof(AriadneClientConfig.RadarVolumePercent),
+			() => _pending.RadarVolumePercent, value => _pending.RadarVolumePercent = value);
+		AddSlider(entries, nameof(AriadneClientConfig.RadarRangeTiles),
+			() => _pending.RadarRangeTiles, value => _pending.RadarRangeTiles = value,
+			minimum: 10, maximum: 60, step: 5, format: value => $"{value} tiles");
+		AddToggle(entries, nameof(AriadneClientConfig.RadarSweepSpeechEnabled),
+			() => _pending.RadarSweepSpeechEnabled, value => _pending.RadarSweepSpeechEnabled = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RadarDetectsOresAndValuables),
+			() => _pending.RadarDetectsOresAndValuables, value => _pending.RadarDetectsOresAndValuables = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RadarDetectsContainers),
+			() => _pending.RadarDetectsContainers, value => _pending.RadarDetectsContainers = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RadarDetectsCreatures),
+			() => _pending.RadarDetectsCreatures, value => _pending.RadarDetectsCreatures = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RadarDetectsEnemies),
+			() => _pending.RadarDetectsEnemies, value => _pending.RadarDetectsEnemies = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RadarDetectsDroppedItems),
+			() => _pending.RadarDetectsDroppedItems, value => _pending.RadarDetectsDroppedItems = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RadarDetectsLiquids),
+			() => _pending.RadarDetectsLiquids, value => _pending.RadarDetectsLiquids = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RadarDetectsTreesAndPlants),
+			() => _pending.RadarDetectsTreesAndPlants, value => _pending.RadarDetectsTreesAndPlants = value);
+		AddToggle(entries, nameof(AriadneClientConfig.RadarDetectsPlacedObjects),
+			() => _pending.RadarDetectsPlacedObjects, value => _pending.RadarDetectsPlacedObjects = value);
 		AddToggle(entries, nameof(AriadneClientConfig.BiomeAnnouncementsEnabled),
 			() => _pending.BiomeAnnouncementsEnabled, value => _pending.BiomeAnnouncementsEnabled = value);
 		AddToggle(entries, nameof(AriadneClientConfig.CursorEarconsEnabled),

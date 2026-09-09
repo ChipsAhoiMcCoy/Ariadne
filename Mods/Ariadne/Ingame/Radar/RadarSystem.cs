@@ -196,7 +196,27 @@ internal sealed class RadarSystem : ModSystem
 		_pending.Clear();
 		_ticksUntilNextPing = 0;
 		ulong now = Main.GameUpdateCount;
-		bool expired = _manualCursor.ShouldRefresh(
+		// Revalidate item identity before reading the frozen snapshot. A picked-up
+		// item slot can also have been reused for a completely different drop.
+		bool itemsChanged = false;
+		foreach (RadarContact contact in _manualSnapshot)
+		{
+			ScannerTarget target = contact.Target;
+			if (target.Kind != ScannerTargetKind.DroppedItem) continue;
+			if (target.EntityIndex < 0 || target.EntityIndex >= Main.maxItems)
+			{
+				itemsChanged = true;
+				break;
+			}
+			Item item = Main.item[target.EntityIndex];
+			if (!item.active || item.IsAir || item.type != target.EntityType || item.stack != target.Stack ||
+				item.GetGlobalItem<ScannerItemIdentity>().Identity != target.EntityIdentity)
+			{
+				itemsChanged = true;
+				break;
+			}
+		}
+		bool expired = itemsChanged || _manualCursor.ShouldRefresh(
 			_manualSnapshot.Count,
 			now,
 			ManualSnapshotResetTicks);

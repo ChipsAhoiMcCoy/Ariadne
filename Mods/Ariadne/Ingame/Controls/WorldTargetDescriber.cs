@@ -172,6 +172,16 @@ internal static class WorldTargetDescriber
 	internal static string GetTileName(int x, int y, ushort type)
 	{
 		Tile tile = Main.tile[x, y];
+		if (type is TileID.Banners or TileID.Statues)
+		{
+			int style = TileObjectData.GetTileStyle(tile);
+			// Vanilla statues use another bank of 165 styles when facing right.
+			if (type == TileID.Statues && style >= 0) style %= 165;
+			foreach (Item sample in ContentSamples.ItemsByType.Values)
+			{
+				if (sample.createTile == type && sample.placeStyle == style) return sample.Name;
+			}
+		}
 		string? treeName = GetTreeName(x, y, type);
 		if (treeName is not null)
 		{

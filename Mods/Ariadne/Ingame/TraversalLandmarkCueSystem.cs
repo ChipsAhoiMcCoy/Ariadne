@@ -115,6 +115,13 @@ internal sealed class TraversalLandmarkCueSystem : ModSystem
 		int headSideY = gravity > 0 ? player.Hitbox.Top / 16 : player.Hitbox.Bottom / 16;
 		int footSideY = gravity > 0 ? player.Hitbox.Bottom / 16 : player.Hitbox.Top / 16;
 		TraversalLandmark? best = null;
+		// Tracks may intersect the body or support the feet instead of hanging overhead.
+		for (int y = player.Hitbox.Top / 16; y <= player.Hitbox.Bottom / 16; y++)
+		{
+			Tile bodyTile = Framing.GetTileSafely(tileX, y);
+			if (bodyTile.HasTile && !bodyTile.IsActuated && bodyTile.TileType == TileID.MinecartTrack)
+				Consider(ref best, bodyTile, tileX, y, 0, TraversalLandmarkDirection.Below);
+		}
 
 		for (int distance = 1; distance <= RopeRangeTiles; distance++)
 		{

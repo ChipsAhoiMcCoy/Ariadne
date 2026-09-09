@@ -811,8 +811,8 @@ Configs: {
 		}
 
 		RadarDetectsDroppedItems: {
-			Label: Radar finds dropped items
-			Tooltip: Detect items lying in the world. Sounds four strikes.
+			Label: Passive radar finds dropped items
+			Tooltip: Detect items lying in the world automatically. Sounds four strikes. Manual apostrophe checks always include dropped items and stack counts, even when this is off.
 		}
 
 		RadarDetectsLiquids: {

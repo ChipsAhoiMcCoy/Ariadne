@@ -13,6 +13,7 @@ internal static class Program
 	private static int Main()
 	{
 		InventoryColumnsAndTrashFooter();
+		HeldCraftingKeepsItsRecipe();
 		TraversalAndWallClassification();
 		LedgeLookaheadAndSafety();
 		LandmarkPriorityAndSpeech();
@@ -41,6 +42,22 @@ internal static class Program
 			passed &= InventoryGridLogic.MoveVerticalWithFooter(40, 40, actual, -1) == 39;
 		}
 		Report("Inventory 1-10 columns keep 40 items and append a reversible Trash footer", passed);
+	}
+
+	private static void HeldCraftingKeepsItsRecipe()
+	{
+		var latch = new CraftingRepeatLatch();
+		bool passed = latch.Allow("gold-bars", true, true, true) &&
+			!latch.Allow("gold-bars", false, false, true) &&
+			latch.Allow("gold-bars", false, true, true) &&
+			!latch.Allow("silver-bars", false, true, true) &&
+			!latch.Allow("gold-bars", false, true, true);
+		latch.Reset();
+		passed &= !latch.Allow("silver-bars", false, true, true) &&
+			latch.Allow("silver-bars", true, true, true) &&
+			latch.Allow("armor", true, true, false) &&
+			!latch.Allow("armor", false, true, false);
+		Report("Held crafting repeats bars, stops on recipe changes, rearms on a new press, and crafts equipment once", passed);
 	}
 
 	private static void TraversalAndWallClassification()

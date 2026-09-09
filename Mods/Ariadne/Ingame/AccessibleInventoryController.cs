@@ -32,6 +32,7 @@ internal sealed class AccessibleInventoryController
 {
 	internal const int HotbarSlotCount = 10;
 
+	private readonly CraftingRepeatLatch _craftRepeat = new();
 	private const int MenuPageSize = 10;
 	private const string InventoryBranchId = "inventory";
 	private const string ContainerCategoryId = "container";
@@ -177,6 +178,7 @@ internal sealed class AccessibleInventoryController
 
 	internal void Deactivate()
 	{
+		_craftRepeat.Reset();
 		_active = false;
 		_actionsPaneActive = false;
 		_actionSelection = 0;
@@ -1147,6 +1149,14 @@ internal sealed class AccessibleInventoryController
 
 	private bool HandleInventoryTreeInput(KeyboardState keyboard)
 	{
+		if (keyboard.IsKeyUp(Keys.I)) _craftRepeat.Reset();
+		if (CurrentLevelLayout == AccessibleInventoryLayout.Crafting && keyboard.IsKeyDown(Keys.I) && !IsControlDown(keyboard))
+		{
+			bool stackable = Main.recipe[Main.availableRecipe[CurrentLevelIndex]].createItem.maxStack > 1;
+			if (_craftRepeat.Allow(CurrentNode.Id, Pressed(keyboard, Keys.I),
+				NavigationTriggered(keyboard, Keys.I), stackable)) ActivateEntry(secondary: false);
+			return true;
+		}
 		if (CurrentNode.IsAction && CurrentEntry.IsAdjustable && NavigationTriggered(keyboard, Keys.Left))
 		{
 			AdjustCurrentEntry(forward: false);
@@ -2037,7 +2047,7 @@ internal sealed class AccessibleInventoryController
 
 		AriadneMod.ScreenReader.Output(
 			$"Inventory tree help. {DescribeSelection()} {DescribeCurrentLevel()} " +
-			"In vertical lists, Up and Down move through the current list and wrap. In a configured multi-column pane, Up and Down wrap within the current column, Left and Right move between columns, and Left from the first column returns to the parent. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Control Tab and Control Shift Tab move sideways between panes such as the hotbar, main inventory, coins, ammo, and crafting, returning to wherever you last were in each. Enter opens or activates the focused entry. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions, which include moving the item between the hotbar and the inventory and storing it in or taking it from an open container. Enter performs the primary or normal left click action, and Shift Enter takes one item from a stack of more than one, or performs the normal right click action when the slot cannot be split. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
+			"In vertical lists, Up and Down move through the current list and wrap. In a configured multi-column pane, Up and Down wrap within the current column, Left and Right move between columns, and Left from the first column returns to the parent. A letter key moves to the alphabetically first matching entry; press the same letter repeatedly to cycle through all matches. Empty item slots are skipped. Control Tab and Control Shift Tab move sideways between panes such as the hotbar, main inventory, coins, ammo, and crafting, returning to wherever you last were in each. Enter opens or activates the focused entry. In Crafting, hold I to craft the selected recipe repeatedly and release I to stop. Equipment crafts once per press. Home and End move to the first and last option, and Page Up and Page Down move by ten options. On an item slot, Tab opens its available actions, which include moving the item between the hotbar and the inventory and storing it in or taking it from an open container. Enter performs the primary or normal left click action, and Shift Enter takes one item from a stack of more than one, or performs the normal right click action when the slot cannot be split. Control F toggles favorite for inventory items. Control R reads the full item tooltip or action details. Escape uses Terraria's normal inventory close control.");
 	}
 
 	private void AnnounceSelection(bool includeLevel = false)
@@ -2075,7 +2085,13 @@ internal sealed class AccessibleInventoryController
 		string adjustable = entry?.IsAdjustable == true ? ", adjustable" : string.Empty;
 		string position;
 		int columns = CurrentGridColumnCount;
-		if (columns > 1)
+		if (CurrentLevelLayout == AccessibleInventoryLayout.Storage)
+		{
+			var slots = CurrentLevelNodes.Where(candidate => candidate.Entry?.ItemSlot is not null).ToList();
+			int slotIndex = slots.IndexOf(node);
+			position = slotIndex >= 0 ? $", {slotIndex + 1} of {slots.Count}" : string.Empty;
+		}
+		else if (columns > 1)
 		{
 			GridPosition grid = LocateCurrentGridIndex(CurrentLevelIndex, columns);
 			position = $", row {grid.Row + 1} of {CurrentGridColumnLength(columns, grid.Column)}, column {grid.Column + 1} of {columns}";
@@ -2813,7 +2829,22 @@ internal sealed class AccessibleInventoryController
 		Main.focusRecipe = availableIndex;
 		if (!Main.InGuideCraftMenu)
 		{
-			Main.CraftItem(Main.recipe[Main.availableRecipe[availableIndex]]);
+			Recipe recipe = Main.recipe[Main.availableRecipe[availableIndex]];
+			// CraftItem trusts its caller to check held-item type and capacity.
+			if (!Main.mouseItem.IsAir)
+			{
+				Main.mouseItem = Main.LocalPlayer.GetItem(Main.myPlayer, Main.mouseItem,
+					GetItemSettings.InventoryUIToInventorySettings);
+				if (!Main.mouseItem.IsAir)
+				{
+					AriadneMod.ScreenReader.Output("Inventory full. Store the held item before crafting.");
+					return;
+				}
+			}
+			Main.CraftItem(recipe);
+			Main.mouseItem = Main.LocalPlayer.GetItem(Main.myPlayer, Main.mouseItem,
+				GetItemSettings.InventoryUIToInventorySettings);
+			Recipe.FindRecipes();
 		}
 	}
 
